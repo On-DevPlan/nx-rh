@@ -1,5 +1,5 @@
 // nx-rh 面板逻辑：全部操作走 /api，与 CLI 共享同一 service 层。
-// 约定：无 emoji、原生 confirm/alert 作为提示通道。
+// 约定：无 emoji、不使用浏览器原生弹窗（alert/confirm/prompt 一律走页内 toast/对话框）。
 const $ = (s, el = document) => el.querySelector(s);
 
 const state = {
@@ -33,20 +33,70 @@ async function api(path, opts = {}) {
   return json.data;
 }
 
-function notify(msg) { window.alert(msg); }
-async function guard(fn) {
-  try { return await fn(); } catch (e) { notify(String((e && e.message) || e)); }
+// ---- 页内提示与对话框（取代浏览器原生弹窗） ----
+
+function toast(msg) {
+  const el = document.createElement('div');
+  el.className = 'toast';
+  el.textContent = msg;
+  document.body.appendChild(el);
+  requestAnimationFrame(() => el.classList.add('show'));
+  setTimeout(() => {
+    el.classList.remove('show');
+    setTimeout(() => el.remove(), 300);
+  }, 2600);
 }
 
-// ---- 标签页 ----
+// 通用对话框：input 为真时是输入框（返回字符串或 null），否则是确认框（返回 true/null）
+function dialog({ title = '', message = '', input = false, placeholder = '', value = '', okText = '确定', danger = false } = {}) {
+  return new Promise((resolve) => {
+    const overlay = document.createElement('div');
+    overlay.className = 'dlg';
+    overlay.innerHTML = `
+      <div class="dlg-box">
+        ${title ? `<div class="dlg-title">${esc(title)}</div>` : ''}
+        ${message ? `<div class="dlg-msg">${esc(message)}</div>` : ''}
+        ${input ? `<input class="dlg-input" placeholder="${esc(placeholder)}" value="${esc(value)}" spellcheck="false">` : ''}
+        <div class="dlg-acts">
+          <button class="btn ghost" data-r="cancel">取消</button>
+          <button class="btn${danger ? ' danger' : ''}" data-r="ok">${esc(okText)}</button>
+        </div>
+      </div>`;
+    const done = (val) => { overlay.remove(); resolve(val); };
+    overlay.addEventListener('click', (e) => {
+      const b = e.target.closest('button[data-r]');
+      if (b) done(b.dataset.r === 'ok' ? (input ? overlay.querySelector('.dlg-input').value.trim() : true) : null);
+      else if (e.target === overlay) done(null);
+    });
+    overlay.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape') done(null);
+      if (e.key === 'Enter') {
+        const inp = overlay.querySelector('.dlg-input');
+        done(inp ? inp.value.trim() : true);
+      }
+    });
+    document.body.appendChild(overlay);
+    (overlay.querySelector('.dlg-input') || overlay.querySelector('button[data-r="ok"]')).focus();
+  });
+}
+const askConfirm = (message, danger = false) => dialog({ message, danger }).then((v) => v === true);
+const askPrompt = (title, placeholder = '') => dialog({ title, input: true, placeholder });
+
+async function guard(fn) {
+  try { return await fn(); } catch (e) { toast(String((e && e.message) || e)); }
+}
+
+// ---- 标签页（切换时自动加载对应数据） ----
 document.querySelectorAll('.tab').forEach((btn) => {
   btn.addEventListener('click', () => {
     document.querySelectorAll('.tab').forEach((b) => b.classList.toggle('active', b === btn));
     document.querySelectorAll('.panel').forEach((p) => p.classList.toggle('active', p.id === 'tab-' + btn.dataset.tab));
+    if (btn.dataset.tab === 'skills') guard(loadSkills);
+    if (btn.dataset.tab === 'repos') guard(loadRepos);
   });
 });
 
-// ---- 弹窗 ----
+// ---- 弹窗（diff / 冲突详情） ----
 function openModal(title, node) {
   $('#modalTitle').textContent = title;
   const body = $('#modalBody');
@@ -123,6 +173,7 @@ function renderRepos() {
 async function loadRepos() {
   state.repos = await api('/api/repos');
   renderRepos();
+  renderSelectors(); // 仓库同时是 skill 项目候选
 }
 
 async function refreshStatuses() {
@@ -132,7 +183,7 @@ async function refreshStatuses() {
 
 $('#repoAdd').addEventListener('click', () => guard(async () => {
   const path = $('#repoPath').value.trim();
-  if (!path) return notify('请输入仓库路径');
+  if (!path) { toast('请输入仓库路径'); return; }
   await api('/api/repos', {
     method: 'POST',
     body: { path, name: $('#repoName').value.trim() || undefined, tags: $('#repoTags').value.trim() || undefined },
@@ -143,9 +194,9 @@ $('#repoAdd').addEventListener('click', () => guard(async () => {
 
 $('#repoScan').addEventListener('click', () => guard(async () => {
   const root = $('#scanRoot').value.trim();
-  if (!root) return notify('请输入扫描根目录');
+  if (!root) { toast('请输入扫描根目录'); return; }
   const r = await api('/api/repos/scan', { method: 'POST', body: { root, depth: parseInt($('#scanDepth').value, 10) || 3 } });
-  notify(`扫描完成：发现 ${r.scanned} 个 git 仓库，新登记 ${r.added.length} 个`);
+  toast(`扫描完成：发现 ${r.scanned} 个 git 仓库，新登记 ${r.added.length} 个`);
   await loadRepos();
 }));
 
@@ -173,9 +224,9 @@ $('#repoTable').addEventListener('click', (e) => {
     } else if (act === 'open') {
       await api('/api/repos/open', { method: 'POST', body: { id } });
     } else if (act === 'copy') {
-      try { await navigator.clipboard.writeText(btn.dataset.path); } catch { notify('复制失败: ' + btn.dataset.path); }
+      try { await navigator.clipboard.writeText(btn.dataset.path); } catch { toast('复制失败'); }
     } else if (act === 'del') {
-      if (!confirm(`删除仓库登记「${btn.dataset.name}」？\n（仅移除登记，磁盘文件不受影响）`)) return;
+      if (!(await askConfirm(`删除仓库登记「${btn.dataset.name}」？（仅移除登记，磁盘文件不受影响）`, true))) return;
       await api(`/api/repos/${encodeURIComponent(id)}`, { method: 'DELETE' });
       await loadRepos();
     }
@@ -190,12 +241,17 @@ function shortLabel(adapterId) {
   return src.replace(/\s*\(.*\)$/, '').split(/[\s-]/)[0].toLowerCase();
 }
 
-// 平台小按钮（平行、可勾选）：默认平台 + 已开启的平台
+// 平台范围（设置层勾选的平台），至少兜底 claude-code
+function platformScope() {
+  const known = new Set(state.adapters.map((a) => a.id));
+  const scope = (state.settings?.platforms || []).filter((id) => known.has(id));
+  return scope.length ? scope : ['claude-code'];
+}
+
+// 平台小按钮：只显示"平台范围"内的平台；勾选 = 给该平台提供此 skill
 function platformPills(skill) {
   const on = new Set((skill.platforms || []).map((p) => p.id));
-  const def = state.settings?.defaultPlatform || 'claude-code';
-  const ids = [...new Set([def, ...on])];
-  return `<span class="plats">${ids
+  return `<span class="plats">${platformScope()
     .map((id) => {
       const isOn = on.has(id);
       const lt = (skill.platforms || []).find((p) => p.id === id)?.linkType || '';
@@ -244,9 +300,10 @@ function renderSkills() {
         <span class="acts">
           <button class="btn small ghost" data-act="push" data-name="${esc(s.name)}">推送到中心</button>
           ${(s.platforms || []).some((p) => p.linkType) ? `<button class="btn small ghost" data-act="materialize" data-name="${esc(s.name)}">转实体</button>` : ''}
+          <button class="btn small ghost danger" data-act="remove-skill" data-name="${esc(s.name)}">删除</button>
         </span>
       </div>`).join('')
-    : '<div class="row muted">（项目侧暂无 skill；从中心勾选同步，或勾选平台小按钮）</div>';
+    : '<div class="row muted">（项目侧暂无 skill；从中心同步，或勾选平台小按钮）</div>';
   $('#projectCount').textContent = state.projectSkills.length
     ? `${state.projectSkills.length} 个 · 默认平台 ${state.settings?.defaultPlatform || 'claude-code'}`
     : '';
@@ -269,22 +326,35 @@ async function loadSkills() {
 function renderSelectors() {
   const s = state.settings || {};
   const cList = s.skillCentralCandidates || [];
-  const pList = s.skillProjectCandidates || [];
   $('#centralSelect').innerHTML = cList.length
     ? cList.map((p) => opt(p, p.replace(/^.*[\\/]/, '') + '  ·  ' + p, p === s.skillCentralPath)).join('')
     : opt('', '（请先添加中心仓库）', true);
-  $('#projectSelect').innerHTML = pList.length
-    ? pList.map((p) => opt(p, p.replace(/^.*[\\/]/, '') + '  ·  ' + p, false)).join('')
-    : opt('', '（请先添加项目目录）', true);
-  if (cList.length && s.skillCentralPath && cList.includes(s.skillCentralPath)) cSel_value(cSel, s.skillCentralPath);
+  if (cList.length && s.skillCentralPath && cList.includes(s.skillCentralPath)) {
+    $('#centralSelect').value = s.skillCentralPath;
+  }
+
+  // 项目候选 = 仓库登记（自动纳入） + 显式候选，去重
+  const map = new Map();
+  for (const r of state.repos) {
+    map.set(r.path.toLowerCase(), { path: r.path, label: `${r.name}（仓库）  ·  ${r.path}` });
+  }
+  for (const p of s.skillProjectCandidates || []) {
+    const k = p.toLowerCase();
+    if (map.has(k)) map.get(k).label = map.get(k).label.replace('（仓库）', '（仓库+候选）');
+    else map.set(k, { path: p, label: p.replace(/^.*[\\/]/, '') + '  ·  ' + p });
+  }
+  const merged = [...map.values()];
+  $('#projectSelect').innerHTML = merged.length
+    ? merged.map((o) => opt(o.path, o.label, false)).join('')
+    : opt('', '（请先登记仓库或添加项目目录）', true);
+
   $('#bundledHint').textContent = state.bundled
     ? state.bundled.skills.map((x) => `${x.name}(${x.files})`).join(' ') + ' → ' + state.bundled.defaultDir
     : '';
 }
-function cSel_value(sel, v) { sel.value = v; }
 
 $('#centralAdd').addEventListener('click', () => guard(async () => {
-  const p = prompt('中心仓库绝对路径（根目录下直接是 skill 目录）');
+  const p = await askPrompt('中心仓库绝对路径（根目录下直接是 skill 目录）');
   if (!p) return;
   const list = await api('/api/candidates', { method: 'POST', body: { kind: 'central', path: p } });
   state.settings.skillCentralCandidates = list;
@@ -297,7 +367,7 @@ $('#centralAdd').addEventListener('click', () => guard(async () => {
 $('#centralRemove').addEventListener('click', () => guard(async () => {
   const p = $('#centralSelect').value;
   if (!p) return;
-  if (!confirm(`从候选移除中心仓库？\n${p}\n（仅移出列表，不动磁盘）`)) return;
+  if (!(await askConfirm(`从候选移除中心仓库？\n${p}\n（仅移出列表，不动磁盘）`, true))) return;
   const list = await api('/api/candidates', { method: 'POST', body: { kind: 'central', path: p, remove: true } });
   state.settings.skillCentralCandidates = list;
   state.settings.skillCentralPath = list[0] || '';
@@ -307,7 +377,7 @@ $('#centralRemove').addEventListener('click', () => guard(async () => {
 }));
 
 $('#projectAdd').addEventListener('click', () => guard(async () => {
-  const p = prompt('项目根目录绝对路径');
+  const p = await askPrompt('项目根目录绝对路径（已登记的仓库会自动出现在下拉里，也可另外添加）');
   if (!p) return;
   const list = await api('/api/candidates', { method: 'POST', body: { kind: 'project', path: p } });
   state.settings.skillProjectCandidates = list;
@@ -319,7 +389,7 @@ $('#projectAdd').addEventListener('click', () => guard(async () => {
 $('#projectRemove').addEventListener('click', () => guard(async () => {
   const p = $('#projectSelect').value;
   if (!p) return;
-  if (!confirm(`从候选移除项目目录？\n${p}`)) return;
+  if (!(await askConfirm(`从候选移除项目目录？\n${p}`, true))) return;
   const list = await api('/api/candidates', { method: 'POST', body: { kind: 'project', path: p, remove: true } });
   state.settings.skillProjectCandidates = list;
   renderSelectors();
@@ -360,30 +430,30 @@ function bindSelCheck(containerId) {
 bindSelCheck('#centralList');
 bindSelCheck('#projectList');
 
-// 平台小按钮：开 = 同步到该平台；关 = 移除该平台下的副本/链接
+// 平台小按钮：开 = 同步到该平台；关 = 移除该平台下的副本/链接（至少保留一个平台）
 async function togglePlatform(btn) {
   const project = $('#projectSelect').value;
-  if (!project) return notify('请先选择项目目录');
-  const turnOn = btn.dataset.on !== '1';
-  const body = {
-    name: btn.dataset.name,
-    project,
-    adapter: btn.dataset.adapter,
-    enabled: turnOn,
-    force: false,
-    mode: $('#syncMode').value,
-  };
+  if (!project) { toast('请先选择项目目录'); return; }
+  const turningOff = btn.dataset.on === '1';
+  const name = btn.dataset.name;
+  if (turningOff) {
+    const skill = state.projectSkills.find((x) => x.name === name);
+    const onIds = platformScope().filter((id) => (skill?.platforms || []).some((p) => p.id === id));
+    if (onIds.length <= 1) {
+      toast('至少保留一个平台；要移除整个 skill 请用「删除」按钮');
+      return;
+    }
+  }
+  const body = { name, project, adapter: btn.dataset.adapter, enabled: !turningOff, force: false, mode: $('#syncMode').value };
   let r = await api('/api/skills/platform', { method: 'POST', body });
   if (r.status === 'conflict') {
-    if (!confirm(`「${btn.dataset.name}」在该平台已存在且内容不同（${r.files.length} 个文件）。\n用中心版本覆盖？`)) return;
+    if (!(await askConfirm(`「${name}」在该平台已存在且内容不同（${r.files.length} 个文件）。\n用中心版本覆盖？`))) return;
     r = await api('/api/skills/platform', { method: 'POST', body: { ...body, force: true } });
   }
-  const label = r.platform;
-  if (r.status === 'conflict') return notify('仍有冲突，未覆盖');
-  if (r.skipped && !r.removed) notify(`${label}：本就没有此 skill`);
-  else if (r.removed) notify(`${label}：已关闭（移除该平台下的副本/链接）`);
-  else if (r.skipped) notify(`${label}：已是最新链接`);
-  else notify(`${label}：已开启（${r.mode === 'symlink' ? '软链接 ' + (r.linkType || '') : '复制'}）`);
+  if (r.status === 'conflict') { toast('仍有冲突，未覆盖'); return; }
+  if (r.removed) toast(`${r.platform}：已关闭`);
+  else if (r.skipped) toast(`${r.platform}：已是最新`);
+  else toast(`${r.platform}：已开启（${r.mode === 'symlink' ? '软链接 ' + (r.linkType || '') : '复制'}）`);
   await loadSkills();
 }
 
@@ -394,21 +464,26 @@ $('#projectList').addEventListener('click', (e) => {
   const name = btn.dataset.name;
   const project = $('#projectSelect').value;
   guard(async () => {
-    if (!project) return notify('请先选择项目目录');
+    if (!project) { toast('请先选择项目目录'); return; }
     if (btn.dataset.act === 'push') {
       const r = await api('/api/skills/push', { method: 'POST', body: { name, project, force: false } });
       if (r.status === 'conflict') {
-        notify(`冲突：${r.files.length} 个文件，打开差异选侧`);
+        toast(`冲突：${r.files.length} 个文件，打开差异选侧`);
         const detail = await api(`/api/skills/conflict?name=${encodeURIComponent(name)}&project=${encodeURIComponent(project)}`);
         conflictModal(name, project, detail);
       } else {
-        notify(r.skipped ? r.reason : '已推送到中心');
+        toast(r.skipped ? r.reason : '已推送到中心');
       }
       await loadSkills();
     } else if (btn.dataset.act === 'materialize') {
-      if (!confirm(`将「${name}」从链接转换为实体文件？转换后不再与中心实时同步。`)) return;
+      if (!(await askConfirm(`将「${name}」从链接转换为实体文件？转换后不再与中心实时同步。`))) return;
       const r = await api('/api/skills/materialize', { method: 'POST', body: { name, project } });
-      notify(r.converted ? '已转换为实体文件' : r.message);
+      toast(r.converted ? '已转换为实体文件' : r.message);
+      await loadSkills();
+    } else if (btn.dataset.act === 'remove-skill') {
+      if (!(await askConfirm(`从项目中删除 skill「${name}」？\n将移除它在所有平台目录下的副本与链接（中心仓库不受影响）。`, true))) return;
+      const r = await api('/api/skills/remove-project', { method: 'POST', body: { name, project } });
+      toast(r.removed.length ? `已删除（${r.removed.map((x) => x.platform).join(', ')}）` : r.reason);
       await loadSkills();
     }
   });
@@ -420,20 +495,20 @@ $('#centralList').addEventListener('click', (e) => {
   const name = btn.dataset.name;
   const project = $('#projectSelect').value;
   guard(async () => {
-    if (!project) return notify('请先选择项目目录');
+    if (!project) { toast('请先选择项目目录'); return; }
     const adapter = $('#defaultPlatform').value;
     const r = await api('/api/skills/sync', {
       method: 'POST',
       body: { name, project, adapter, mode: $('#syncMode').value, force: false },
     });
     if (r.status === 'conflict') {
-      notify(`冲突：${r.files.length} 个文件，打开差异选侧`);
+      toast(`冲突：${r.files.length} 个文件，打开差异选侧`);
       const detail = await api(`/api/skills/conflict?name=${encodeURIComponent(name)}&project=${encodeURIComponent(project)}`);
       conflictModal(name, project, detail);
     } else if (r.skipped) {
-      notify(`已是最新（${r.linkType || '链接'}），跳过`);
+      toast(`已是最新（${r.linkType || '链接'}），跳过`);
     } else {
-      notify(`已同步到 ${adapter}（${r.mode === 'symlink' ? '软链接 ' + (r.linkType || '') : '复制'}）`);
+      toast(`已同步到 ${adapter}（${r.mode === 'symlink' ? '软链接 ' + (r.linkType || '') : '复制'}）`);
     }
     await loadSkills();
   });
@@ -443,7 +518,7 @@ $('#centralList').addEventListener('click', (e) => {
 $('#skillCompare').addEventListener('click', () => guard(async () => {
   const central = $('#centralSelect').value;
   const project = $('#projectSelect').value;
-  if (!project) return notify('请先选择项目目录');
+  if (!project) { toast('请先选择项目目录'); return; }
   const names = [...new Set([...state.selCentral, ...state.selProject])];
   const d = await api('/api/skills/compare', { method: 'POST', body: { central, project, names } });
   const mark = { same: '一致', linked: '链接', differ: '冲突', 'only-central': '仅中心', 'only-project': '仅项目' };
@@ -517,16 +592,16 @@ function conflictModal(name, project, data) {
 // 内置 skill 安装
 $('#bundledInstall').addEventListener('click', () => guard(async () => {
   const skill = state.bundled?.skills.find((s) => s.name === 'repo-hub') || state.bundled?.skills[0];
-  if (!skill) return notify('包内没有内置 skill');
+  if (!skill) { toast('包内没有内置 skill'); return; }
   const r = await api('/api/bundled/install', { method: 'POST', body: { name: skill.name, force: false } });
   if (r.status === 'conflict') {
-    if (!confirm(`目标已存在且内容不同（${r.count} 个文件）:\n${r.path}\n\n覆盖为包内版本？`)) return;
+    if (!(await askConfirm(`目标已存在且内容不同（${r.count} 个文件）:\n${r.path}\n\n覆盖为包内版本？`))) return;
     const forced = await api('/api/bundled/install', { method: 'POST', body: { name: skill.name, force: true } });
-    notify(`${forced.replaced ? '已更新' : '已安装'} → ${forced.path}`);
+    toast(`${forced.replaced ? '已更新' : '已安装'} → ${forced.path}`);
   } else if (r.skipped) {
-    notify(`已是最新，无需安装\n${r.path}`);
+    toast(`已是最新，无需安装\n${r.path}`);
   } else {
-    notify(`${r.replaced ? '已更新' : '已安装'}（${r.files} 个文件）\n${r.path}`);
+    toast(`${r.replaced ? '已更新' : '已安装'}（${r.files} 个文件）\n${r.path}`);
   }
 }));
 
@@ -538,26 +613,52 @@ function candidateRows(list, kind) {
         <span class="mono">${esc(p)}</span>
         <span class="acts"><button class="btn small ghost" data-act="rm-cand" data-kind="${kind}" data-path="${esc(p)}">移除</button></span>
       </div>`).join('')
-    : '<div class="row muted">（暂无）</div>';
+    : '<div class="row muted">（暂无；已登记的仓库会自动作为项目候选）</div>';
+}
+
+// 平台范围：三层中的第二层——在全部适配器里勾选要支持的平台
+function renderPlatformScope() {
+  const s = state.settings || {};
+  const scope = new Set(s.platforms || []);
+  const box = $('#setPlatformsBox');
+  box.innerHTML = state.adapters
+    .map((a) => `<button class="pill${scope.has(a.id) ? ' on' : ''}" data-platform="${esc(a.id)}">${esc(shortLabel(a.id))}</button>`)
+    .join('');
+  const def = s.defaultPlatform || 'claude-code';
+  $('#setDefaultPlatform').innerHTML = (scope.size ? [...scope] : ['claude-code'])
+    .map((id) => opt(id, (state.adapters.find((a) => a.id === id) || {}).name || id, id === def))
+    .join('');
+  box.onclick = async (e) => {
+    const btn = e.target.closest('button[data-platform]');
+    if (!btn) return;
+    const id = btn.dataset.platform;
+    let next = scope.has(id) ? [...scope].filter((x) => x !== id) : [...scope, id];
+    if (!next.length) { toast('平台范围至少保留一个'); return; }
+    if (!next.includes(s.defaultPlatform)) s.defaultPlatform = next[0]; // 默认平台必须留在范围内
+    state.settings = await api('/api/settings', {
+      method: 'POST',
+      body: { platforms: next, defaultPlatform: s.defaultPlatform },
+    });
+    renderPlatformScope();
+    renderSelectors();
+    renderSkills();
+  };
 }
 
 function renderSettings() {
   const s = state.settings || {};
   $('#setCentralList').innerHTML = candidateRows(s.skillCentralCandidates || [], 'central');
   $('#setProjectList').innerHTML = candidateRows(s.skillProjectCandidates || [], 'project');
-  const opts = state.adapters.map((a) => opt(a.id, a.name, a.id === (s.defaultPlatform || 'claude-code'))).join('');
-  $('#setDefaultPlatform').innerHTML = opts;
-  $('#defaultPlatform').innerHTML = opts;
-  $('#setPlatforms').textContent = (s.platforms || []).join(', ') || '(未设置)';
-  $('#setMode').textContent = s.skillSyncMode || 'symlink';
+  renderPlatformScope();
+  $('#setSyncMode').value = s.skillSyncMode === 'copy' ? 'copy' : 'symlink';
+  $('#syncMode').value = s.skillSyncMode === 'copy' ? 'copy' : 'symlink';
   $('#setAdapters').textContent = state.adapters.map((a) => `${a.id} = ${a.dir}`).join('   ');
   $('#setStore').textContent = state.storePath;
-  $('#syncMode').value = s.skillSyncMode === 'copy' ? 'copy' : 'symlink';
 }
 
 $('#setCentralAdd').addEventListener('click', () => guard(async () => {
   const p = $('#setCentralInput').value.trim();
-  if (!p) return;
+  if (!p) { toast('请输入中心仓库路径'); return; }
   const list = await api('/api/candidates', { method: 'POST', body: { kind: 'central', path: p } });
   state.settings.skillCentralCandidates = list;
   state.settings.skillCentralPath = list[list.length - 1];
@@ -568,20 +669,24 @@ $('#setCentralAdd').addEventListener('click', () => guard(async () => {
 
 $('#setProjectAdd').addEventListener('click', () => guard(async () => {
   const p = $('#setProjectInput').value.trim();
-  if (!p) return;
+  if (!p) { toast('请输入项目根目录'); return; }
   const list = await api('/api/candidates', { method: 'POST', body: { kind: 'project', path: p } });
   state.settings.skillProjectCandidates = list;
   $('#setProjectInput').value = '';
   renderSelectors(); renderSettings();
 }));
 
+$('#setSyncMode').addEventListener('change', () => guard(async () => {
+  state.settings = await api('/api/settings', { method: 'POST', body: { skillSyncMode: $('#setSyncMode').value } });
+  renderSettings();
+}));
 $('#setDefaultPlatform').addEventListener('change', () => guard(async () => {
   const id = $('#setDefaultPlatform').value;
   state.settings = await api('/api/settings', {
     method: 'POST',
     body: { defaultPlatform: id, platforms: [id, ...(state.settings.platforms || []).filter((x) => x !== id)] },
   });
-  renderSettings(); renderSkills(); await loadSkills();
+  renderPlatformScope(); renderSelectors(); renderSkills(); await loadSkills();
 }));
 
 document.addEventListener('click', (e) => {
@@ -589,7 +694,7 @@ document.addEventListener('click', (e) => {
   if (!btn) return;
   guard(async () => {
     const { kind, path } = btn.dataset;
-    if (!confirm(`移除候选？\n${path}`)) return;
+    if (!(await askConfirm(`移除候选？\n${path}`, true))) return;
     const list = await api('/api/candidates', { method: 'POST', body: { kind, path, remove: true } });
     if (kind === 'central') {
       state.settings.skillCentralCandidates = list;

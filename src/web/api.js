@@ -65,6 +65,7 @@ const routes = [
   ['POST', /^\/api\/skills\/push$/, (_m, _q, b) => skills.pushSkill(b)],
   ['POST', /^\/api\/skills\/materialize$/, (_m, _q, b) => skills.materializeSkill(b)],
   ['POST', /^\/api\/skills\/apply$/, (_m, _q, b) => skills.applySkillSide(b)],
+  ['POST', /^\/api\/skills\/remove-project$/, (_m, _q, b) => skills.removeProjectSkill(b)],
   ['GET', /^\/api\/skills\/platform$/, (_m, q) =>
     skills.platformStatus({ name: q.get('name'), project: q.get('project') })],
   ['POST', /^\/api\/skills\/platform$/, (_m, _q, b) => skills.setPlatform(b)],

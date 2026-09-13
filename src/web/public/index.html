@@ -130,8 +130,8 @@
       <div class="colhead"><h3>平台与同步</h3></div>
       <div class="settings">
         <dt>默认平台</dt><dd><select id="setDefaultPlatform"></select></dd>
-        <dt>平台范围</dt><dd id="setPlatforms" class="mono"></dd>
-        <dt>同步模式</dt><dd id="setMode"></dd>
+        <dt>平台范围</dt><dd><span id="setPlatformsBox" class="plats"></span></dd>
+        <dt>同步模式</dt><dd><select id="setSyncMode"><option value="symlink">软链接</option><option value="copy">复制</option></select></dd>
         <dt>适配器总表</dt><dd id="setAdapters" class="mono"></dd>
         <dt>存储文件</dt><dd id="setStore" class="mono"></dd>
         <dt>面板端口</dt><dd>默认 7800（<code>nx-rh serve --port</code> 可改，仅绑定 127.0.0.1）</dd>

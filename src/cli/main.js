@@ -84,6 +84,7 @@ Skill 管理（= Web「Skill」页）:
   nx-rh skill platform [ids...]                           默认平台范围 / 默认平台
   nx-rh skill platform-set <name> --project P --adapter A [--off]  单个平台开关
   nx-rh skill compare [--central C] --project P [--names a,b]      多选比较
+  nx-rh skill remove <name> --project P                   从项目删除 skill（所有平台）
   nx-rh skill adapters [--json]                           适配器清单
   nx-rh skill list --side central|project [--path P] [--json]   两侧识别
   nx-rh skill sync <name> --project P [--mode symlink|copy] [--adapter A] [--force]
@@ -353,6 +354,19 @@ export async function runCli(argv) {
             if (d.status === 'conflict') return `冲突（${d.platform}）: ${d.files.length} 个文件不同，加 --force 覆盖`;
             return `已开启平台 ${d.platform}（${d.mode === 'symlink' ? '软链接 ' + (d.linkType || '') : '复制'}）`;
           },
+          json
+        );
+        return;
+      }
+      case 'skill remove': {
+        if (!rest[0] || !flags.project) throw new Error('用法: skill remove <name> --project P');
+        const data = await skills.removeProjectSkill({ name: rest[0], project: flags.project });
+        out(
+          data,
+          (d) =>
+            d.removed.length
+              ? `已从项目删除 ${rest[0]}（${d.removed.map((x) => x.platform).join(', ')}）`
+              : d.reason,
           json
         );
         return;

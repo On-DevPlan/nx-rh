@@ -97,6 +97,56 @@ input:focus, select:focus {
 .btn.ghost:hover { background: var(--soft-2); opacity: 1; }
 .btn.small { padding: 3px 9px; font-size: 12px; border-radius: 7px; }
 .btn:disabled { opacity: 0.4; cursor: default; }
+.btn.danger { background: #b3261e; color: #fff; }
+
+/* ---------- toast / 对话框（取代浏览器原生弹窗） ---------- */
+.toast {
+  position: fixed;
+  left: 50%;
+  bottom: 28px;
+  transform: translate(-50%, 12px);
+  background: var(--ink);
+  color: var(--paper);
+  font-size: 12.5px;
+  padding: 9px 16px;
+  border-radius: 10px;
+  box-shadow: 0 8px 24px rgba(20, 22, 26, 0.25);
+  opacity: 0;
+  transition: opacity 0.25s, transform 0.25s;
+  z-index: 60;
+  max-width: 72vw;
+  white-space: pre-wrap;
+  word-break: break-all;
+}
+.toast.show { opacity: 1; transform: translate(-50%, 0); }
+
+.dlg {
+  position: fixed;
+  inset: 0;
+  background: rgba(251, 251, 252, 0.86);
+  backdrop-filter: blur(2px);
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  padding: 96px 16px;
+  z-index: 50;
+}
+.dlg-box {
+  background: var(--paper);
+  border-radius: var(--radius);
+  box-shadow: 0 12px 40px rgba(20, 22, 26, 0.16);
+  width: min(460px, 94vw);
+  padding: 16px 18px;
+}
+.dlg-title { font-weight: 700; margin-bottom: 6px; }
+.dlg-msg { color: var(--ink); white-space: pre-wrap; word-break: break-all; margin-bottom: 6px; }
+.dlg-input {
+  width: 100%;
+  margin: 8px 0 4px;
+  font-family: ui-monospace, Consolas, monospace;
+  font-size: 12.5px;
+}
+.dlg-acts { display: flex; justify-content: flex-end; gap: 8px; margin-top: 12px; }
 
 /* ---------- 卡片与列表 ---------- */
 .card {
@@ -113,11 +163,12 @@ h3 { font-size: 13px; margin: 0; font-weight: 700; }
 .col { flex: 1; min-width: 0; }
 .list { padding: 4px; }
 
-/* 行：靠 hover 底色区分，不用分隔线 */
+/* 行：靠 hover 底色区分，不用分隔线；内容多时允许换行 */
 .row {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
-  gap: 10px;
+  gap: 8px 10px;
   padding: 8px 10px;
   border-radius: 10px;
   transition: background 0.12s;

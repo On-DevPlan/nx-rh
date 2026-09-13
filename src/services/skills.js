@@ -647,3 +647,20 @@ export async function removeCentralCandidate(path) {
     return [...s.settings.skillCentralCandidates];
   });
 }
+
+// 从项目里删除一个 skill（移除所有平台/适配器目录下的副本与链接）
+export async function removeProjectSkill({ name, project } = {}) {
+  name = assertSafeName(name);
+  if (!project) throw new Error('project 不能为空');
+  const projRoot = resolve(String(project));
+  const removed = [];
+  for (const a of ADAPTERS) {
+    const p = join(projRoot, a.dir, name);
+    if (await exists(p)) {
+      await fsp.rm(p, { recursive: true, force: true });
+      removed.push({ platform: a.id, path: p });
+    }
+  }
+  if (!removed.length) return { status: 'ok', removed: [], reason: '项目中没有该 skill' };
+  return { status: 'ok', removed };
+}

@@ -220,6 +220,11 @@ try {
   const pList = cliJson(['skill', 'project', 'list']);
   check('project 候选列表', Array.isArray(pList) && pList.some((x) => x === proj3));
 
+  const rmSkill = cliJson(['skill', 'remove', 'root-skill', '--project', proj3]);
+  check('skill remove 删除项目侧', rmSkill.removed.length >= 1, JSON.stringify(rmSkill));
+  const cmp3 = cliJson(['skill', 'compare', '--central', central2, '--project', proj3]);
+  check('删除后变仅中心', cmp3.rows[0].state === 'only-central');
+
   // ---- 14. Web API ----
   const { startServer } = await import(pathToFileURL(join(ROOT, '..', 'src', 'web', 'server.js')).href);
   const server = await startServer({ port: 0 });
