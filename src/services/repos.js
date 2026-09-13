@@ -97,9 +97,6 @@ async function hasGitDir(dir) {
   }
 }
 
-// 供 ecosystem 等其他 service 复用
-export { hasGitDir as isGitRepoPath };
-
 // 扫描根目录下的 git 仓库并登记（跳过依赖类大目录，允许 .claude 等点目录）
 export async function scanRepos(root, depth = 3) {
   const absRoot = resolve(String(root || ''));

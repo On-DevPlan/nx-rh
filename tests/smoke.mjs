@@ -130,44 +130,28 @@ try {
   const merged2 = cliJson(['skill', 'merge', '--base', baseF, '--a', aF, '--b', bF]);
   check('merge3 双侧冲突标记', merged2.conflicts.length === 1 && merged2.merged.includes('<<<<<<<'));
 
-  // ---- 12. 生态（bro_chat_native_host 导入） ----
-  const brodir = join(tmp, 'bro_chat_native_host');
-  mkdirSync(join(brodir, 'logs'), { recursive: true });
-  const jsonServerRepo = join(ROOT, '..', '.claude', 'repo', 'json-server');
+  // ---- 12. SKILL.md frontmatter 解析（CRLF / 块标量 / 引号） ----
+  const crlfProject = join(tmp, 'crlf-project');
+  mkdirSync(join(crlfProject, '.claude', 'skills', 'crlf-skill'), { recursive: true });
   writeFileSync(
-    join(brodir, 'conpty_processes.json'),
-    JSON.stringify([
-      { pid: 1, name: 'a', cmd: 'cmd', args: [], workDir: jsonServerRepo, logFile: '' },
-      { pid: 2, name: 'b', cmd: 'cmd', args: [], workDir: project, logFile: '' },
-      { pid: 3, name: 'c', cmd: 'cmd', args: [], workDir: '', logFile: '' },
-    ])
+    join(crlfProject, '.claude', 'skills', 'crlf-skill', 'SKILL.md'),
+    '---\r\nname: crlf-skill\r\ndescription: 换行是 CRLF 时也要能读出描述\r\n---\r\n\r\n# body\r\n'
   );
+  mkdirSync(join(crlfProject, '.claude', 'skills', 'block-skill'), { recursive: true });
   writeFileSync(
-    join(brodir, 'env_snapshot_20260913_000000.json'),
-    JSON.stringify({ timestamp: '2026-09-13T00:00:00+08:00', userPath: [], systemPath: [], userVars: {}, systemVars: {}, processEnv: {} })
+    join(crlfProject, '.claude', 'skills', 'block-skill', 'SKILL.md'),
+    '---\nname: block-skill\ndescription: >\n  折叠块标量\n  要合并成一行\n---\n\n# body\n'
   );
-  process.env.NX_RH_BROCHAT_DIR = brodir;
-
-  const eco = cliJson(['eco', 'scan']);
-  check(
-    'eco scan workDir 提取',
-    Array.isArray(eco.workDirs) && eco.workDirs.length === 2 && eco.workDirs.some((w) => w.isGit) && eco.workDirs.some((w) => w.skillDirs.length > 0),
-    JSON.stringify(eco.workDirs && eco.workDirs.length)
+  mkdirSync(join(crlfProject, '.claude', 'skills', 'quoted-skill'), { recursive: true });
+  writeFileSync(
+    join(crlfProject, '.claude', 'skills', 'quoted-skill', 'SKILL.md'),
+    '---\nname: quoted-skill\ndescription: "带引号的描述"\n---\n\n# body\n'
   );
-
-  const ecoRepos = cliJson(['eco', 'import', '--repos']);
-  check(
-    'eco import repos 登记 git 仓库',
-    ecoRepos.repos && ecoRepos.repos.added.length === 1 && ecoRepos.repos.added[0].path === jsonServerRepo,
-    JSON.stringify(ecoRepos.repos && ecoRepos.repos.added.length)
-  );
-
-  const ecoSkills = cliJson(['eco', 'import', '--skills']);
-  check(
-    'eco import skills 推送到中心',
-    ecoSkills.skills && ecoSkills.skills.pushed.includes('demo-skill'),
-    JSON.stringify(ecoSkills.skills && { pushed: ecoSkills.skills.pushed, errors: ecoSkills.skills.errors })
-  );
+  const parsed = cliJson(['skill', 'list', '--side', 'project', '--path', crlfProject]);
+  const byName = Object.fromEntries((parsed || []).map((s) => [s.name, s.description]));
+  check('CRLF frontmatter 描述解析', byName['crlf-skill'] === '换行是 CRLF 时也要能读出描述', JSON.stringify(byName['crlf-skill']));
+  check('折叠块标量描述解析', byName['block-skill'] === '折叠块标量 要合并成一行', JSON.stringify(byName['block-skill']));
+  check('引号描述解析', byName['quoted-skill'] === '带引号的描述', JSON.stringify(byName['quoted-skill']));
 
   // ---- 13. Web API ----
   const { startServer } = await import(pathToFileURL(join(ROOT, '..', 'src', 'web', 'server.js')).href);
@@ -175,7 +159,7 @@ try {
   const base = 'http://127.0.0.1:' + server.address().port;
 
   const boot = await (await fetch(base + '/api/bootstrap')).json();
-  check('api bootstrap', boot.ok && boot.data.repos.length === 3);
+  check('api bootstrap', boot.ok && boot.data.repos.length === 2);
 
   const html = await (await fetch(base + '/')).text();
   check('web 首页', html.includes('npx-repo-hub') && !/[\u{1F300}-\u{1FAFF}\u{2600}-\u{27BF}]/u.test(html));
@@ -193,9 +177,6 @@ try {
     await fetch(base + '/api/skills?side=project&path=' + encodeURIComponent(project))
   ).json();
   check('api skills project', skillsRes.ok && skillsRes.data.length === 1);
-
-  const ecoRes = await (await fetch(base + '/api/eco')).json();
-  check('api eco scan', ecoRes.ok && Array.isArray(ecoRes.data.workDirs) && ecoRes.data.workDirs.length === 2);
 
   const badRes = await (
     await fetch(base + '/api/repos', {

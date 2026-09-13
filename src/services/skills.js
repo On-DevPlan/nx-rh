@@ -76,43 +76,56 @@ export async function setCentralPath(path) {
   return { skillCentralPath: resolve(String(path)) };
 }
 
-// ─── SKILL.md 解析（与 fileops.go / gitimporter.go 同语义） ─────────
+// ─── SKILL.md 解析（与 fileops.go / gitimporter.go 同语义，另修 CRLF） ──
+// 关键点：Windows 上 SKILL.md 通常是 CRLF，先归一化换行再逐行解析，
+// 否则 JS 正则的 `$`（非 multiline）无法匹配行尾残留的 \r，name/description 会全部丢失。
 
-function parseFrontmatter(content) {
-  const m = /^---\s*\n([\s\S]+?)\n---/.exec(content);
+function parseFrontmatter(raw) {
+  const content = String(raw ?? '')
+    .replace(/^\uFEFF/, '')
+    .replace(/\r\n?/g, '\n');
+  const m = /^---[ \t]*\n([\s\S]*?)\n---[ \t]*(\n|$)/.exec(content);
   if (!m) return { name: '', description: '' };
   const lines = m[1].split('\n');
-  let name = '';
-  for (const line of lines) {
-    const nm = /^name:\s*(.+)$/.exec(line);
-    if (nm) {
-      name = nm[1].trim();
-      break;
-    }
-  }
-  return { name, description: parseDescription(lines) };
+  return {
+    name: readField(lines, 'name').trim(),
+    description: readField(lines, 'description').trim(),
+  };
 }
 
-function parseDescription(lines) {
+// 去掉包裹的成对引号
+function unquote(v) {
+  const s = v.trim();
+  if (s.length >= 2 && ((s.startsWith('"') && s.endsWith('"')) || (s.startsWith("'") && s.endsWith("'")))) {
+    return s.slice(1, -1).trim();
+  }
+  return s;
+}
+
+// 读取 frontmatter 字段：支持单行值、引号值、| / > 块标量、以及缩进续行
+function readField(lines, key) {
+  const re = new RegExp('^' + key + ':[ \\t]*(.*)$');
   for (let i = 0; i < lines.length; i++) {
-    const m = /^description:\s*(.*)$/.exec(lines[i]);
+    const m = re.exec(lines[i]);
     if (!m) continue;
-    const value = m[1].trim();
-    if (value && value !== '|' && value !== '>') return value;
-    if (!value) return '';
-    // 块标量：收集后续缩进行
+    const rawVal = m[1].trim();
+    const isBlock = /^[|>][-+]?$/.test(rawVal);
+    if (!isBlock && rawVal !== '') return unquote(rawVal);
+
+    // 块标量或空值：收集后续缩进行（YAML 多行标量）
     const block = [];
     for (let j = i + 1; j < lines.length; j++) {
       const l = lines[j];
-      if (!l) {
+      if (l.trim() === '') {
         block.push('');
         continue;
       }
-      if (l[0] !== ' ' && l[0] !== '\t') break;
+      if (!/^[ \t]/.test(l)) break;
       block.push(stripIndent(l));
     }
-    if (block.length) return block.join('\n').trim();
-    return value;
+    const text = block.join('\n').trim();
+    if (text) return rawVal.startsWith('>') ? text.replace(/\s*\n\s*/g, ' ').trim() : text;
+    return unquote(rawVal);
   }
   return '';
 }
