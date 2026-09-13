@@ -13,6 +13,7 @@
   <nav>
     <button class="tab active" data-tab="repos">仓库</button>
     <button class="tab" data-tab="skills">Skill</button>
+    <button class="tab" data-tab="eco">生态</button>
     <button class="tab" data-tab="settings">设置</button>
   </nav>
   <div class="meta" id="storePath"></div>
@@ -79,6 +80,27 @@
   </section>
 
   <!-- ============ 设置 ============ -->
+  <section id="tab-eco" class="panel">
+    <div class="toolbar">
+      <button id="ecoScan" class="btn">读取 native host 状态</button>
+      <button id="ecoImportRepos" class="btn">导入 git 仓库</button>
+      <button id="ecoImportSkills" class="btn">导入 skills 到中心</button>
+      <span class="muted" id="ecoHint"></span>
+    </div>
+    <div id="ecoResult" class="mono" style="margin-bottom:10px;"></div>
+    <h3>native host 状态目录</h3>
+    <table id="ecoFilesTable">
+      <thead><tr><th>文件</th><th>大小</th><th>类型</th><th>修改时间</th></tr></thead>
+      <tbody></tbody>
+    </table>
+    <h3>进程 workDir（插件启动过的项目目录）</h3>
+    <table id="ecoWorkDirTable">
+      <thead><tr><th>路径</th><th>git</th><th>skill 目录</th></tr></thead>
+      <tbody></tbody>
+    </table>
+    <div class="cli-hint">CLI 等价命令：nx-rh eco scan · nx-rh eco import --repos · nx-rh eco import --skills --central &lt;path&gt;</div>
+  </section>
+
   <section id="tab-settings" class="panel">
     <dl class="settings">
       <dt>存储文件</dt><dd id="setStore" class="mono"></dd>

@@ -5,6 +5,7 @@ import { DEFAULT_PORT, storePathFromEnv } from '../core/paths.js';
 import { loadStore } from '../core/store.js';
 import * as repos from '../services/repos.js';
 import * as skills from '../services/skills.js';
+import * as ecosystem from '../services/ecosystem.js';
 import { merge3 } from '../core/diff.js';
 
 const VERSION = '0.1.0';
@@ -89,6 +90,11 @@ Skill 管理（= Web「Skill」页）:
 设置:
   nx-rh setting get [key]
   nx-rh setting set <key> <value>                         skillCentralPath / skillSyncMode
+
+生态（= Web「生态」页，从 bro_chat_native_host 导入）:
+  nx-rh eco scan [--json]                                 读取插件 native host 状态目录
+  nx-rh eco import [--repos] [--skills] [--central P] [--mode symlink|copy] [--force]
+                                                        导入 git 仓库与 skills（默认两者）
 
 通用:
   --json   机器可读输出（agent 模式）
@@ -343,6 +349,62 @@ export async function runCli(argv) {
         ]);
         const data = merge3(base, a, b);
         out(data, (d) => d.merged, json);
+        return;
+      }
+
+      // ---- 生态（bro_chat_native_host 导入） ----
+      case 'eco scan': {
+        const data = await ecosystem.ecoScan();
+        out(
+          data,
+          (d) => {
+            if (!d.exists) return `native host 状态目录不存在: ${d.dir}`;
+            const lines = [`native host: ${d.dir}`, `状态文件 ${d.files.length} 个，日志 ${d.logCount} 个`];
+            if (d.envSnapshots.length) lines.push(`env 快照: ${d.envSnapshots.map((s) => s.timestamp).join(', ')}`);
+            lines.push(`进程 workDir ${d.workDirs.length} 个:`);
+            for (const w of d.workDirs) {
+              const marks = [w.isGit ? 'git' : '-', w.skillDirs.length ? 'skills:' + w.skillDirs.join(',') : '-'];
+              lines.push(`  ${w.path}   [${marks.join(' | ')}]`);
+            }
+            return lines.join('\n');
+          },
+          json
+        );
+        return;
+      }
+      case 'eco import': {
+        const both = !flags.repos && !flags.skills;
+        const result = {};
+        if (flags.central) await skills.setCentralPath(flags.central);
+        if (both || flags.repos) {
+          result.repos = await ecosystem.ecoImportRepos({});
+        }
+        if (both || flags.skills) {
+          result.skills = await ecosystem.ecoImportSkills({
+            mode: flags.mode,
+            force: !!flags.force,
+          });
+        }
+        out(
+          result,
+          (r) => {
+            const lines = [];
+            if (r.repos) {
+              lines.push(
+                `仓库: 新登记 ${r.repos.added.length} 个，已存在 ${r.repos.existing.length} 个，非 git ${r.repos.nonGit.length} 个`
+              );
+              for (const a of r.repos.added) lines.push(`  + ${a.name}  ${a.path}`);
+            }
+            if (r.skills) {
+              lines.push(
+                `skills -> ${r.skills.central}: 链接 ${r.skills.linked.length}，复制 ${r.skills.copied.length}，推送 ${r.skills.pushed.length}，跳过 ${r.skills.skipped.length}，冲突 ${r.skills.conflicts.length}，错误 ${r.skills.errors.length}`
+              );
+              for (const c of r.skills.conflicts) lines.push(`  冲突: ${c.name} (${c.project})`);
+            }
+            return lines.join('\n');
+          },
+          json
+        );
         return;
       }
 

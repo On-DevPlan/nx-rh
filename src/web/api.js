@@ -2,6 +2,7 @@
 // 路由注册表风格参考 adminer-node 的 src/server.js。
 import * as repos from '../services/repos.js';
 import * as skills from '../services/skills.js';
+import * as ecosystem from '../services/ecosystem.js';
 import { merge3 } from '../core/diff.js';
 import { storePathFromEnv } from '../core/paths.js';
 
@@ -63,6 +64,17 @@ const routes = [
   ['POST', /^\/api\/skills\/push$/, (_m, _q, b) => skills.pushSkill(b)],
   ['POST', /^\/api\/skills\/materialize$/, (_m, _q, b) => skills.materializeSkill(b)],
   ['POST', /^\/api\/skills\/apply$/, (_m, _q, b) => skills.applySkillSide(b)],
+
+  // ---- 生态（= CLI: nx-rh eco ...） ----
+  ['GET', /^\/api\/eco$/, () => ecosystem.ecoScan()],
+  ['POST', /^\/api\/eco\/import$/, async (_m, _q, b) => {
+    const both = !b.repos && !b.skills;
+    if (b.centralPath) await skills.setCentralPath(b.centralPath);
+    const result = {};
+    if (both || b.repos) result.repos = await ecosystem.ecoImportRepos({ paths: b.paths });
+    if (both || b.skills) result.skills = await ecosystem.ecoImportSkills({ paths: b.paths, mode: b.mode, force: b.force });
+    return result;
+  }],
 
   // ---- 设置 ----
   ['POST', /^\/api\/settings$/, (_m, _q, b) => skills.updateSettings(b)],

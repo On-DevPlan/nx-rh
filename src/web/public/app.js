@@ -41,6 +41,7 @@ document.querySelectorAll('.tab').forEach((btn) => {
   btn.addEventListener('click', () => {
     document.querySelectorAll('.tab').forEach((b) => b.classList.toggle('active', b === btn));
     document.querySelectorAll('.panel').forEach((p) => p.classList.toggle('active', p.id === 'tab-' + btn.dataset.tab));
+    if (btn.dataset.tab === 'eco') guard(loadEco);
   });
 });
 
@@ -336,6 +337,82 @@ $('#projectTable').addEventListener('click', (e) => {
     }
   });
 });
+
+// ================= 生态页 =================
+
+function ecoFmtSize(n) {
+  if (n >= 1024 * 1024) return (n / 1024 / 1024).toFixed(1) + ' MB';
+  if (n >= 1024) return (n / 1024).toFixed(1) + ' KB';
+  return n + ' B';
+}
+
+function renderEco(d) {
+  if (!d.exists) {
+    $('#ecoFilesTable tbody').innerHTML = `<tr><td colspan="4" class="muted">目录不存在: ${esc(d.dir)}</td></tr>`;
+    $('#ecoWorkDirTable tbody').innerHTML = '';
+    $('#ecoHint').textContent = '';
+    return;
+  }
+  $('#ecoHint').textContent = `${d.dir} · 日志 ${d.logCount} 个 · env 快照 ${d.envSnapshots.length} 个`;
+  $('#ecoFilesTable tbody').innerHTML = d.files.length
+    ? d.files
+        .map((f) => `<tr>
+        <td class="path">${esc(f.name)}</td>
+        <td>${ecoFmtSize(f.size)}</td>
+        <td>${esc(f.kind)}</td>
+        <td class="path">${esc(f.mtime)}</td>
+      </tr>`)
+        .join('')
+    : '<tr><td colspan="4" class="muted">（空）</td></tr>';
+  $('#ecoWorkDirTable tbody').innerHTML = d.workDirs.length
+    ? d.workDirs
+        .map((w) => `<tr>
+        <td class="path">${esc(w.path)}</td>
+        <td>${w.isGit ? `<span class="tag" title="${esc(w.gitRoot)}">git</span>` : '<span class="muted">-</span>'}</td>
+        <td class="path">${w.skillDirs.length ? esc(w.skillDirs.join(', ')) : '<span class="muted">-</span>'}</td>
+      </tr>`)
+        .join('')
+    : '<tr><td colspan="3" class="muted">（无进程 workDir 记录）</td></tr>';
+}
+
+async function loadEco() {
+  const d = await api('/api/eco');
+  renderEco(d);
+}
+
+function ecoShowResult(text) {
+  $('#ecoResult').innerHTML = '';
+  $('#ecoResult').appendChild(preNode(text));
+}
+
+$('#ecoScan').addEventListener('click', () => guard(loadEco));
+
+$('#ecoImportRepos').addEventListener('click', () => guard(async () => {
+  const r = await api('/api/eco/import', { method: 'POST', body: { repos: true } });
+  const lines = [
+    `新登记 ${r.repos.added.length} 个，已存在 ${r.repos.existing.length} 个，非 git ${r.repos.nonGit.length} 个`,
+    ...r.repos.added.map((a) => `  + ${a.name}  ${a.path}`),
+  ];
+  ecoShowResult(lines.join('\n'));
+  await loadEco();
+  await loadRepos();
+}));
+
+$('#ecoImportSkills').addEventListener('click', () => guard(async () => {
+  if (!state.settings?.skillCentralPath) {
+    return notify('请先在 Skill 页设置中心仓库路径');
+  }
+  const r = await api('/api/eco/import', { method: 'POST', body: { skills: true, mode: state.settings.skillSyncMode } });
+  const s = r.skills;
+  const lines = [
+    `中心: ${s.central}`,
+    `链接 ${s.linked.length}，复制 ${s.copied.length}，推送 ${s.pushed.length}，跳过 ${s.skipped.length}，冲突 ${s.conflicts.length}，错误 ${s.errors.length}`,
+    ...s.conflicts.map((c) => `  冲突: ${c.name} (${c.project})`),
+    ...s.errors.map((e) => `  错误: ${e.name} (${e.project}): ${e.error}`),
+  ];
+  ecoShowResult(lines.join('\n'));
+  await loadEco();
+}));
 
 // ================= 设置页 =================
 
