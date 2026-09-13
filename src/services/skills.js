@@ -34,6 +34,16 @@ async function exists(p) {
   }
 }
 
+// lstat 存在性：不跟随链接——悬空链接（目标已被删）也算存在，才能被识别与删除
+async function pathExists(p) {
+  try {
+    await fsp.lstat(p);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 function md5Of(buf) {
   return createHash('md5').update(buf).digest('hex');
 }
@@ -235,7 +245,7 @@ export async function listSkills(side = 'central', explicitPath) {
       const platforms = [];
       for (const a of ADAPTERS) {
         const p = join(root, a.dir, s.name);
-        if (await exists(p)) platforms.push({ id: a.id, dir: a.dir, linkType: await detectLinkType(p) });
+        if (await pathExists(p)) platforms.push({ id: a.id, dir: a.dir, linkType: await detectLinkType(p) });
       }
       s.platforms = platforms;
       if (platforms.length) s.adapter = platforms[0].id;
@@ -256,12 +266,29 @@ async function scanRoot(root, locations) {
       if (loc.rel === '' && ADAPTERS.some((a) => e.name === a.dir.split('/')[0])) continue;
       if (loc.rel === '' && e.name === 'skills') continue;
       const skillDir = join(dir, e.name);
-      const st = await fsp.stat(skillDir).catch(() => null);
-      if (!st || !st.isDirectory()) continue;
+      // 用 lstat 判存在：悬空链接（目标已删）也要走进来，才能被识别与删除
+      const lst = await fsp.lstat(skillDir).catch(() => null);
+      if (!lst) continue;
+      if (!lst.isDirectory() && !lst.isSymbolicLink()) continue;
       if (seen.has(e.name)) continue;
       seen.add(e.name);
       const info = await readSkill(skillDir);
-      if (!info) continue;
+      if (!info) {
+        // SKILL.md 读不到但本身是链接：典型为悬空链接（中心侧已删）——仍列出，便于删除
+        const lt = lst.isSymbolicLink() ? 'symlink' : await detectLinkType(skillDir);
+        if (lt) {
+          out.push({
+            name: e.name,
+            description: '(链接目标缺失，可删除)',
+            dir: skillDir,
+            md5: '',
+            lastModified: '',
+            linkType: lt,
+            adapter: loc.id,
+          });
+        }
+        continue;
+      }
       info.adapter = loc.id;
       out.push(info);
     }
@@ -544,7 +571,7 @@ export async function platformStatus({ name, project } = {}) {
   const out = [];
   for (const a of ADAPTERS) {
     const p = join(projRoot, a.dir, name);
-    const on = await exists(p);
+    const on = await pathExists(p);
     out.push({ id: a.id, name: a.name, dir: a.dir, on, linkType: on ? await detectLinkType(p) : '' });
   }
   return { name, project: projRoot, platforms: out };
@@ -560,10 +587,40 @@ export async function setPlatform({ name, project, adapter, enabled, mode, force
   const dst = join(projRoot, a.dir, name);
 
   if (enabled) {
-    const r = await syncSkill({ name, project: projRoot, adapter: a.id, mode, force });
-    return { ...r, platform: a.id };
+    // 优先走中心；中心没有该 skill（或未设置中心）时，从项目内旁支本地创建，不再强依赖中心
+    const central = await getCentralPath().catch(() => '');
+    const centralDir = central ? await centralSkillDir(central, name) : null;
+    if (centralDir) {
+      const r = await syncSkill({ name, project: projRoot, adapter: a.id, mode, force });
+      return { ...r, platform: a.id };
+    }
+    const src = await findProjectSkillDir(projRoot, name);
+    if (!src) throw new Error(`中心与项目中都不存在该 skill: ${name}`);
+    if (samePath(src, dst)) return { status: 'ok', skipped: true, platform: a.id };
+
+    if (await pathExists(dst)) {
+      const ltDst = await detectLinkType(dst);
+      if (ltDst) {
+        const t = await fsp.readlink(dst).catch(() => null);
+        const absT = t ? (isAbsolute(t) ? t : resolve(dirname(dst), t)) : '';
+        if (samePath(absT, src)) return { status: 'ok', skipped: true, platform: a.id, linkType: ltDst };
+      } else {
+        const files = await diffTrees(dst, src);
+        if (files.length && !force) return { status: 'conflict', platform: a.id, files, path: dst };
+      }
+      await fsp.rm(dst, { recursive: true, force: true });
+    }
+    await fsp.mkdir(dirname(dst), { recursive: true });
+    // 链接指向旁支的最终实体（realpath），避免 junction 套 junction
+    const realSrc = await fsp.realpath(src).catch(() => src);
+    if ((mode === 'copy' ? 'copy' : 'symlink') === 'symlink') {
+      const r = await createSkillLink(realSrc, dst);
+      if (r.ok) return { status: 'ok', mode: 'symlink', linkType: r.linkType, platform: a.id, from: 'sibling' };
+    }
+    await fsp.cp(realSrc, dst, { recursive: true, dereference: true, force: true });
+    return { status: 'ok', mode: 'copy', platform: a.id, from: 'sibling' };
   }
-  if (!(await exists(dst))) {
+  if (!(await pathExists(dst))) {
     return { status: 'ok', skipped: true, platform: a.id, reason: '该平台本就没有此 skill' };
   }
   // 先删，再检查：若删掉的是实体且项目里已无实体，自动物化其他软链接兜底
@@ -699,7 +756,7 @@ export async function removeProjectSkill({ name, project } = {}) {
   const removed = [];
   for (const a of ADAPTERS) {
     const p = join(projRoot, a.dir, name);
-    if (await exists(p)) {
+    if (await pathExists(p)) {
       const lt = await detectLinkType(p);
       removed.push({ platform: a.id, path: p, linkType: lt });
     }

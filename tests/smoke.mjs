@@ -238,6 +238,35 @@ try {
     JSON.stringify(rowRoot && rowRoot.platforms)
   );
 
+  // 悬空链接：中心侧删除后，项目侧仍可识别并删除
+  mkdirSync(join(central2, 'goner-skill'), { recursive: true });
+  writeFileSync(
+    join(central2, 'goner-skill', 'SKILL.md'),
+    '---\nname: goner-skill\ndescription: will vanish\n---\n\n# G\n'
+  );
+  check('同步 goner-skill', cli(['skill', 'sync', 'goner-skill', '--project', proj3, '--adapter', 'claude-code']).status === 0);
+  rmSync(join(central2, 'goner-skill'), { recursive: true, force: true });
+  const dList = cliJson(['skill', 'list', '--side', 'project', '--path', proj3]);
+  const dGoner = (dList || []).find((x) => x.name === 'goner-skill');
+  check('悬空链接仍可识别', !!dGoner && dGoner.linkType && dGoner.description.includes('链接目标缺失'), JSON.stringify(dGoner));
+  const dRm = cliJson(['skill', 'remove', 'goner-skill', '--project', proj3]);
+  check('悬空链接可删除', dRm.removed.length >= 1, JSON.stringify(dRm));
+
+  // 本地 skill（中心不存在）：平台开关从旁支本地创建，不强依赖中心
+  mkdirSync(join(proj3, '.claude', 'skills', 'local-skill'), { recursive: true });
+  writeFileSync(
+    join(proj3, '.claude', 'skills', 'local-skill', 'SKILL.md'),
+    '---\nname: local-skill\ndescription: 只在项目里\n---\n\n# L\n'
+  );
+  const platLocal = cliJson(['skill', 'platform-set', 'local-skill', '--project', proj3, '--adapter', 'cursor']);
+  check(
+    '本地 skill 平台开关从旁支创建',
+    platLocal.status === 'ok' && platLocal.platform === 'cursor' && platLocal.from === 'sibling',
+    JSON.stringify(platLocal)
+  );
+  const platLocal2 = cliJson(['skill', 'platform-set', 'local-skill', '--project', proj3, '--adapter', 'cursor']);
+  check('旁支创建幂等', platLocal2.status === 'ok' && platLocal2.skipped === true, JSON.stringify(platLocal2));
+
   check('project 候选添加', cli(['skill', 'project', 'add', proj3]).status === 0);
   const pList = cliJson(['skill', 'project', 'list']);
   check('project 候选列表', Array.isArray(pList) && pList.some((x) => x === proj3));
