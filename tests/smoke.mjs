@@ -216,6 +216,28 @@ try {
   const cmp2 = cliJson(['skill', 'compare', '--central', central2, '--project', proj3]);
   check('关闭后平台计数更新', cmp2.rows[0].platforms.length === 1, JSON.stringify(cmp2.rows[0].platforms));
 
+  // 实体锚点：删掉唯一实体时，自动物化旁系软链接兜底
+  mkdirSync(join(central2, 'anchor-skill'), { recursive: true });
+  writeFileSync(
+    join(central2, 'anchor-skill', 'SKILL.md'),
+    '---\nname: anchor-skill\ndescription: anchor\n---\n\n# A\n'
+  );
+  check('同步实体 anchor-skill', cli(['skill', 'sync', 'anchor-skill', '--project', proj3, '--adapter', 'claude-code', '--mode', 'copy']).status === 0);
+  // 此时 proj3: root-skill=链接(claude-code)，anchor-skill=实体(claude-code)
+  const rmReal = cliJson(['skill', 'remove', 'anchor-skill', '--project', proj3]);
+  check(
+    '删除实体 skill 触发锚点物化',
+    rmReal.removed.length >= 1 && rmReal.anchor?.converted?.name === 'root-skill',
+    JSON.stringify(rmReal.anchor)
+  );
+  const cmpA = cliJson(['skill', 'compare', '--central', central2, '--project', proj3]);
+  const rowRoot = cmpA.rows.find((r) => r.name === 'root-skill');
+  check(
+    '兜底后 root-skill 变实体',
+    rowRoot && rowRoot.state === 'same' && rowRoot.platforms.length === 1 && !rowRoot.platforms[0].linkType,
+    JSON.stringify(rowRoot && rowRoot.platforms)
+  );
+
   check('project 候选添加', cli(['skill', 'project', 'add', proj3]).status === 0);
   const pList = cliJson(['skill', 'project', 'list']);
   check('project 候选列表', Array.isArray(pList) && pList.some((x) => x === proj3));

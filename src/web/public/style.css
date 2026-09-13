@@ -195,6 +195,13 @@ h3 { font-size: 13px; margin: 0; font-weight: 700; }
 }
 .pill:hover { background: var(--soft-2); color: var(--ink); }
 .pill.on { background: var(--ink); color: var(--paper); font-weight: 600; }
+/* 形态区分：实体 = 实心（默认 on 样式）；软链接 = 虚线描边 */
+.pill.on.lnk {
+  background: var(--paper);
+  color: var(--ink);
+  border: 1.5px dashed var(--ink);
+  padding: 4px 6.5px;
+}
 
 /* 徽标 */
 .tag {

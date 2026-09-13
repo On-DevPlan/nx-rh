@@ -566,8 +566,11 @@ export async function setPlatform({ name, project, adapter, enabled, mode, force
   if (!(await exists(dst))) {
     return { status: 'ok', skipped: true, platform: a.id, reason: '该平台本就没有此 skill' };
   }
+  // 先删，再检查：若删掉的是实体且项目里已无实体，自动物化其他软链接兜底
+  const ltOff = await detectLinkType(dst);
   await fsp.rm(dst, { recursive: true, force: true });
-  return { status: 'ok', removed: true, platform: a.id, path: dst };
+  const anchor = ltOff ? null : await ensureRealAnchor(projRoot, name);
+  return { status: 'ok', removed: true, platform: a.id, path: dst, anchor };
 }
 
 // ─── 多选比较（中心 vs 项目） ────────────────────────────────────────
@@ -648,7 +651,47 @@ export async function removeCentralCandidate(path) {
   });
 }
 
-// 从项目里删除一个 skill（移除所有平台/适配器目录下的副本与链接）
+// ─── 实体锚点兜底：项目内至少保留一个实体（非链接）skill ─────────────
+// 扫描项目里所有 skill 目录（含形态）；realCount = 实体个数
+async function scanProjectSkillsWithShape(projRoot) {
+  const out = [];
+  for (const a of ADAPTERS) {
+    const dir = join(projRoot, a.dir);
+    const entries = await fsp.readdir(dir, { withFileTypes: true }).catch(() => []);
+    for (const e of entries) {
+      if (e.name.startsWith('.')) continue;
+      const p = join(dir, e.name);
+      // 注意：junction 在 readdir 的 dirent 上 isDirectory 可能为 false，必须用 stat（跟随链接）
+      const st = await fsp.stat(p).catch(() => null);
+      if (!st || !st.isDirectory()) continue;
+      if (!(await exists(join(p, 'SKILL.md')))) continue;
+      out.push({ name: e.name, platform: a.id, path: p, linkType: await detectLinkType(p) });
+    }
+  }
+  return out;
+}
+
+// 若项目里已无实体 skill，则自动物化一个软链接 skill 作为新的实体锚点。
+// preferOtherOf：尽量物化"其他 skill"的链接，而非指定 skill 自己的。
+async function ensureRealAnchor(projRoot, preferOtherOf = '') {
+  const all = await scanProjectSkillsWithShape(projRoot);
+  const real = all.filter((s) => !s.linkType);
+  if (real.length) return { converted: null, realCount: real.length };
+
+  const links = all.filter((s) => s.linkType);
+  if (!links.length) return { converted: null, realCount: 0 };
+
+  links.sort((a, b) => Number(a.name === preferOtherOf) - Number(b.name === preferOtherOf));
+  const candidate = links[0];
+  const target = await fsp.readlink(candidate.path);
+  const absT = isAbsolute(target) ? target : resolve(dirname(candidate.path), target);
+  await fsp.rm(candidate.path, { force: true });
+  await fsp.cp(absT, candidate.path, { recursive: true, dereference: true, force: true });
+  return { converted: { name: candidate.name, platform: candidate.platform, source: absT }, realCount: 1 };
+}
+
+// 从项目里删除一个 skill（移除所有平台目录下的副本与链接）；
+// 若删掉的是最后一个实体，会先自动物化其他软链接兜底，保证项目内至少一个实体。
 export async function removeProjectSkill({ name, project } = {}) {
   name = assertSafeName(name);
   if (!project) throw new Error('project 不能为空');
@@ -657,10 +700,17 @@ export async function removeProjectSkill({ name, project } = {}) {
   for (const a of ADAPTERS) {
     const p = join(projRoot, a.dir, name);
     if (await exists(p)) {
-      await fsp.rm(p, { recursive: true, force: true });
-      removed.push({ platform: a.id, path: p });
+      const lt = await detectLinkType(p);
+      removed.push({ platform: a.id, path: p, linkType: lt });
     }
   }
-  if (!removed.length) return { status: 'ok', removed: [], reason: '项目中没有该 skill' };
-  return { status: 'ok', removed };
+  if (!removed.length) return { status: 'ok', removed: [], anchor: null, reason: '项目中没有该 skill' };
+
+  // 先删，再检查：若删掉的是实体且项目里已无实体，自动物化其他软链接兜底
+  const removedReal = removed.some((r) => !r.linkType);
+  for (const r of removed) {
+    await fsp.rm(r.path, { recursive: true, force: true });
+  }
+  const anchor = removedReal ? await ensureRealAnchor(projRoot, name) : null;
+  return { status: 'ok', removed, anchor };
 }

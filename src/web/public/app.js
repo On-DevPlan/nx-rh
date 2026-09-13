@@ -264,13 +264,17 @@ function platformPills(skill) {
   const on = new Set((skill.platforms || []).map((p) => p.id));
   return `<span class="plats">${pillScope(skill)
     .map((id) => {
-      const isOn = on.has(id);
-      const lt = (skill.platforms || []).find((p) => p.id === id)?.linkType || '';
+      const p = (skill.platforms || []).find((x) => x.id === id);
+      const isOn = !!p;
+      const lt = p?.linkType || '';
+      const cls = isOn ? `pill on ${lt ? 'lnk' : 'real'}` : 'pill';
       const sibling = (state.projectSkills || []).some(
-        (x) => x.name !== skill.name && (x.platforms || []).some((p) => p.id === id)
+        (x) => x.name !== skill.name && (x.platforms || []).some((pp) => pp.id === id)
       );
-      const title = `${(state.adapters.find((a) => a.id === id) || {}).name || id}${isOn ? '（已提供' + (lt ? ' · ' + lt : '') + '）' : sibling ? '（旁系 skill 在用，可迁移）' : '（未提供）'}`;
-      return `<button class="pill${isOn ? ' on' : ''}" title="${esc(title)}" data-act="toggle-platform" data-name="${esc(skill.name)}" data-adapter="${esc(id)}" data-on="${isOn ? '1' : '0'}">${esc(shortLabel(id))}</button>`;
+      const title = `${(state.adapters.find((a) => a.id === id) || {}).name || id}${
+        isOn ? '（已提供 · ' + (lt ? lt + ' 链接' : '实体') + '）' : sibling ? '（旁系 skill 在用，可迁移）' : '（未提供）'
+      }`;
+      return `<button class="${cls}" title="${esc(title)}" data-act="toggle-platform" data-name="${esc(skill.name)}" data-adapter="${esc(id)}" data-on="${isOn ? '1' : '0'}">${esc(shortLabel(id))}</button>`;
     })
     .join('')}</span>`;
 }
@@ -465,7 +469,8 @@ async function togglePlatform(btn) {
     r = await api('/api/skills/platform', { method: 'POST', body: { ...body, force: true } });
   }
   if (r.status === 'conflict') { toast('仍有冲突，未覆盖'); return; }
-  if (r.removed) toast(`${r.platform}：已关闭`);
+  const anchorNote = r.anchor?.converted ? `\n已自动物化「${r.anchor.converted.name}」作为实体锚点` : '';
+  if (r.removed) toast(`${r.platform}：已关闭${anchorNote}`);
   else if (r.skipped) toast(`${r.platform}：已是最新`);
   else toast(`${r.platform}：已开启（${r.mode === 'symlink' ? '软链接 ' + (r.linkType || '') : '复制'}）`);
   await loadSkills();
@@ -497,7 +502,8 @@ $('#projectList').addEventListener('click', (e) => {
     } else if (btn.dataset.act === 'remove-skill') {
       if (!(await askConfirm(`从项目中删除 skill「${name}」？\n将移除它在所有平台目录下的副本与链接（中心仓库不受影响）。`, true))) return;
       const r = await api('/api/skills/remove-project', { method: 'POST', body: { name, project } });
-      toast(r.removed.length ? `已删除（${r.removed.map((x) => x.platform).join(', ')}）` : r.reason);
+      const anchorNote2 = r.anchor?.converted ? `\n已自动物化「${r.anchor.converted.name}」作为实体锚点` : '';
+      toast(r.removed.length ? `已删除（${r.removed.map((x) => x.platform).join(', ')}）${anchorNote2}` : r.reason);
       await loadSkills();
     }
   });

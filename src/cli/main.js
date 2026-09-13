@@ -363,10 +363,11 @@ export async function runCli(argv) {
         const data = await skills.removeProjectSkill({ name: rest[0], project: flags.project });
         out(
           data,
-          (d) =>
-            d.removed.length
-              ? `已从项目删除 ${rest[0]}（${d.removed.map((x) => x.platform).join(', ')}）`
-              : d.reason,
+          (d) => {
+            if (!d.removed.length) return d.reason;
+            const anchorNote = d.anchor?.converted ? `\n已自动物化「${d.anchor.converted.name}」作为实体锚点` : '';
+            return `已从项目删除 ${rest[0]}（${d.removed.map((x) => x.platform).join(', ')}）${anchorNote}`;
+          },
           json
         );
         return;
