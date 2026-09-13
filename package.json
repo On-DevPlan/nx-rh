@@ -1,6 +1,6 @@
 {
   "name": "nx-rh",
-  "version": "0.2.2",
+  "version": "0.3.0",
   "description": "npx-repo-hub — 本机仓库与 Agent Skill 的统一管理中枢：Web 面板与同构 CLI 共享同一 service 层",
   "type": "module",
   "bin": {
@@ -30,6 +30,7 @@
   "files": [
     "bin/",
     "src/",
+    "assets/",
     "README.md"
   ],
   "keywords": [

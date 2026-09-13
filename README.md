@@ -121,9 +121,26 @@ tests/smoke.mjs          # 33 项全链路冒烟测试
 | `nx-rh skill apply <name> --project P --file F --side central\|project` | 冲突弹窗里的"用中心版/用项目版" |
 | `nx-rh skill materialize <name> --project P`                            | 链接转实体             |
 | `nx-rh skill merge --base F --a F --b F`                                | diff3 合并原语        |
+| `nx-rh skill install [name] [--to DIR] [--force] [--list]`              | 安装内置 skill（默认 repo-hub） |
 | `nx-rh setting get/set`                                                 | 设置页               |
 
 REST API 与命令一一对应（见 `src/web/api.js` 路由表），例如 `POST /api/skills/sync` ⇔ `nx-rh skill sync`。
+
+## 内置 skill：repo-hub
+
+包内自带一个可直接装进 agent 的 skill，用于让 agent 学会用 nx-rh 管仓库与 skill：
+
+```bash
+nx-rh skill install                 # 装到 ~/.claude/skills/repo-hub
+nx-rh skill install --to <dir>      # 换目标目录（如项目级 .claude/skills）
+nx-rh skill install --list          # 看包内有哪些内置 skill
+nx-rh skill install --force         # 目标已存在且不同时覆盖
+```
+
+- 安装是**三态**的：不存在 → 安装；存在且一致 → `skipped`；存在且不同 → `conflict` 列文件清单（须显式 `--force`）
+- 结构遵循渐进式披露：主 `SKILL.md` 只放**核心原则 + ref-map**，场景细节全部在 `references/`（`repo-ops` / `skill-sync` / `agent-workflow`）
+- 扩展方式：新增 `assets/repo-hub/references/<场景>.md` 并在主文档路由表补一行「何时读取」
+- Web 面板「Skill」页有对应按钮（`安装 repo-hub skill`），等价于上述命令
 
 ## Skill 同步
 

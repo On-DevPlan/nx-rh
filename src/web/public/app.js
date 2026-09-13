@@ -337,8 +337,33 @@ $('#projectTable').addEventListener('click', (e) => {
   });
 });
 
-// ================= 设置页 =================
+// ================= 内置 skill 安装 =================
 
+$('#bundledInstall').addEventListener('click', () => guard(async () => {
+  const info = await api('/api/bundled');
+  const skill = info.skills.find((s) => s.name === 'repo-hub') || info.skills[0];
+  if (!skill) return notify('包内没有内置 skill');
+  const r = await api('/api/bundled/install', { method: 'POST', body: { name: skill.name, force: false } });
+  if (r.status === 'conflict') {
+    if (!confirm(`目标已存在且内容不同（${r.count} 个文件）:\n${r.path}\n\n覆盖为包内版本？`)) return;
+    const forced = await api('/api/bundled/install', { method: 'POST', body: { name: skill.name, force: true } });
+    notify(`${forced.replaced ? '已更新' : '已安装'} → ${forced.path}`);
+  } else if (r.skipped) {
+    notify(`已是最新，无需安装\n${r.path}`);
+  } else {
+    notify(`${r.replaced ? '已更新' : '已安装'}（${r.files} 个文件）\n${r.path}`);
+  }
+  await loadBundledHint();
+}));
+
+async function loadBundledHint() {
+  const info = await api('/api/bundled').catch(() => null);
+  if (!info) return;
+  const s = info.skills.find((x) => x.name === 'repo-hub');
+  $('#bundledHint').textContent = s ? `${s.name}（${s.files} 个文件）→ ${info.defaultDir}` : '';
+}
+
+// ================= 设置页 =================
 function renderSettings() {
   $('#setStore').textContent = state.storePath;
   $('#setCentral').textContent = state.settings?.skillCentralPath || '（未设置）';
@@ -359,4 +384,5 @@ function renderSettings() {
   $('#syncMode').value = state.settings.skillSyncMode === 'copy' ? 'copy' : 'symlink';
   renderRepos();
   renderSettings();
+  loadBundledHint();
 })();

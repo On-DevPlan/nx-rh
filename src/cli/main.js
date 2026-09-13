@@ -5,10 +5,11 @@ import { DEFAULT_PORT, storePathFromEnv } from '../core/paths.js';
 import { loadStore } from '../core/store.js';
 import * as repos from '../services/repos.js';
 import * as skills from '../services/skills.js';
+import * as bundled from '../services/bundled.js';
 import { merge3 } from '../core/diff.js';
 
 const VERSION = '0.1.0';
-const BOOL_FLAGS = new Set(['json', 'force', 'open', 'no-open', 'help', 'yes']);
+const BOOL_FLAGS = new Set(['json', 'force', 'open', 'no-open', 'help', 'yes', 'list']);
 
 function parseArgs(argv) {
   const positional = [];
@@ -85,6 +86,8 @@ Skill 管理（= Web「Skill」页）:
   nx-rh skill apply <name> --project P --file F --side central|project
   nx-rh skill materialize <name> --project P              链接 -> 实体目录
   nx-rh skill merge --base FILE --a FILE --b FILE         diff3-lite 三方合并原语
+  nx-rh skill install [name] [--to DIR] [--force] [--list]  安装内置 skill（默认 repo-hub）
+                                                        默认装到 ~/.claude/skills，--to 可改
 
 设置:
   nx-rh setting get [key]
@@ -331,6 +334,35 @@ export async function runCli(argv) {
         if (!rest[0] || !flags.project) throw new Error('用法: skill materialize <name> --project P');
         const data = await skills.materializeSkill({ name: rest[0], project: flags.project });
         out(data, (d) => (d.converted ? `已转换为实体文件（源: ${d.source}）` : d.message), json);
+        return;
+      }
+      case 'skill install': {
+        if (flags.list) {
+          const list = await bundled.listBundledSkills();
+          out(
+            list,
+            (l) =>
+              l.length
+                ? l.map((s) => `${s.name.padEnd(14)} ${s.files} 个文件  ${s.description.slice(0, 50)}`).join('\n')
+                : '（包内无内置 skill）',
+            json
+          );
+          return;
+        }
+        const name = rest[0] || 'repo-hub';
+        const data = await bundled.installBundledSkill({ name, to: flags.to, force: !!flags.force });
+        out(
+          data,
+          (d) => {
+            if (d.status === 'conflict') {
+              const files = d.files.map((f) => `  ${f.file}  ${f.side}`).join('\n');
+              return `目标已存在且内容不同（${d.count} 个文件）: ${d.path}\n${files}\n用 --force 覆盖，或先删除目标目录`;
+            }
+            if (d.skipped) return `已是最新，无需安装: ${d.path}`;
+            return `${d.replaced ? '已更新' : '已安装'} ${d.name}（${d.files} 个文件）-> ${d.path}`;
+          },
+          json
+        );
         return;
       }
       case 'skill merge': {

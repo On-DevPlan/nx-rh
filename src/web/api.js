@@ -2,6 +2,7 @@
 // 路由注册表风格参考 adminer-node 的 src/server.js。
 import * as repos from '../services/repos.js';
 import * as skills from '../services/skills.js';
+import * as bundled from '../services/bundled.js';
 import { merge3 } from '../core/diff.js';
 import { storePathFromEnv } from '../core/paths.js';
 
@@ -63,6 +64,13 @@ const routes = [
   ['POST', /^\/api\/skills\/push$/, (_m, _q, b) => skills.pushSkill(b)],
   ['POST', /^\/api\/skills\/materialize$/, (_m, _q, b) => skills.materializeSkill(b)],
   ['POST', /^\/api\/skills\/apply$/, (_m, _q, b) => skills.applySkillSide(b)],
+
+  // ---- 内置 skill 包（= CLI: nx-rh skill install ...） ----
+  ['GET', /^\/api\/bundled$/, async () => ({
+    defaultDir: bundled.DEFAULT_SKILLS_DIR,
+    skills: await bundled.listBundledSkills(),
+  })],
+  ['POST', /^\/api\/bundled\/install$/, (_m, _q, b) => bundled.installBundledSkill(b)],
 
   // ---- 设置 ----
   ['POST', /^\/api\/settings$/, (_m, _q, b) => skills.updateSettings(b)],

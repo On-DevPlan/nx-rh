@@ -2,7 +2,7 @@
 // 使用临时存储（NX_RH_STORE），不污染用户目录 ~/.nx-rh。
 // 运行：pnpm test（或 node tests/smoke.mjs）
 import { spawnSync } from 'node:child_process';
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
@@ -153,7 +153,37 @@ try {
   check('折叠块标量描述解析', byName['block-skill'] === '折叠块标量 要合并成一行', JSON.stringify(byName['block-skill']));
   check('引号描述解析', byName['quoted-skill'] === '带引号的描述', JSON.stringify(byName['quoted-skill']));
 
-  // ---- 13. Web API ----
+  // ---- 13. 内置 skill 包安装（repo-hub） ----
+  const skillsHome = join(tmp, 'claude-skills');
+  const bundleList = cliJson(['skill', 'install', '--list']);
+  check(
+    'bundled 列表含 repo-hub',
+    Array.isArray(bundleList) && bundleList.some((s) => s.name === 'repo-hub' && s.files >= 4),
+    JSON.stringify(bundleList && bundleList.map((s) => s.name + ':' + s.files))
+  );
+
+  const inst = cliJson(['skill', 'install', '--to', skillsHome]);
+  check('skill install 安装成功', inst.status === 'ok' && inst.installed === true && inst.files >= 4, JSON.stringify(inst));
+  const installedMd = readFileSync(join(skillsHome, 'repo-hub', 'SKILL.md'), 'utf8');
+  check('SKILL.md 落地且含 ref-map', installedMd.includes('场景路由（ref-map）') && installedMd.includes('[[repo-ops]]'));
+  check('references 一并复制', existsSync(join(skillsHome, 'repo-hub', 'references', 'skill-sync.md')));
+
+  const again = cliJson(['skill', 'install', '--to', skillsHome]);
+  check('重复安装幂等跳过', again.status === 'ok' && again.skipped === true);
+
+  writeFileSync(join(skillsHome, 'repo-hub', 'SKILL.md'), installedMd + '\n<!-- local edit -->\n');
+  const conflicted = cliJson(['skill', 'install', '--to', skillsHome]);
+  check('内容被改后返回 conflict', conflicted.status === 'conflict' && conflicted.count >= 1);
+  const notForced = readFileSync(join(skillsHome, 'repo-hub', 'SKILL.md'), 'utf8');
+  check('未加 --force 不覆盖', notForced.includes('local edit'));
+
+  const forced = cliJson(['skill', 'install', '--to', skillsHome, '--force']);
+  check('--force 覆盖为包内版本', forced.status === 'ok' && forced.replaced === true);
+  check('覆盖后本地改动消失', !readFileSync(join(skillsHome, 'repo-hub', 'SKILL.md'), 'utf8').includes('local edit'));
+
+  check('非法包名被拒', cli(['skill', 'install', '../evil', '--to', skillsHome]).status === 1);
+
+  // ---- 14. Web API ----
   const { startServer } = await import(pathToFileURL(join(ROOT, '..', 'src', 'web', 'server.js')).href);
   const server = await startServer({ port: 0 });
   const base = 'http://127.0.0.1:' + server.address().port;
@@ -177,6 +207,12 @@ try {
     await fetch(base + '/api/skills?side=project&path=' + encodeURIComponent(project))
   ).json();
   check('api skills project', skillsRes.ok && skillsRes.data.length === 1);
+
+  const bundledRes = await (await fetch(base + '/api/bundled')).json();
+  check(
+    'api bundled 列表',
+    bundledRes.ok && bundledRes.data.skills.some((s) => s.name === 'repo-hub') && !!bundledRes.data.defaultDir
+  );
 
   const badRes = await (
     await fetch(base + '/api/repos', {
