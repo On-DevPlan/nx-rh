@@ -248,14 +248,28 @@ function platformScope() {
   return scope.length ? scope : ['claude-code'];
 }
 
-// 平台小按钮：只显示"平台范围"内的平台；勾选 = 给该平台提供此 skill
+// 项目内 pill 范围 = 设置范围 ∪ 旁系 skill 在用的平台 ∪ 自身平台。
+// 旁系（同项目其他 skill）用过的平台也出现，才能在项目内部做平台迁移。
+function pillScope(skill) {
+  const set = new Set(platformScope());
+  for (const x of state.projectSkills) {
+    for (const p of x.platforms || []) set.add(p.id);
+  }
+  for (const p of skill.platforms || []) set.add(p.id);
+  return [...set];
+}
+
+// 平台小按钮：勾选 = 给该平台提供此 skill；配合开关即可在项目内迁移平台
 function platformPills(skill) {
   const on = new Set((skill.platforms || []).map((p) => p.id));
-  return `<span class="plats">${platformScope()
+  return `<span class="plats">${pillScope(skill)
     .map((id) => {
       const isOn = on.has(id);
       const lt = (skill.platforms || []).find((p) => p.id === id)?.linkType || '';
-      const title = `${(state.adapters.find((a) => a.id === id) || {}).name || id}${isOn ? '（已提供' + (lt ? ' · ' + lt : '') + '）' : '（未提供）'}`;
+      const sibling = (state.projectSkills || []).some(
+        (x) => x.name !== skill.name && (x.platforms || []).some((p) => p.id === id)
+      );
+      const title = `${(state.adapters.find((a) => a.id === id) || {}).name || id}${isOn ? '（已提供' + (lt ? ' · ' + lt : '') + '）' : sibling ? '（旁系 skill 在用，可迁移）' : '（未提供）'}`;
       return `<button class="pill${isOn ? ' on' : ''}" title="${esc(title)}" data-act="toggle-platform" data-name="${esc(skill.name)}" data-adapter="${esc(id)}" data-on="${isOn ? '1' : '0'}">${esc(shortLabel(id))}</button>`;
     })
     .join('')}</span>`;
@@ -625,9 +639,12 @@ function renderPlatformScope() {
     .map((a) => `<button class="pill${scope.has(a.id) ? ' on' : ''}" data-platform="${esc(a.id)}">${esc(shortLabel(a.id))}</button>`)
     .join('');
   const def = s.defaultPlatform || 'claude-code';
-  $('#setDefaultPlatform').innerHTML = (scope.size ? [...scope] : ['claude-code'])
+  const defOpts = (scope.size ? [...scope] : ['claude-code'])
     .map((id) => opt(id, (state.adapters.find((a) => a.id === id) || {}).name || id, id === def))
     .join('');
+  // 两处下拉都要填充：设置页 + Skill 页工具栏（0.4.1 漏了后者导致 Skill 页下拉为空）
+  $('#setDefaultPlatform').innerHTML = defOpts;
+  $('#defaultPlatform').innerHTML = defOpts;
   box.onclick = async (e) => {
     const btn = e.target.closest('button[data-platform]');
     if (!btn) return;
