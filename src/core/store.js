@@ -7,11 +7,18 @@ import fsp from 'node:fs/promises';
 import { dirname } from 'node:path';
 import { storePathFromEnv } from './paths.js';
 
+// settings 里按数组维护的键（写入时统一归一化）
+const ARRAY_SETTINGS = ['platforms', 'skillCentralCandidates', 'skillProjectCandidates'];
+
 const EMPTY = () => ({
   version: 1,
   settings: {
     skillCentralPath: '',
     skillSyncMode: 'symlink', // 'symlink' | 'copy'
+    platforms: ['claude-code'], // 项目侧默认要支持哪些平台（适配器）
+    defaultPlatform: 'claude-code', // 同步/推送时未指定平台则用它
+    skillCentralCandidates: [], // 中心仓库候选目录（下拉多选项）
+    skillProjectCandidates: [], // 项目目录候选（下拉多选项）
   },
   repos: [],
   skillGroups: [{ id: 'ungrouped', name: '未分组', skills: [] }],
@@ -65,13 +72,24 @@ export async function mutateStore(fn, explicitPath) {
   return result === undefined ? cur : result;
 }
 
+function toArray(v) {
+  if (Array.isArray(v)) return v.map((x) => String(x).trim()).filter(Boolean);
+  if (typeof v === 'string') return v.split(',').map((x) => x.trim()).filter(Boolean);
+  return [];
+}
+
 function normalize(data) {
   const base = EMPTY();
   if (!data || typeof data !== 'object') return base;
   base.version = data.version ?? 1;
   base.settings = { ...base.settings, ...(data.settings || {}) };
+  for (const key of ARRAY_SETTINGS) {
+    base.settings[key] = toArray(base.settings[key]);
+  }
   base.repos = Array.isArray(data.repos) ? data.repos : [];
   base.skillGroups =
     Array.isArray(data.skillGroups) && data.skillGroups.length ? data.skillGroups : base.skillGroups;
   return base;
 }
+
+export { ARRAY_SETTINGS };

@@ -112,7 +112,11 @@ tests/smoke.mjs          # 33 项全链路冒烟测试
 | `nx-rh repo pull <id>` / `push <id>`                                    | 行内 pull/push 按钮   |
 | `nx-rh repo resolve <id> --file F --side ours\|theirs`                  | 冲突文件落地            |
 | `nx-rh repo open <id>`                                                  | 在文件管理器中打开         |
-| `nx-rh skill central [path]`                                            | 中心仓库输入框 + 保存      |
+| `nx-rh skill central list\|add\|remove\|<path>`                         | 中心仓库候选（多选）与当前项 |
+| `nx-rh skill project list\|add\|remove <path>`                          | 项目目录候选（多选）       |
+| `nx-rh skill platform [ids...]`                                         | 默认平台范围 / 默认平台     |
+| `nx-rh skill platform-set <name> --project P --adapter A [--off]`       | 单个平台开关（Web 平台小按钮） |
+| `nx-rh skill compare [--central C] --project P [--names a,b]`           | 多选比较              |
 | `nx-rh skill adapters`                                                  | 适配器清单             |
 | `nx-rh skill list --side central\|project [--path P]  `                 | 识别两侧              |
 | `nx-rh skill sync <name> --project P [--mode symlink\|copy] [--force]`  | 同步到项目             |
@@ -144,7 +148,11 @@ nx-rh skill install --force         # 目标已存在且不同时覆盖
 
 ## Skill 同步
 
-两侧模型：`{中心仓库}/skills/<name>` ⇄ `{项目}/<适配器目录>/<name>`。
+两侧模型：`{中心仓库}/<name>` ⇄ `{项目}/<适配器目录>/<name>`。
+
+- **中心仓库根目录下直接就是 skill**（不再要求 `skills/` 子目录；旧布局仍可读兼容）
+- **中心仓库和项目目录都是多选候选**：`skill central add/remove/list`、`skill project add/remove/list`，Web 上下拉切换、多选比较
+- **平台开关**：设置里选默认平台（如 claude），项目侧每个 skill 显示一排平台小按钮，勾选即"给该平台提供这个 skill"（写入对应适配器目录），取消勾选即移除该平台下的副本/链接
 
 - **识别**：扫描两侧目录，解析每个 `SKILL.md` 的 frontmatter（name/description），计算 md5，识别链接形态（symlink / junction / 实体）。
 - **同步模式**：

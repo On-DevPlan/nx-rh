@@ -10,6 +10,9 @@ const state = {
   statuses: [],
   centralSkills: [],
   projectSkills: [],
+  selCentral: new Set(),
+  selProject: new Set(),
+  bundled: null,
 };
 
 function esc(s) {
@@ -31,9 +34,8 @@ async function api(path, opts = {}) {
 }
 
 function notify(msg) { window.alert(msg); }
-
 async function guard(fn) {
-  try { return await fn(); } catch (e) { notify(String(e && e.message || e)); }
+  try { return await fn(); } catch (e) { notify(String((e && e.message) || e)); }
 }
 
 // ---- 标签页 ----
@@ -58,7 +60,6 @@ $('#modal').addEventListener('click', (e) => { if (e.target.id === 'modal') clos
 
 function preNode(text) {
   const pre = document.createElement('pre');
-  // 逐行着色：+ 加粗灰底，- 删除线
   const lines = String(text ?? '').split('\n');
   lines.forEach((line, i) => {
     const span = document.createElement('span');
@@ -71,15 +72,24 @@ function preNode(text) {
   return pre;
 }
 
+function opt(value, label, selected) {
+  return `<option value="${esc(value)}"${selected ? ' selected' : ''}>${esc(label)}</option>`;
+}
+
 // ================= 仓库页 =================
 
 function statusCell(g) {
   if (!g) return '<span class="muted">未刷新</span>';
   if (g.error) return '<span class="muted">非 git 仓库</span>';
   if (g.conflicted.length) return `<span class="bad">冲突 ${g.conflicted.length} 文件</span>`;
-  if (g.clean) return '干净';
-  const changed = g.staged.length + g.modified.length + g.untracked.length;
-  return `${g.ahead > 0 ? '领先' + g.ahead + ' ' : ''}${g.behind > 0 ? '落后' + g.behind + ' ' : ''}变更 ${changed} 未跟踪 ${g.untracked.length}`;
+  if (g.clean) return '<span class="muted">干净</span>';
+  const bits = [];
+  if (g.ahead) bits.push(`领先 ${g.ahead}`);
+  if (g.behind) bits.push(`落后 ${g.behind}`);
+  const changed = g.staged.length + g.modified.length;
+  if (changed) bits.push(`变更 ${changed}`);
+  if (g.untracked.length) bits.push(`未跟踪 ${g.untracked.length}`);
+  return bits.join(' · ') || '有变更';
 }
 
 function renderRepos() {
@@ -95,15 +105,15 @@ function renderRepos() {
         <td>${esc(r.name)}</td>
         <td class="path">${esc(r.path)}</td>
         <td>${r.tags.map((t) => `<span class="tag">${esc(t)}</span>`).join('')}</td>
-        <td class="path">${esc(g?.branch || '-')}</td>
+        <td class="mono">${esc(g?.branch || '-')}</td>
         <td>${statusCell(g)}</td>
         <td class="ops">
-          <button class="btn small" data-act="diff" data-id="${esc(r.id)}">diff</button>
-          <button class="btn small" data-act="pull" data-id="${esc(r.id)}">pull</button>
-          <button class="btn small" data-act="push" data-id="${esc(r.id)}">push</button>
-          <button class="btn small" data-act="open" data-id="${esc(r.id)}">打开目录</button>
-          <button class="btn small" data-act="copy" data-path="${esc(r.path)}">复制路径</button>
-          <button class="btn small" data-act="del" data-id="${esc(r.id)}" data-name="${esc(r.name)}">删除</button>
+          <button class="btn small ghost" data-act="diff" data-id="${esc(r.id)}">diff</button>
+          <button class="btn small ghost" data-act="pull" data-id="${esc(r.id)}">pull</button>
+          <button class="btn small ghost" data-act="push" data-id="${esc(r.id)}">push</button>
+          <button class="btn small ghost" data-act="open" data-id="${esc(r.id)}">打开</button>
+          <button class="btn small ghost" data-act="copy" data-path="${esc(r.path)}">复制路径</button>
+          <button class="btn small ghost" data-act="del" data-id="${esc(r.id)}" data-name="${esc(r.name)}">删除</button>
         </td>
       </tr>`;
     })
@@ -144,17 +154,15 @@ $('#repoRefresh').addEventListener('click', () => guard(refreshStatuses));
 $('#repoTable').addEventListener('click', (e) => {
   const btn = e.target.closest('button[data-act]');
   if (!btn) return;
-  const act = btn.dataset.act;
-  const id = btn.dataset.id;
+  const { act, id } = btn.dataset;
   guard(async () => {
     if (act === 'diff') {
-      const text = await api(`/api/repos/diff?id=${encodeURIComponent(id)}`);
-      openModal('diff', preNode(text));
+      openModal('diff', preNode(await api(`/api/repos/diff?id=${encodeURIComponent(id)}`)));
     } else if (act === 'pull') {
       const r = await api('/api/repos/pull', { method: 'POST', body: { id } });
       let text = r.output || '(无输出)';
-      if (r.conflicted && r.conflicted.length) {
-        text += '\n\n冲突文件（可用 CLI 逐个落地）:\n' + r.conflicted.map((f) => `  nx-rh repo resolve ${id} --file "${f}" --side ours|theirs`).join('\n');
+      if (r.conflicted?.length) {
+        text += '\n\n冲突文件（CLI 逐个落地）:\n' + r.conflicted.map((f) => `  nx-rh repo resolve ${id} --file "${f}" --side ours|theirs`).join('\n');
       }
       openModal('pull 结果', preNode(text));
       await refreshStatuses();
@@ -176,77 +184,300 @@ $('#repoTable').addEventListener('click', (e) => {
 
 // ================= Skill 页 =================
 
-function centralRelation(c) {
+function shortLabel(adapterId) {
+  const a = state.adapters.find((x) => x.id === adapterId);
+  const src = a ? a.name : adapterId;
+  return src.replace(/\s*\(.*\)$/, '').split(/[\s-]/)[0].toLowerCase();
+}
+
+// 平台小按钮（平行、可勾选）：默认平台 + 已开启的平台
+function platformPills(skill) {
+  const on = new Set((skill.platforms || []).map((p) => p.id));
+  const def = state.settings?.defaultPlatform || 'claude-code';
+  const ids = [...new Set([def, ...on])];
+  return `<span class="plats">${ids
+    .map((id) => {
+      const isOn = on.has(id);
+      const lt = (skill.platforms || []).find((p) => p.id === id)?.linkType || '';
+      const title = `${(state.adapters.find((a) => a.id === id) || {}).name || id}${isOn ? '（已提供' + (lt ? ' · ' + lt : '') + '）' : '（未提供）'}`;
+      return `<button class="pill${isOn ? ' on' : ''}" title="${esc(title)}" data-act="toggle-platform" data-name="${esc(skill.name)}" data-adapter="${esc(id)}" data-on="${isOn ? '1' : '0'}">${esc(shortLabel(id))}</button>`;
+    })
+    .join('')}</span>`;
+}
+
+function projectStateTag(s) {
+  const c = state.centralSkills.find((x) => x.name === s.name);
+  if (!c) return '<span class="tag">本地</span>';
+  if ((s.platforms || []).some((p) => p.linkType)) return '<span class="tag strong">链接</span>';
+  return c.md5 === s.md5 ? '<span class="tag strong">一致</span>' : '<span class="tag bad">冲突</span>';
+}
+
+function relationTag(c) {
   const proj = state.projectSkills.find((s) => s.name === c.name);
-  if (!proj) return '<span class="muted">项目无</span>';
-  if (proj.linkType) return `链接·${proj.linkType}`;
-  if (proj.md5 === c.md5) return '一致';
-  return '<span class="bad">冲突</span>';
+  if (!proj) return '<span class="tag">仅中心</span>';
+  if ((proj.platforms || []).some((p) => p.linkType)) return '<span class="tag strong">链接</span>';
+  return proj.md5 === c.md5 ? '<span class="tag strong">一致</span>' : '<span class="tag bad">冲突</span>';
 }
 
 function renderSkills() {
-  const ct = $('#centralTable tbody');
-  ct.innerHTML = state.centralSkills.length
-    ? state.centralSkills.map((c) => `<tr>
-        <td>${esc(c.name)}</td>
-        <td class="path">${esc(c.description)}</td>
-        <td>${centralRelation(c)}</td>
-        <td class="ops">
-          <button class="btn small" data-act="sync" data-name="${esc(c.name)}">同步到项目</button>
-          ${centralRelation(c).includes('冲突') ? `<button class="btn small" data-act="conflict" data-name="${esc(c.name)}">冲突详情</button>` : ''}
-        </td>
-      </tr>`).join('')
-    : '<tr><td colspan="4" class="muted">（中心仓库暂无 skill）</td></tr>';
+  const cl = $('#centralList');
+  cl.innerHTML = state.centralSkills.length
+    ? state.centralSkills.map((c) => `<div class="row">
+        <input type="checkbox" data-sel="central" data-name="${esc(c.name)}"${state.selCentral.has(c.name) ? ' checked' : ''}>
+        <span class="name">${esc(c.name)}</span>
+        <span class="desc">${esc(c.description)}</span>
+        ${relationTag(c)}
+        <span class="acts">
+          <button class="btn small ghost" data-act="sync" data-name="${esc(c.name)}">同步到项目</button>
+        </span>
+      </div>`).join('')
+    : '<div class="row muted">（中心仓库暂无 skill；中心根目录下直接放 skill 目录即可）</div>';
+  $('#centralCount').textContent = state.centralSkills.length ? `${state.centralSkills.length} 个` : '';
 
-  const pt = $('#projectTable tbody');
-  pt.innerHTML = state.projectSkills.length
-    ? state.projectSkills.map((s) => `<tr>
-        <td>${esc(s.name)}</td>
-        <td class="path">${esc(s.description)}</td>
-        <td>${s.linkType ? `链接·${s.linkType}` : '实体'} <span class="muted">${esc(s.adapter || '')}</span></td>
-        <td class="ops">
-          ${s.linkType ? `<button class="btn small" data-act="materialize" data-name="${esc(s.name)}">转换为实体</button>` : ''}
-          ${!s.linkType ? `<button class="btn small" data-act="push" data-name="${esc(s.name)}">推送到中心</button>` : ''}
-        </td>
-      </tr>`).join('')
-    : '<tr><td colspan="4" class="muted">（项目侧暂无 skill）</td></tr>';
+  const pl = $('#projectList');
+  pl.innerHTML = state.projectSkills.length
+    ? state.projectSkills.map((s) => `<div class="row">
+        <input type="checkbox" data-sel="project" data-name="${esc(s.name)}"${state.selProject.has(s.name) ? ' checked' : ''}>
+        <span class="name">${esc(s.name)}</span>
+        ${projectStateTag(s)}
+        ${platformPills(s)}
+        <span class="acts">
+          <button class="btn small ghost" data-act="push" data-name="${esc(s.name)}">推送到中心</button>
+          ${(s.platforms || []).some((p) => p.linkType) ? `<button class="btn small ghost" data-act="materialize" data-name="${esc(s.name)}">转实体</button>` : ''}
+        </span>
+      </div>`).join('')
+    : '<div class="row muted">（项目侧暂无 skill；从中心勾选同步，或勾选平台小按钮）</div>';
+  $('#projectCount').textContent = state.projectSkills.length
+    ? `${state.projectSkills.length} 个 · 默认平台 ${state.settings?.defaultPlatform || 'claude-code'}`
+    : '';
 }
 
 async function loadSkills() {
-  const centralOk = !!state.settings?.skillCentralPath;
-  const project = $('#projectPath').value.trim();
-  const [central, proj] = await Promise.all([
-    centralOk ? api('/api/skills?side=central').catch(() => []) : Promise.resolve([]),
+  const central = $('#centralSelect').value;
+  const project = $('#projectSelect').value;
+  const [cs, ps] = await Promise.all([
+    central ? api(`/api/skills?side=central&path=${encodeURIComponent(central)}`).catch(() => []) : Promise.resolve([]),
     project ? api(`/api/skills?side=project&path=${encodeURIComponent(project)}`).catch(() => []) : Promise.resolve([]),
   ]);
-  state.centralSkills = central;
-  state.projectSkills = proj;
+  state.centralSkills = cs;
+  state.projectSkills = ps;
+  state.selCentral = new Set([...state.selCentral].filter((n) => cs.some((x) => x.name === n)));
+  state.selProject = new Set([...state.selProject].filter((n) => ps.some((x) => x.name === n)));
   renderSkills();
 }
 
-$('#centralSave').addEventListener('click', () => guard(async () => {
-  const p = $('#centralPath').value.trim();
-  if (!p) return notify('请输入中心仓库路径');
-  state.settings = await api('/api/settings', { method: 'POST', body: { skillCentralPath: p } });
-  notify('中心仓库已保存: ' + state.settings.skillCentralPath);
+function renderSelectors() {
+  const s = state.settings || {};
+  const cList = s.skillCentralCandidates || [];
+  const pList = s.skillProjectCandidates || [];
+  $('#centralSelect').innerHTML = cList.length
+    ? cList.map((p) => opt(p, p.replace(/^.*[\\/]/, '') + '  ·  ' + p, p === s.skillCentralPath)).join('')
+    : opt('', '（请先添加中心仓库）', true);
+  $('#projectSelect').innerHTML = pList.length
+    ? pList.map((p) => opt(p, p.replace(/^.*[\\/]/, '') + '  ·  ' + p, false)).join('')
+    : opt('', '（请先添加项目目录）', true);
+  if (cList.length && s.skillCentralPath && cList.includes(s.skillCentralPath)) cSel_value(cSel, s.skillCentralPath);
+  $('#bundledHint').textContent = state.bundled
+    ? state.bundled.skills.map((x) => `${x.name}(${x.files})`).join(' ') + ' → ' + state.bundled.defaultDir
+    : '';
+}
+function cSel_value(sel, v) { sel.value = v; }
+
+$('#centralAdd').addEventListener('click', () => guard(async () => {
+  const p = prompt('中心仓库绝对路径（根目录下直接是 skill 目录）');
+  if (!p) return;
+  const list = await api('/api/candidates', { method: 'POST', body: { kind: 'central', path: p } });
+  state.settings.skillCentralCandidates = list;
+  state.settings.skillCentralPath = list[list.length - 1];
+  await api('/api/settings', { method: 'POST', body: { skillCentralPath: state.settings.skillCentralPath } });
+  renderSelectors();
   await loadSkills();
 }));
 
+$('#centralRemove').addEventListener('click', () => guard(async () => {
+  const p = $('#centralSelect').value;
+  if (!p) return;
+  if (!confirm(`从候选移除中心仓库？\n${p}\n（仅移出列表，不动磁盘）`)) return;
+  const list = await api('/api/candidates', { method: 'POST', body: { kind: 'central', path: p, remove: true } });
+  state.settings.skillCentralCandidates = list;
+  state.settings.skillCentralPath = list[0] || '';
+  await api('/api/settings', { method: 'POST', body: { skillCentralPath: state.settings.skillCentralPath } });
+  renderSelectors();
+  await loadSkills();
+}));
+
+$('#projectAdd').addEventListener('click', () => guard(async () => {
+  const p = prompt('项目根目录绝对路径');
+  if (!p) return;
+  const list = await api('/api/candidates', { method: 'POST', body: { kind: 'project', path: p } });
+  state.settings.skillProjectCandidates = list;
+  renderSelectors();
+  if (list.length) $('#projectSelect').value = list[list.length - 1];
+  await loadSkills();
+}));
+
+$('#projectRemove').addEventListener('click', () => guard(async () => {
+  const p = $('#projectSelect').value;
+  if (!p) return;
+  if (!confirm(`从候选移除项目目录？\n${p}`)) return;
+  const list = await api('/api/candidates', { method: 'POST', body: { kind: 'project', path: p, remove: true } });
+  state.settings.skillProjectCandidates = list;
+  renderSelectors();
+  await loadSkills();
+}));
+
+$('#centralSelect').addEventListener('change', () => guard(async () => {
+  state.settings = await api('/api/settings', { method: 'POST', body: { skillCentralPath: $('#centralSelect').value } });
+  await loadSkills();
+}));
+$('#projectSelect').addEventListener('change', () => guard(loadSkills));
 $('#syncMode').addEventListener('change', () => guard(async () => {
   state.settings = await api('/api/settings', { method: 'POST', body: { skillSyncMode: $('#syncMode').value } });
+  renderSettings();
 }));
-
-$('#skillScan').addEventListener('click', () => guard(async () => {
-  if (!$('#projectPath').value.trim() && !state.settings?.skillCentralPath) return notify('请先填写中心仓库与项目目录');
+$('#defaultPlatform').addEventListener('change', () => guard(async () => {
+  const id = $('#defaultPlatform').value;
+  state.settings = await api('/api/settings', {
+    method: 'POST',
+    body: { defaultPlatform: id, platforms: [id, ...(state.settings.platforms || []).filter((x) => x !== id)] },
+  });
+  renderSettings();
+  renderSkills();
   await loadSkills();
 }));
 
-// 冲突详情弹窗（含按文件选侧）
+$('#skillRefresh').addEventListener('click', () => guard(loadSkills));
+
+// 行内勾选（用于比较）
+function bindSelCheck(containerId) {
+  $(containerId).addEventListener('change', (e) => {
+    const cb = e.target.closest('input[data-sel]');
+    if (!cb) return;
+    const set = cb.dataset.sel === 'central' ? state.selCentral : state.selProject;
+    if (cb.checked) set.add(cb.dataset.name); else set.delete(cb.dataset.name);
+  });
+}
+bindSelCheck('#centralList');
+bindSelCheck('#projectList');
+
+// 平台小按钮：开 = 同步到该平台；关 = 移除该平台下的副本/链接
+async function togglePlatform(btn) {
+  const project = $('#projectSelect').value;
+  if (!project) return notify('请先选择项目目录');
+  const turnOn = btn.dataset.on !== '1';
+  const body = {
+    name: btn.dataset.name,
+    project,
+    adapter: btn.dataset.adapter,
+    enabled: turnOn,
+    force: false,
+    mode: $('#syncMode').value,
+  };
+  let r = await api('/api/skills/platform', { method: 'POST', body });
+  if (r.status === 'conflict') {
+    if (!confirm(`「${btn.dataset.name}」在该平台已存在且内容不同（${r.files.length} 个文件）。\n用中心版本覆盖？`)) return;
+    r = await api('/api/skills/platform', { method: 'POST', body: { ...body, force: true } });
+  }
+  const label = r.platform;
+  if (r.status === 'conflict') return notify('仍有冲突，未覆盖');
+  if (r.skipped && !r.removed) notify(`${label}：本就没有此 skill`);
+  else if (r.removed) notify(`${label}：已关闭（移除该平台下的副本/链接）`);
+  else if (r.skipped) notify(`${label}：已是最新链接`);
+  else notify(`${label}：已开启（${r.mode === 'symlink' ? '软链接 ' + (r.linkType || '') : '复制'}）`);
+  await loadSkills();
+}
+
+$('#projectList').addEventListener('click', (e) => {
+  const btn = e.target.closest('button[data-act]');
+  if (!btn) return;
+  if (btn.dataset.act === 'toggle-platform') return guard(() => togglePlatform(btn));
+  const name = btn.dataset.name;
+  const project = $('#projectSelect').value;
+  guard(async () => {
+    if (!project) return notify('请先选择项目目录');
+    if (btn.dataset.act === 'push') {
+      const r = await api('/api/skills/push', { method: 'POST', body: { name, project, force: false } });
+      if (r.status === 'conflict') {
+        notify(`冲突：${r.files.length} 个文件，打开差异选侧`);
+        const detail = await api(`/api/skills/conflict?name=${encodeURIComponent(name)}&project=${encodeURIComponent(project)}`);
+        conflictModal(name, project, detail);
+      } else {
+        notify(r.skipped ? r.reason : '已推送到中心');
+      }
+      await loadSkills();
+    } else if (btn.dataset.act === 'materialize') {
+      if (!confirm(`将「${name}」从链接转换为实体文件？转换后不再与中心实时同步。`)) return;
+      const r = await api('/api/skills/materialize', { method: 'POST', body: { name, project } });
+      notify(r.converted ? '已转换为实体文件' : r.message);
+      await loadSkills();
+    }
+  });
+});
+
+$('#centralList').addEventListener('click', (e) => {
+  const btn = e.target.closest('button[data-act="sync"]');
+  if (!btn) return;
+  const name = btn.dataset.name;
+  const project = $('#projectSelect').value;
+  guard(async () => {
+    if (!project) return notify('请先选择项目目录');
+    const adapter = $('#defaultPlatform').value;
+    const r = await api('/api/skills/sync', {
+      method: 'POST',
+      body: { name, project, adapter, mode: $('#syncMode').value, force: false },
+    });
+    if (r.status === 'conflict') {
+      notify(`冲突：${r.files.length} 个文件，打开差异选侧`);
+      const detail = await api(`/api/skills/conflict?name=${encodeURIComponent(name)}&project=${encodeURIComponent(project)}`);
+      conflictModal(name, project, detail);
+    } else if (r.skipped) {
+      notify(`已是最新（${r.linkType || '链接'}），跳过`);
+    } else {
+      notify(`已同步到 ${adapter}（${r.mode === 'symlink' ? '软链接 ' + (r.linkType || '') : '复制'}）`);
+    }
+    await loadSkills();
+  });
+});
+
+// 比较选中（两侧勾选的并集；未勾选则全量）
+$('#skillCompare').addEventListener('click', () => guard(async () => {
+  const central = $('#centralSelect').value;
+  const project = $('#projectSelect').value;
+  if (!project) return notify('请先选择项目目录');
+  const names = [...new Set([...state.selCentral, ...state.selProject])];
+  const d = await api('/api/skills/compare', { method: 'POST', body: { central, project, names } });
+  const mark = { same: '一致', linked: '链接', differ: '冲突', 'only-central': '仅中心', 'only-project': '仅项目' };
+  const s = d.summary;
+  $('#compareSummary').textContent =
+    `共 ${s.total} · 一致 ${s.same} · 链接 ${s.linked} · 冲突 ${s.differ} · 仅中心 ${s.onlyCentral} · 仅项目 ${s.onlyProject}`;
+  $('#compareRows').innerHTML = d.rows.length
+    ? d.rows.map((r) => `<div class="row">
+        <span class="name">${esc(r.name)}</span>
+        <span class="desc">${esc(r.description)}</span>
+        ${r.platforms.length ? `<span class="plats">${r.platforms.map((p) => `<span class="pill on">${esc(shortLabel(p.id))}</span>`).join('')}</span>` : ''}
+        <span class="acts">
+          <span class="tag${r.state === 'differ' ? ' bad' : r.state === 'same' || r.state === 'linked' ? ' strong' : ''}">${mark[r.state]}</span>
+          ${r.state === 'differ' ? `<button class="btn small ghost" data-act="detail" data-name="${esc(r.name)}">差异</button>` : ''}
+        </span>
+      </div>`).join('')
+    : '<div class="row muted">（没有可比较的 skill）</div>';
+  $('#compareBox').classList.remove('hidden');
+}));
+
+$('#compareRows').addEventListener('click', (e) => {
+  const btn = e.target.closest('button[data-act="detail"]');
+  if (!btn) return;
+  const project = $('#projectSelect').value;
+  guard(async () => {
+    const detail = await api(`/api/skills/conflict?name=${encodeURIComponent(btn.dataset.name)}&project=${encodeURIComponent(project)}`);
+    conflictModal(btn.dataset.name, project, detail);
+  });
+});
+
+// 冲突详情弹窗（按文件选侧）
 function conflictModal(name, project, data) {
   const wrap = document.createElement('div');
-  if (!data.files.length) {
-    wrap.appendChild(document.createTextNode('两侧一致，无差异'));
-  }
+  if (!data.files.length) wrap.appendChild(document.createTextNode('两侧一致，无差异'));
   for (const f of data.files) {
     const box = document.createElement('div');
     box.className = 'conflict-file';
@@ -265,7 +496,7 @@ function conflictModal(name, project, data) {
         await loadSkills();
       });
       const bProject = document.createElement('button');
-      bProject.className = 'btn small';
+      bProject.className = 'btn small ghost';
       bProject.textContent = '用项目版';
       bProject.style.marginLeft = '6px';
       bProject.onclick = () => guard(async () => {
@@ -283,65 +514,9 @@ function conflictModal(name, project, data) {
   openModal(`冲突详情 · ${name}`, wrap);
 }
 
-$('#centralTable').addEventListener('click', (e) => {
-  const btn = e.target.closest('button[data-act]');
-  if (!btn) return;
-  const name = btn.dataset.name;
-  const project = $('#projectPath').value.trim();
-  guard(async () => {
-    if (!project) return notify('请先在上方填写项目目录');
-    if (btn.dataset.act === 'sync') {
-      const r = await api('/api/skills/sync', {
-        method: 'POST',
-        body: { name, project, mode: $('#syncMode').value, force: false },
-      });
-      if (r.status === 'conflict') {
-        notify(`冲突：${r.files.length} 个文件不一致，打开冲突详情`);
-        const detail = await api(`/api/skills/conflict?name=${encodeURIComponent(name)}&project=${encodeURIComponent(project)}`);
-        conflictModal(name, project, detail);
-      } else if (r.skipped) {
-        notify('已是链接，无需同步');
-      } else {
-        notify(`已同步（${r.mode === 'symlink' ? '软链接 ' + (r.linkType || '') : '复制'}）`);
-      }
-      await loadSkills();
-    } else if (btn.dataset.act === 'conflict') {
-      const detail = await api(`/api/skills/conflict?name=${encodeURIComponent(name)}&project=${encodeURIComponent(project)}`);
-      conflictModal(name, project, detail);
-    }
-  });
-});
-
-$('#projectTable').addEventListener('click', (e) => {
-  const btn = e.target.closest('button[data-act]');
-  if (!btn) return;
-  const name = btn.dataset.name;
-  const project = $('#projectPath').value.trim();
-  guard(async () => {
-    if (btn.dataset.act === 'materialize') {
-      if (!confirm(`将「${name}」从链接转换为实体文件？\n转换后不再与中心仓库实时同步。`)) return;
-      const r = await api('/api/skills/materialize', { method: 'POST', body: { name, project } });
-      notify(r.converted ? '已转换为实体文件' : r.message);
-      await loadSkills();
-    } else if (btn.dataset.act === 'push') {
-      const r = await api('/api/skills/push', { method: 'POST', body: { name, project, force: false } });
-      if (r.status === 'conflict') {
-        notify(`冲突：${r.files.length} 个文件，打开冲突详情选侧`);
-        const detail = await api(`/api/skills/conflict?name=${encodeURIComponent(name)}&project=${encodeURIComponent(project)}`);
-        conflictModal(name, project, detail);
-      } else {
-        notify(r.skipped ? r.reason : '已推送到中心');
-      }
-      await loadSkills();
-    }
-  });
-});
-
-// ================= 内置 skill 安装 =================
-
+// 内置 skill 安装
 $('#bundledInstall').addEventListener('click', () => guard(async () => {
-  const info = await api('/api/bundled');
-  const skill = info.skills.find((s) => s.name === 'repo-hub') || info.skills[0];
+  const skill = state.bundled?.skills.find((s) => s.name === 'repo-hub') || state.bundled?.skills[0];
   if (!skill) return notify('包内没有内置 skill');
   const r = await api('/api/bundled/install', { method: 'POST', body: { name: skill.name, force: false } });
   if (r.status === 'conflict') {
@@ -353,23 +528,81 @@ $('#bundledInstall').addEventListener('click', () => guard(async () => {
   } else {
     notify(`${r.replaced ? '已更新' : '已安装'}（${r.files} 个文件）\n${r.path}`);
   }
-  await loadBundledHint();
 }));
 
-async function loadBundledHint() {
-  const info = await api('/api/bundled').catch(() => null);
-  if (!info) return;
-  const s = info.skills.find((x) => x.name === 'repo-hub');
-  $('#bundledHint').textContent = s ? `${s.name}（${s.files} 个文件）→ ${info.defaultDir}` : '';
+// ================= 设置页 =================
+
+function candidateRows(list, kind) {
+  return list.length
+    ? list.map((p) => `<div class="row">
+        <span class="mono">${esc(p)}</span>
+        <span class="acts"><button class="btn small ghost" data-act="rm-cand" data-kind="${kind}" data-path="${esc(p)}">移除</button></span>
+      </div>`).join('')
+    : '<div class="row muted">（暂无）</div>';
 }
 
-// ================= 设置页 =================
 function renderSettings() {
+  const s = state.settings || {};
+  $('#setCentralList').innerHTML = candidateRows(s.skillCentralCandidates || [], 'central');
+  $('#setProjectList').innerHTML = candidateRows(s.skillProjectCandidates || [], 'project');
+  const opts = state.adapters.map((a) => opt(a.id, a.name, a.id === (s.defaultPlatform || 'claude-code'))).join('');
+  $('#setDefaultPlatform').innerHTML = opts;
+  $('#defaultPlatform').innerHTML = opts;
+  $('#setPlatforms').textContent = (s.platforms || []).join(', ') || '(未设置)';
+  $('#setMode').textContent = s.skillSyncMode || 'symlink';
+  $('#setAdapters').textContent = state.adapters.map((a) => `${a.id} = ${a.dir}`).join('   ');
   $('#setStore').textContent = state.storePath;
-  $('#setCentral').textContent = state.settings?.skillCentralPath || '（未设置）';
-  $('#setMode').textContent = state.settings?.skillSyncMode || 'symlink';
-  $('#setAdapters').textContent = state.adapters.map((a) => a.dir).join('  ');
+  $('#syncMode').value = s.skillSyncMode === 'copy' ? 'copy' : 'symlink';
 }
+
+$('#setCentralAdd').addEventListener('click', () => guard(async () => {
+  const p = $('#setCentralInput').value.trim();
+  if (!p) return;
+  const list = await api('/api/candidates', { method: 'POST', body: { kind: 'central', path: p } });
+  state.settings.skillCentralCandidates = list;
+  state.settings.skillCentralPath = list[list.length - 1];
+  await api('/api/settings', { method: 'POST', body: { skillCentralPath: state.settings.skillCentralPath } });
+  $('#setCentralInput').value = '';
+  renderSelectors(); renderSettings(); await loadSkills();
+}));
+
+$('#setProjectAdd').addEventListener('click', () => guard(async () => {
+  const p = $('#setProjectInput').value.trim();
+  if (!p) return;
+  const list = await api('/api/candidates', { method: 'POST', body: { kind: 'project', path: p } });
+  state.settings.skillProjectCandidates = list;
+  $('#setProjectInput').value = '';
+  renderSelectors(); renderSettings();
+}));
+
+$('#setDefaultPlatform').addEventListener('change', () => guard(async () => {
+  const id = $('#setDefaultPlatform').value;
+  state.settings = await api('/api/settings', {
+    method: 'POST',
+    body: { defaultPlatform: id, platforms: [id, ...(state.settings.platforms || []).filter((x) => x !== id)] },
+  });
+  renderSettings(); renderSkills(); await loadSkills();
+}));
+
+document.addEventListener('click', (e) => {
+  const btn = e.target.closest('button[data-act="rm-cand"]');
+  if (!btn) return;
+  guard(async () => {
+    const { kind, path } = btn.dataset;
+    if (!confirm(`移除候选？\n${path}`)) return;
+    const list = await api('/api/candidates', { method: 'POST', body: { kind, path, remove: true } });
+    if (kind === 'central') {
+      state.settings.skillCentralCandidates = list;
+      if (state.settings.skillCentralPath === path) {
+        state.settings.skillCentralPath = list[0] || '';
+        await api('/api/settings', { method: 'POST', body: { skillCentralPath: state.settings.skillCentralPath } });
+      }
+    } else {
+      state.settings.skillProjectCandidates = list;
+    }
+    renderSelectors(); renderSettings(); await loadSkills();
+  });
+});
 
 // ================= 启动 =================
 
@@ -379,10 +612,11 @@ function renderSettings() {
   state.adapters = boot.adapters;
   state.storePath = boot.storePath;
   state.repos = boot.repos;
+  state.bundled = await api('/api/bundled').catch(() => null);
+
   $('#storePath').textContent = state.storePath;
-  $('#centralPath').value = state.settings.skillCentralPath || '';
-  $('#syncMode').value = state.settings.skillSyncMode === 'copy' ? 'copy' : 'symlink';
   renderRepos();
+  renderSelectors();
   renderSettings();
-  loadBundledHint();
+  await loadSkills();
 })();

@@ -1,10 +1,14 @@
-/* nx-rh 面板样式：黑白清晰、无 emoji、系统字体。 */
+/* nx-rh 面板样式：黑白单色、无 emoji。
+   视觉取向：圆角 + 浅底 + 少线条——用背景层次和留白做区分，不用硬边框和网格线。 */
 :root {
-  --ink: #000;
+  --ink: #14161a;
   --paper: #fff;
-  --mid: #777;
-  --weak: #eee;
-  --line: #000;
+  --soft: #f5f6f7;
+  --soft-2: #ebedf0;
+  --mid: #8b9096;
+  --radius: 12px;
+  --radius-sm: 8px;
+  --shadow: 0 1px 2px rgba(20, 22, 26, 0.06), 0 6px 16px rgba(20, 22, 26, 0.04);
 }
 
 * { box-sizing: border-box; }
@@ -12,163 +16,227 @@
 body {
   margin: 0;
   font-family: system-ui, "Segoe UI", "Microsoft YaHei", sans-serif;
-  font-size: 14px;
-  background: var(--paper);
+  font-size: 13.5px;
+  line-height: 1.55;
   color: var(--ink);
+  background: #fbfbfc;
+  -webkit-font-smoothing: antialiased;
 }
 
+/* ---------- 顶栏 ---------- */
 header {
   display: flex;
   align-items: center;
-  gap: 24px;
-  padding: 10px 16px;
-  border-bottom: 2px solid var(--ink);
+  gap: 20px;
+  padding: 12px 20px;
+  background: var(--paper);
+  box-shadow: 0 1px 0 var(--soft-2);
+  position: sticky;
+  top: 0;
+  z-index: 5;
 }
-.brand { font-weight: 800; letter-spacing: 0.5px; }
+.brand { font-weight: 800; letter-spacing: 0.4px; }
 .brand .sub { margin-left: 8px; font-weight: 400; color: var(--mid); font-size: 12px; }
-nav { display: flex; }
+
+/* 分段控件：整块浅底 + 圆角滑块，取代带边框的直角 tab */
+nav { display: inline-flex; gap: 2px; padding: 3px; background: var(--soft); border-radius: 999px; }
 .tab {
   font: inherit;
-  border: 1px solid var(--ink);
-  background: var(--paper);
-  padding: 4px 16px;
-  cursor: pointer;
-}
-.tab + .tab { border-left: none; }
-.tab.active { background: var(--ink); color: var(--paper); }
-.meta {
-  margin-left: auto;
+  border: 0;
+  background: transparent;
   color: var(--mid);
-  font-family: ui-monospace, Consolas, monospace;
-  font-size: 12px;
+  padding: 5px 16px;
+  border-radius: 999px;
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s;
 }
+.tab:hover { color: var(--ink); }
+.tab.active { background: var(--paper); color: var(--ink); font-weight: 600; box-shadow: var(--shadow); }
 
-main { padding: 16px; max-width: 1200px; }
+.meta { margin-left: auto; color: var(--mid); font-family: ui-monospace, Consolas, monospace; font-size: 11.5px; }
+
+main { padding: 18px 20px 28px; max-width: 1240px; margin: 0 auto; }
 .panel { display: none; }
 .panel.active { display: block; }
 
-.toolbar { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-bottom: 12px; }
-.toolbar label { font-size: 13px; color: var(--mid); }
+/* ---------- 工具栏 ---------- */
+.toolbar { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-bottom: 10px; }
+.toolbar label { color: var(--mid); font-size: 12px; }
+.sep { width: 1px; height: 20px; background: var(--soft-2); margin: 0 4px; }
+.grow { max-width: 340px; }
+
 input, select {
   font: inherit;
-  font-size: 13px;
-  border: 1px solid var(--ink);
-  padding: 4px 6px;
+  color: var(--ink);
   background: var(--paper);
+  border: 1px solid var(--soft-2);
+  border-radius: var(--radius-sm);
+  padding: 6px 10px;
+  transition: border-color 0.15s, box-shadow 0.15s;
 }
-input:focus, select:focus { outline: 2px solid var(--ink); outline-offset: -1px; }
+input::placeholder { color: #b3b8bd; }
+input:focus, select:focus {
+  outline: none;
+  border-color: var(--ink);
+  box-shadow: 0 0 0 3px rgba(20, 22, 26, 0.07);
+}
 
+/* ---------- 按钮：圆角、浅底、无硬边框 ---------- */
 .btn {
   font: inherit;
-  font-size: 13px;
-  border: 1px solid var(--ink);
-  background: var(--paper);
-  padding: 4px 10px;
   cursor: pointer;
+  padding: 6px 12px;
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: var(--ink);
+  color: var(--paper);
+  transition: opacity 0.15s, background 0.15s, color 0.15s;
 }
-.btn:hover { background: var(--ink); color: var(--paper); }
-.btn.small { padding: 1px 8px; font-size: 12px; }
+.btn:hover { opacity: 0.86; }
+.btn.ghost { background: var(--soft); color: var(--ink); }
+.btn.ghost:hover { background: var(--soft-2); opacity: 1; }
+.btn.small { padding: 3px 9px; font-size: 12px; border-radius: 7px; }
+.btn:disabled { opacity: 0.4; cursor: default; }
 
-.sep { width: 1px; height: 24px; background: var(--mid); margin: 0 4px; }
-
-table { width: 100%; border-collapse: collapse; margin-bottom: 8px; }
-th, td {
-  text-align: left;
-  padding: 6px 8px;
-  border-bottom: 1px solid var(--ink);
-  vertical-align: top;
+/* ---------- 卡片与列表 ---------- */
+.card {
+  background: var(--paper);
+  border-radius: var(--radius);
+  padding: 10px 12px;
+  box-shadow: var(--shadow);
+  margin-bottom: 12px;
 }
-th { border-bottom-width: 2px; font-size: 12px; }
-tbody tr:hover { background: var(--weak); }
-.mono, td.path {
-  font-family: ui-monospace, Consolas, monospace;
-  font-size: 12px;
-  word-break: break-all;
-}
-td.ops button { margin: 0 4px 2px 0; }
-.tag {
-  display: inline-block;
-  border: 1px solid var(--ink);
-  padding: 0 6px;
-  margin-right: 4px;
-  font-size: 12px;
-}
-.muted { color: var(--mid); }
-.bad { font-weight: 800; }
-.cols { display: flex; gap: 24px; }
+.card.hidden { display: none; }
+.colhead { display: flex; align-items: baseline; gap: 8px; margin: 2px 2px 8px; }
+h3 { font-size: 13px; margin: 0; font-weight: 700; }
+.cols { display: flex; gap: 14px; align-items: flex-start; }
 .col { flex: 1; min-width: 0; }
-h3 { font-size: 14px; margin: 8px 0 6px; }
+.list { padding: 4px; }
 
-.cli-hint {
-  color: var(--mid);
-  font-size: 12px;
-  border-top: 1px solid var(--weak);
-  padding-top: 6px;
-  font-family: ui-monospace, Consolas, monospace;
+/* 行：靠 hover 底色区分，不用分隔线 */
+.row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 10px;
+  border-radius: 10px;
+  transition: background 0.12s;
 }
+.row:hover { background: var(--soft); }
+.row + .row { margin-top: 2px; }
+.row .name { font-weight: 600; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.row .desc { color: var(--mid); font-size: 12px; flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.row .acts { margin-left: auto; display: flex; align-items: center; gap: 6px; flex-shrink: 0; }
 
-.settings { display: grid; grid-template-columns: 140px 1fr; gap: 8px 16px; max-width: 720px; }
-.settings dt { font-weight: 700; }
+/* 平台小按钮（平行、可勾选） */
+.plats { display: flex; gap: 4px; flex-wrap: wrap; }
+.pill {
+  font: inherit;
+  font-size: 11px;
+  line-height: 1;
+  cursor: pointer;
+  padding: 5px 8px;
+  border: 0;
+  border-radius: 999px;
+  background: var(--soft);
+  color: var(--mid);
+  transition: background 0.12s, color 0.12s;
+}
+.pill:hover { background: var(--soft-2); color: var(--ink); }
+.pill.on { background: var(--ink); color: var(--paper); font-weight: 600; }
+
+/* 徽标 */
+.tag {
+  font-size: 11px;
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: var(--soft);
+  color: var(--mid);
+  white-space: nowrap;
+}
+.tag.strong { background: var(--ink); color: var(--paper); }
+
+/* ---------- 表格：去掉网格线，只用极浅的行分隔 ---------- */
+table { width: 100%; border-collapse: collapse; }
+th, td { text-align: left; padding: 9px 10px; vertical-align: top; }
+th { color: var(--mid); font-weight: 600; font-size: 11.5px; }
+tbody tr:hover { background: var(--soft); }
+tbody tr + tr td { box-shadow: inset 0 1px 0 var(--soft); }
+.mono, td.path { font-family: ui-monospace, Consolas, monospace; font-size: 12px; word-break: break-all; }
+td.ops { white-space: nowrap; }
+td.ops .btn { margin: 0 3px 3px 0; }
+.muted { color: var(--mid); }
+.bad { font-weight: 700; }
+
+/* ---------- 设置页 ---------- */
+.settings { display: grid; grid-template-columns: 120px 1fr; gap: 10px 16px; align-items: center; }
+.settings dt { color: var(--mid); font-size: 12px; }
 .settings dd { margin: 0; }
+.row-inline { display: flex; gap: 8px; margin-top: 8px; }
+.row-inline input { flex: 1; }
 
+/* ---------- 提示条 ---------- */
+.cli-hint { color: var(--mid); font-size: 11.5px; padding: 2px 4px; font-family: ui-monospace, Consolas, monospace; }
+
+/* ---------- 弹窗 ---------- */
 .modal {
   position: fixed;
   inset: 0;
-  background: rgba(255, 255, 255, 0.94);
+  background: rgba(251, 251, 252, 0.86);
+  backdrop-filter: blur(2px);
   display: flex;
   align-items: flex-start;
   justify-content: center;
-  padding: 36px 16px;
-  z-index: 10;
+  padding: 48px 16px;
+  z-index: 20;
 }
 .modal.hidden { display: none; }
 .modal-box {
   background: var(--paper);
-  border: 2px solid var(--ink);
-  width: min(920px, 96vw);
-  max-height: 86vh;
+  border-radius: var(--radius);
+  box-shadow: 0 12px 40px rgba(20, 22, 26, 0.16);
+  width: min(880px, 96vw);
+  max-height: 84vh;
   display: flex;
   flex-direction: column;
+  overflow: hidden;
 }
 .modal-title {
-  padding: 8px 12px;
-  border-bottom: 1px solid var(--ink);
-  font-weight: 700;
+  padding: 12px 14px;
   display: flex;
   justify-content: space-between;
   align-items: center;
+  font-weight: 700;
+  box-shadow: 0 1px 0 var(--soft);
 }
-.modal-body { padding: 12px; overflow: auto; }
+.modal-body { padding: 14px; overflow: auto; }
+
 pre {
   margin: 0;
   font-family: ui-monospace, Consolas, monospace;
   font-size: 12px;
-  line-height: 1.55;
+  line-height: 1.6;
   white-space: pre-wrap;
   word-break: break-all;
 }
-.d-add { background: var(--weak); font-weight: 700; }
+.d-add { background: var(--soft-2); font-weight: 600; }
 .d-del { color: var(--mid); text-decoration: line-through; }
-.conflict-file { border: 1px solid var(--ink); margin-bottom: 12px; }
+
+.conflict-file { background: var(--soft); border-radius: 10px; margin-bottom: 10px; overflow: hidden; }
 .conflict-file .cf-head {
-  padding: 6px 10px;
-  border-bottom: 1px solid var(--ink);
+  padding: 8px 12px;
   display: flex;
   justify-content: space-between;
   align-items: center;
   font-family: ui-monospace, Consolas, monospace;
   font-size: 12px;
 }
-.conflict-file pre { padding: 10px; }
+.conflict-file pre { padding: 10px 12px; background: var(--paper); }
 
-footer {
-  border-top: 1px solid var(--weak);
-  color: var(--mid);
-  padding: 8px 16px;
-  font-size: 12px;
-}
+footer { color: var(--mid); padding: 14px 20px 24px; font-size: 11.5px; text-align: center; }
 footer code {
   font-family: ui-monospace, Consolas, monospace;
-  border: 1px solid var(--mid);
-  padding: 0 4px;
+  background: var(--soft);
+  border-radius: 6px;
+  padding: 1px 6px;
 }

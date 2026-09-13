@@ -1,12 +1,13 @@
 // REST API 路由表：每条路由 = 一个 service 函数 = 一条 CLI 命令。
 // 路由注册表风格参考 adminer-node 的 src/server.js。
+import { readFileSync } from 'node:fs';
 import * as repos from '../services/repos.js';
 import * as skills from '../services/skills.js';
 import * as bundled from '../services/bundled.js';
 import { merge3 } from '../core/diff.js';
 import { storePathFromEnv } from '../core/paths.js';
 
-const VERSION = '0.1.0';
+const VERSION = JSON.parse(readFileSync(new URL('../../package.json', import.meta.url), 'utf8')).version;
 
 export function sendJson(res, status, obj) {
   const body = JSON.stringify(obj);
@@ -64,6 +65,18 @@ const routes = [
   ['POST', /^\/api\/skills\/push$/, (_m, _q, b) => skills.pushSkill(b)],
   ['POST', /^\/api\/skills\/materialize$/, (_m, _q, b) => skills.materializeSkill(b)],
   ['POST', /^\/api\/skills\/apply$/, (_m, _q, b) => skills.applySkillSide(b)],
+  ['GET', /^\/api\/skills\/platform$/, (_m, q) =>
+    skills.platformStatus({ name: q.get('name'), project: q.get('project') })],
+  ['POST', /^\/api\/skills\/platform$/, (_m, _q, b) => skills.setPlatform(b)],
+  ['POST', /^\/api\/skills\/compare$/, (_m, _q, b) => skills.compareSkills(b)],
+  ['POST', /^\/api\/candidates$/, (_m, _q, b) =>
+    b.kind === 'central'
+      ? b.remove
+        ? skills.removeCentralCandidate(b.path)
+        : skills.addCentralCandidate(b.path)
+      : b.remove
+        ? skills.removeProjectCandidate(b.path)
+        : skills.addProjectCandidate(b.path)],
 
   // ---- 内置 skill 包（= CLI: nx-rh skill install ...） ----
   ['GET', /^\/api\/bundled$/, async () => ({

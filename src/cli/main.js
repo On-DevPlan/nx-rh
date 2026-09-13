@@ -1,6 +1,8 @@
 // CLI 入口与命令分发。
 // 同构原则：这里的每条命令 = Web 面板上的一个按钮 = service 层的一个函数。
 // 全局支持 --json（机器可读输出，供 agent 直接消费）。
+import { readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
 import { DEFAULT_PORT, storePathFromEnv } from '../core/paths.js';
 import { loadStore } from '../core/store.js';
 import * as repos from '../services/repos.js';
@@ -8,8 +10,8 @@ import * as skills from '../services/skills.js';
 import * as bundled from '../services/bundled.js';
 import { merge3 } from '../core/diff.js';
 
-const VERSION = '0.1.0';
-const BOOL_FLAGS = new Set(['json', 'force', 'open', 'no-open', 'help', 'yes', 'list']);
+const VERSION = JSON.parse(readFileSync(new URL('../../package.json', import.meta.url), 'utf8')).version;
+const BOOL_FLAGS = new Set(['json', 'force', 'open', 'no-open', 'help', 'yes', 'list', 'off']);
 
 function parseArgs(argv) {
   const positional = [];
@@ -77,7 +79,11 @@ function helpText(storePath) {
   nx-rh repo open <id>                                    在文件管理器中打开
 
 Skill 管理（= Web「Skill」页）:
-  nx-rh skill central [path]                              查看/设置中心仓库
+  nx-rh skill central list|add|remove|<path>              中心仓库候选（多选）与当前项
+  nx-rh skill project list|add|remove <path>              项目目录候选（多选）
+  nx-rh skill platform [ids...]                           默认平台范围 / 默认平台
+  nx-rh skill platform-set <name> --project P --adapter A [--off]  单个平台开关
+  nx-rh skill compare [--central C] --project P [--names a,b]      多选比较
   nx-rh skill adapters [--json]                           适配器清单
   nx-rh skill list --side central|project [--path P] [--json]   两侧识别
   nx-rh skill sync <name> --project P [--mode symlink|copy] [--adapter A] [--force]
@@ -253,13 +259,128 @@ export async function runCli(argv) {
 
       // ---- skill ----
       case 'skill central': {
-        if (rest[0]) {
-          const data = await skills.setCentralPath(rest[0]);
-          out(data, (d) => `中心仓库已设置: ${d.skillCentralPath}`, json);
-        } else {
+        const action = rest[0];
+        if (action === 'list') {
           const s = await loadStore();
-          out(s.settings.skillCentralPath || '（未设置）', (v) => v, json);
+          out(
+            s.settings.skillCentralCandidates,
+            (l) =>
+              l.length
+                ? l.map((p) => `${p === s.settings.skillCentralPath ? '*' : ' '} ${p}`).join('\n')
+                : '（暂无中心仓库候选，用 skill central add <path> 添加）',
+            json
+          );
+          return;
         }
+        if (action === 'add') {
+          if (!rest[1]) throw new Error('用法: skill central add <path>');
+          const list = await skills.addCentralCandidate(rest[1]);
+          await skills.setCentralPath(rest[1]);
+          out({ path: list[list.length - 1], candidates: list }, (d) => `已添加中心仓库: ${d.path}`, json);
+          return;
+        }
+        if (action === 'remove') {
+          if (!rest[1]) throw new Error('用法: skill central remove <path>');
+          const list = await skills.removeCentralCandidate(rest[1]);
+          out(list, (l) => `已移除，剩余 ${l.length} 个候选`, json);
+          return;
+        }
+        if (action) {
+          const data = await skills.setCentralPath(action);
+          out(data, (d) => `中心仓库已设置: ${d.skillCentralPath}`, json);
+          return;
+        }
+        const s = await loadStore();
+        out(s.settings.skillCentralPath || '（未设置）', (v) => v, json);
+        return;
+      }
+      case 'skill project': {
+        const action = rest[0];
+        if (action === 'list' || !action) {
+          const s = await loadStore();
+          out(
+            s.settings.skillProjectCandidates,
+            (l) => (l.length ? l.join('\n') : '（暂无项目目录候选，用 skill project add <path> 添加）'),
+            json
+          );
+          return;
+        }
+        if (action === 'add') {
+          if (!rest[1]) throw new Error('用法: skill project add <path>');
+          const list = await skills.addProjectCandidate(rest[1]);
+          out(list, (l) => `已添加项目目录（共 ${l.length} 个）: ${resolve(rest[1])}`, json);
+          return;
+        }
+        if (action === 'remove') {
+          if (!rest[1]) throw new Error('用法: skill project remove <path>');
+          const list = await skills.removeProjectCandidate(rest[1]);
+          out(list, (l) => `已移除，剩余 ${l.length} 个`, json);
+          return;
+        }
+        throw new Error('用法: skill project list|add|remove <path>');
+      }
+      case 'skill platform': {
+        if (rest.length) {
+          const data = await skills.updateSettings({ platforms: rest, defaultPlatform: rest[0] });
+          out(data, (d) => `平台已设置: ${d.platforms.join(', ')}（默认 ${d.defaultPlatform}）`, json);
+          return;
+        }
+        const s = await loadStore();
+        out(
+          { platforms: s.settings.platforms, defaultPlatform: s.settings.defaultPlatform },
+          (d) => `平台: ${d.platforms.join(', ')}\n默认: ${d.defaultPlatform}`,
+          json
+        );
+        return;
+      }
+      case 'skill platform-set': {
+        if (!rest[0] || !flags.project || !flags.adapter) {
+          throw new Error('用法: skill platform-set <name> --project P --adapter A [--off] [--force]');
+        }
+        const data = await skills.setPlatform({
+          name: rest[0],
+          project: flags.project,
+          adapter: flags.adapter,
+          enabled: !flags.off,
+          mode: flags.mode,
+          force: !!flags.force,
+        });
+        out(
+          data,
+          (d) => {
+            if (d.skipped && d.removed === undefined) return `已是该平台的最新链接，跳过（${d.platform}）`;
+            if (d.removed) return `已关闭平台 ${d.platform}: ${d.path}`;
+            if (d.status === 'conflict') return `冲突（${d.platform}）: ${d.files.length} 个文件不同，加 --force 覆盖`;
+            return `已开启平台 ${d.platform}（${d.mode === 'symlink' ? '软链接 ' + (d.linkType || '') : '复制'}）`;
+          },
+          json
+        );
+        return;
+      }
+      case 'skill compare': {
+        if (!flags.project) throw new Error('用法: skill compare [--central C] --project P [--names a,b]');
+        const data = await skills.compareSkills({
+          central: flags.central,
+          project: flags.project,
+          names: flags.names ? String(flags.names).split(',').map((x) => x.trim()).filter(Boolean) : undefined,
+        });
+        out(
+          data,
+          (d) => {
+            const s = d.summary;
+            const lines = [
+              `比较: ${d.central}  <->  ${d.project}`,
+              `共 ${s.total} 项 · 一致 ${s.same} · 链接 ${s.linked} · 冲突 ${s.differ} · 仅中心 ${s.onlyCentral} · 仅项目 ${s.onlyProject}`,
+            ];
+            const mark = { same: '一致', linked: '链接', differ: '冲突', 'only-central': '仅中心', 'only-project': '仅项目' };
+            for (const r of d.rows) {
+              const plat = r.platforms.length ? `  [${r.platforms.map((p) => p.id).join(',')}]` : '';
+              lines.push(`  ${r.name.padEnd(28)} ${mark[r.state]}${plat}`);
+            }
+            return lines.join('\n');
+          },
+          json
+        );
         return;
       }
       case 'skill adapters': {

@@ -50,7 +50,8 @@ mkdirSync(project2, { recursive: true });
 
 try {
   // ---- 1. 基础命令 ----
-  check('cli version', cli(['version']).stdout.trim() === '0.1.0');
+  const pkgVersion = JSON.parse(readFileSync(join(ROOT, '..', 'package.json'), 'utf8')).version;
+  check('cli version', cli(['version']).stdout.trim() === pkgVersion);
   check('cli help', cli(['help']).stdout.includes('repo add'));
   check('cli unknown -> exit 1', cli(['nope']).status === 1);
 
@@ -182,6 +183,42 @@ try {
   check('覆盖后本地改动消失', !readFileSync(join(skillsHome, 'repo-hub', 'SKILL.md'), 'utf8').includes('local edit'));
 
   check('非法包名被拒', cli(['skill', 'install', '../evil', '--to', skillsHome]).status === 1);
+
+  // ---- 13. 中心根目录布局 + 平台开关 + 多选比较 ----
+  const central2 = join(tmp, 'central-root'); // 根目录直接是 skill（新布局）
+  mkdirSync(join(central2, 'root-skill'), { recursive: true });
+  writeFileSync(
+    join(central2, 'root-skill', 'SKILL.md'),
+    '---\nname: root-skill\ndescription: 根布局 skill\n---\n\n# R\n'
+  );
+  const proj3 = join(tmp, 'proj3');
+  mkdirSync(join(proj3, '.claude'), { recursive: true });
+
+  check('skill central add', cli(['skill', 'central', 'add', central2]).status === 0);
+  const cs2 = cliJson(['skill', 'list', '--side', 'central', '--path', central2]);
+  check('中心根目录布局识别', Array.isArray(cs2) && cs2.length === 1 && cs2[0].name === 'root-skill', JSON.stringify(cs2 && cs2.map((x) => x.name)));
+
+  const syncP = cliJson(['skill', 'sync', 'root-skill', '--project', proj3, '--adapter', 'claude-code']);
+  check('同步到指定平台', syncP.status === 'ok', JSON.stringify(syncP));
+
+  const platOn = cliJson(['skill', 'platform-set', 'root-skill', '--project', proj3, '--adapter', 'cursor']);
+  check('平台开关-开(cursor)', platOn.status === 'ok' && platOn.platform === 'cursor', JSON.stringify(platOn));
+
+  const cmp = cliJson(['skill', 'compare', '--central', central2, '--project', proj3]);
+  check(
+    '多选比较汇总',
+    cmp.summary && cmp.summary.linked >= 1 && cmp.rows.length === 1 && cmp.rows[0].platforms.length === 2,
+    JSON.stringify(cmp.summary)
+  );
+
+  const platOff = cliJson(['skill', 'platform-set', 'root-skill', '--project', proj3, '--adapter', 'cursor', '--off']);
+  check('平台开关-关(cursor)', platOff.removed === true, JSON.stringify(platOff));
+  const cmp2 = cliJson(['skill', 'compare', '--central', central2, '--project', proj3]);
+  check('关闭后平台计数更新', cmp2.rows[0].platforms.length === 1, JSON.stringify(cmp2.rows[0].platforms));
+
+  check('project 候选添加', cli(['skill', 'project', 'add', proj3]).status === 0);
+  const pList = cliJson(['skill', 'project', 'list']);
+  check('project 候选列表', Array.isArray(pList) && pList.some((x) => x === proj3));
 
   // ---- 14. Web API ----
   const { startServer } = await import(pathToFileURL(join(ROOT, '..', 'src', 'web', 'server.js')).href);
