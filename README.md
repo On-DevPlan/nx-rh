@@ -122,7 +122,7 @@ tests/smoke.mjs          # 33 项全链路冒烟测试
 | `nx-rh skill materialize <name> --project P`                            | 链接转实体             |
 | `nx-rh skill merge --base F --a F --b F`                                | diff3 合并原语        |
 | `nx-rh eco scan`                                                        | 生态页：读取 native host 状态 |
-| `nx-rh eco import [--repos] [--skills] [--central P] [--mode] [--force]` | 生态页：导入 git 仓库 / skills |
+| `nx-rh eco import [--repos] [--skills] [--include-env] [--central P] [--mode] [--force]` | 生态页：导入 git 仓库 / skills |
 | `nx-rh setting get/set`                                                 | 设置页               |
 
 REST API 与命令一一对应（见 `src/web/api.js` 路由表），例如 `POST /api/skills/sync` ⇔ `nx-rh skill sync`。
@@ -140,12 +140,13 @@ logs/ -> 进程日志
 
 「生态」页与 `nx-rh eco` 读取该目录（`NX_RH_BROCHAT_DIR` 可覆盖）：
 
-1. **导入 git 仓库**：提取进程记录里的非空 `workDir`，向上最多找 5 级定位 git 根（进程目录常是仓库子目录），登记进 nx-rh 仓库（自动去重，打 `eco-import` 标签）。
-2. **导入 skills**：对每个 workDir 同时识别两种布局——中心式 `{path}/skills/<name>` 与项目式适配器目录（`.claude/skills` 等）——按当前同步模式（软链接/复制）装进 nx-rh 中心仓库，冲突逐文件列出。
+1. **导入 git 仓库**：提取进程记录里的非空 `workDir`，向上最多找 5 级定位 git 根（进程目录常是仓库子目录），登记进 nx-rh 仓库（自动去重，打 `eco-import` 标签）。加 `--include-env` 会一并扫描 env 快照里的 PATH 目录（只登记真实存在的 git 仓库）。
+2. **导入 skills**：对 `workDir`、其 git 根及检出 skill 的目录（含 `{path}/skills` 中心式与 `.claude/skills` 等项目式布局）逐个体检——按当前同步模式（软链接/复制）装进 nx-rh 中心仓库，冲突逐文件列出；没有可导入源时不要求配置中心。
 
 ```bash
-nx-rh eco scan                                  # 看一眼插件启动过哪些目录
+nx-rh eco scan                                  # 看一眼插件启动过哪些目录、skill 在哪
 nx-rh eco import --repos                        # 只导入仓库
+nx-rh eco import --repos --include-env          # 连 env 快照的 PATH 目录一起扫
 nx-rh eco import --skills --central D:\skills-central --force
 nx-rh eco import                                # 两者都导
 ```

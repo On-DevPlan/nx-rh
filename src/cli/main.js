@@ -9,7 +9,7 @@ import * as ecosystem from '../services/ecosystem.js';
 import { merge3 } from '../core/diff.js';
 
 const VERSION = '0.1.0';
-const BOOL_FLAGS = new Set(['json', 'force', 'open', 'no-open', 'help', 'yes']);
+const BOOL_FLAGS = new Set(['json', 'force', 'open', 'no-open', 'help', 'yes', 'include-env']);
 
 function parseArgs(argv) {
   const positional = [];
@@ -363,8 +363,10 @@ export async function runCli(argv) {
             if (d.envSnapshots.length) lines.push(`env 快照: ${d.envSnapshots.map((s) => s.timestamp).join(', ')}`);
             lines.push(`进程 workDir ${d.workDirs.length} 个:`);
             for (const w of d.workDirs) {
-              const marks = [w.isGit ? 'git' : '-', w.skillDirs.length ? 'skills:' + w.skillDirs.join(',') : '-'];
-              lines.push(`  ${w.path}   [${marks.join(' | ')}]`);
+              const gitMark = w.isGit ? `git:${w.gitRoot}` : '-';
+              const skillMark = w.skillDirs.length ? `skills@${w.skillRoots.join(',')} [${w.skillDirs.join(',')}]` : '-';
+              lines.push(`  ${w.path}`);
+              lines.push(`      ${gitMark} | ${skillMark}`);
             }
             return lines.join('\n');
           },
@@ -377,7 +379,7 @@ export async function runCli(argv) {
         const result = {};
         if (flags.central) await skills.setCentralPath(flags.central);
         if (both || flags.repos) {
-          result.repos = await ecosystem.ecoImportRepos({});
+          result.repos = await ecosystem.ecoImportRepos({ includeEnv: !!flags['include-env'] });
         }
         if (both || flags.skills) {
           result.skills = await ecosystem.ecoImportSkills({
@@ -391,15 +393,20 @@ export async function runCli(argv) {
             const lines = [];
             if (r.repos) {
               lines.push(
-                `仓库: 新登记 ${r.repos.added.length} 个，已存在 ${r.repos.existing.length} 个，非 git ${r.repos.nonGit.length} 个`
+                `仓库: 扫描 ${r.repos.scanned} 个路径，新登记 ${r.repos.added.length} 个，已存在 ${r.repos.existing.length} 个，非 git ${r.repos.nonGit.length} 个`
               );
               for (const a of r.repos.added) lines.push(`  + ${a.name}  ${a.path}`);
             }
             if (r.skills) {
-              lines.push(
-                `skills -> ${r.skills.central}: 链接 ${r.skills.linked.length}，复制 ${r.skills.copied.length}，推送 ${r.skills.pushed.length}，跳过 ${r.skills.skipped.length}，冲突 ${r.skills.conflicts.length}，错误 ${r.skills.errors.length}`
-              );
-              for (const c of r.skills.conflicts) lines.push(`  冲突: ${c.name} (${c.project})`);
+              if (r.skills.empty) {
+                lines.push(`skills: 未发现可导入的 skill 源（已检查 ${r.skills.projects.length} 个目录）`);
+              } else {
+                lines.push(
+                  `skills -> ${r.skills.central}: 链接 ${r.skills.linked.length}，复制 ${r.skills.copied.length}，推送 ${r.skills.pushed.length}，跳过 ${r.skills.skipped.length}，冲突 ${r.skills.conflicts.length}，错误 ${r.skills.errors.length}`
+                );
+                for (const c of r.skills.conflicts) lines.push(`  冲突: ${c.name} (${c.project})`);
+                for (const e of r.skills.errors) lines.push(`  错误: ${e.name} (${e.project}): ${e.error}`);
+              }
             }
             return lines.join('\n');
           },
