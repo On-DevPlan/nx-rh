@@ -1,0 +1,174 @@
+/* nx-rh 面板样式：黑白清晰、无 emoji、系统字体。 */
+:root {
+  --ink: #000;
+  --paper: #fff;
+  --mid: #777;
+  --weak: #eee;
+  --line: #000;
+}
+
+* { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  font-family: system-ui, "Segoe UI", "Microsoft YaHei", sans-serif;
+  font-size: 14px;
+  background: var(--paper);
+  color: var(--ink);
+}
+
+header {
+  display: flex;
+  align-items: center;
+  gap: 24px;
+  padding: 10px 16px;
+  border-bottom: 2px solid var(--ink);
+}
+.brand { font-weight: 800; letter-spacing: 0.5px; }
+.brand .sub { margin-left: 8px; font-weight: 400; color: var(--mid); font-size: 12px; }
+nav { display: flex; }
+.tab {
+  font: inherit;
+  border: 1px solid var(--ink);
+  background: var(--paper);
+  padding: 4px 16px;
+  cursor: pointer;
+}
+.tab + .tab { border-left: none; }
+.tab.active { background: var(--ink); color: var(--paper); }
+.meta {
+  margin-left: auto;
+  color: var(--mid);
+  font-family: ui-monospace, Consolas, monospace;
+  font-size: 12px;
+}
+
+main { padding: 16px; max-width: 1200px; }
+.panel { display: none; }
+.panel.active { display: block; }
+
+.toolbar { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-bottom: 12px; }
+.toolbar label { font-size: 13px; color: var(--mid); }
+input, select {
+  font: inherit;
+  font-size: 13px;
+  border: 1px solid var(--ink);
+  padding: 4px 6px;
+  background: var(--paper);
+}
+input:focus, select:focus { outline: 2px solid var(--ink); outline-offset: -1px; }
+
+.btn {
+  font: inherit;
+  font-size: 13px;
+  border: 1px solid var(--ink);
+  background: var(--paper);
+  padding: 4px 10px;
+  cursor: pointer;
+}
+.btn:hover { background: var(--ink); color: var(--paper); }
+.btn.small { padding: 1px 8px; font-size: 12px; }
+
+.sep { width: 1px; height: 24px; background: var(--mid); margin: 0 4px; }
+
+table { width: 100%; border-collapse: collapse; margin-bottom: 8px; }
+th, td {
+  text-align: left;
+  padding: 6px 8px;
+  border-bottom: 1px solid var(--ink);
+  vertical-align: top;
+}
+th { border-bottom-width: 2px; font-size: 12px; }
+tbody tr:hover { background: var(--weak); }
+.mono, td.path {
+  font-family: ui-monospace, Consolas, monospace;
+  font-size: 12px;
+  word-break: break-all;
+}
+td.ops button { margin: 0 4px 2px 0; }
+.tag {
+  display: inline-block;
+  border: 1px solid var(--ink);
+  padding: 0 6px;
+  margin-right: 4px;
+  font-size: 12px;
+}
+.muted { color: var(--mid); }
+.bad { font-weight: 800; }
+.cols { display: flex; gap: 24px; }
+.col { flex: 1; min-width: 0; }
+h3 { font-size: 14px; margin: 8px 0 6px; }
+
+.cli-hint {
+  color: var(--mid);
+  font-size: 12px;
+  border-top: 1px solid var(--weak);
+  padding-top: 6px;
+  font-family: ui-monospace, Consolas, monospace;
+}
+
+.settings { display: grid; grid-template-columns: 140px 1fr; gap: 8px 16px; max-width: 720px; }
+.settings dt { font-weight: 700; }
+.settings dd { margin: 0; }
+
+.modal {
+  position: fixed;
+  inset: 0;
+  background: rgba(255, 255, 255, 0.94);
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  padding: 36px 16px;
+  z-index: 10;
+}
+.modal.hidden { display: none; }
+.modal-box {
+  background: var(--paper);
+  border: 2px solid var(--ink);
+  width: min(920px, 96vw);
+  max-height: 86vh;
+  display: flex;
+  flex-direction: column;
+}
+.modal-title {
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--ink);
+  font-weight: 700;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+.modal-body { padding: 12px; overflow: auto; }
+pre {
+  margin: 0;
+  font-family: ui-monospace, Consolas, monospace;
+  font-size: 12px;
+  line-height: 1.55;
+  white-space: pre-wrap;
+  word-break: break-all;
+}
+.d-add { background: var(--weak); font-weight: 700; }
+.d-del { color: var(--mid); text-decoration: line-through; }
+.conflict-file { border: 1px solid var(--ink); margin-bottom: 12px; }
+.conflict-file .cf-head {
+  padding: 6px 10px;
+  border-bottom: 1px solid var(--ink);
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-family: ui-monospace, Consolas, monospace;
+  font-size: 12px;
+}
+.conflict-file pre { padding: 10px; }
+
+footer {
+  border-top: 1px solid var(--weak);
+  color: var(--mid);
+  padding: 8px 16px;
+  font-size: 12px;
+}
+footer code {
+  font-family: ui-monospace, Consolas, monospace;
+  border: 1px solid var(--mid);
+  padding: 0 4px;
+}

@@ -1,0 +1,111 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>nx-rh · npx-repo-hub</title>
+<link rel="stylesheet" href="/style.css">
+</head>
+<body>
+
+<header>
+  <div class="brand">nx-rh<span class="sub">npx-repo-hub</span></div>
+  <nav>
+    <button class="tab active" data-tab="repos">仓库</button>
+    <button class="tab" data-tab="skills">Skill</button>
+    <button class="tab" data-tab="settings">设置</button>
+  </nav>
+  <div class="meta" id="storePath"></div>
+</header>
+
+<main>
+
+  <!-- ============ 仓库 ============ -->
+  <section id="tab-repos" class="panel active">
+    <div class="toolbar">
+      <input id="repoPath" placeholder="仓库绝对路径" size="34" spellcheck="false">
+      <input id="repoName" placeholder="名称(可选)" size="10">
+      <input id="repoTags" placeholder="标签,逗号分隔" size="14">
+      <button id="repoAdd" class="btn">添加仓库</button>
+      <span class="sep"></span>
+      <input id="scanRoot" placeholder="扫描根目录" size="24" spellcheck="false">
+      <input id="scanDepth" placeholder="深度" size="4" value="3">
+      <button id="repoScan" class="btn">扫描</button>
+      <button id="repoRefresh" class="btn">刷新状态</button>
+    </div>
+    <table id="repoTable">
+      <thead><tr>
+        <th style="width:110px">名称</th><th>路径</th><th style="width:120px">标签</th>
+        <th style="width:90px">分支</th><th style="width:200px">状态</th><th style="width:270px">操作</th>
+      </tr></thead>
+      <tbody></tbody>
+    </table>
+    <div class="cli-hint">CLI 等价：nx-rh repo add &lt;path&gt; · nx-rh repo scan &lt;root&gt; · nx-rh repo status --json</div>
+  </section>
+
+  <!-- ============ Skill ============ -->
+  <section id="tab-skills" class="panel">
+    <div class="toolbar">
+      <label>中心仓库</label>
+      <input id="centralPath" placeholder="例如 D:\skills-central" size="30" spellcheck="false">
+      <button id="centralSave" class="btn">保存</button>
+      <label>同步模式</label>
+      <select id="syncMode">
+        <option value="symlink">软链接</option>
+        <option value="copy">复制</option>
+      </select>
+      <span class="sep"></span>
+      <label>项目目录</label>
+      <input id="projectPath" placeholder="例如 D:\code\some-project" size="30" spellcheck="false">
+      <button id="skillScan" class="btn">识别两侧</button>
+    </div>
+    <div class="cols">
+      <div class="col">
+        <h3>中心仓库 Skill</h3>
+        <table id="centralTable">
+          <thead><tr><th style="width:130px">名称</th><th>描述</th><th style="width:110px">项目侧</th><th style="width:190px">操作</th></tr></thead>
+          <tbody></tbody>
+        </table>
+      </div>
+      <div class="col">
+        <h3>项目 Skill</h3>
+        <table id="projectTable">
+          <thead><tr><th style="width:130px">名称</th><th>描述</th><th style="width:110px">形态</th><th style="width:190px">操作</th></tr></thead>
+          <tbody></tbody>
+        </table>
+      </div>
+    </div>
+    <div class="cli-hint">CLI 等价：nx-rh skill sync &lt;name&gt; --project &lt;path&gt; · nx-rh skill conflict &lt;name&gt; --project &lt;path&gt;</div>
+  </section>
+
+  <!-- ============ 设置 ============ -->
+  <section id="tab-settings" class="panel">
+    <dl class="settings">
+      <dt>存储文件</dt><dd id="setStore" class="mono"></dd>
+      <dt>skill 中心仓库</dt><dd id="setCentral" class="mono"></dd>
+      <dt>skill 同步模式</dt><dd id="setMode"></dd>
+      <dt>面板端口</dt><dd>默认 7800（nx-rh serve --port 自定义，仅绑定 127.0.0.1）</dd>
+      <dt>适配器</dt><dd id="setAdapters" class="mono"></dd>
+    </dl>
+  </section>
+
+</main>
+
+<!-- 冲突详情 / 命令输出 弹窗 -->
+<div id="modal" class="modal hidden">
+  <div class="modal-box">
+    <div class="modal-title">
+      <span id="modalTitle"></span>
+      <button id="modalClose" class="btn small">关闭</button>
+    </div>
+    <div class="modal-body" id="modalBody"></div>
+  </div>
+</div>
+
+<footer>
+  所有按钮均有同构 CLI：<code>nx-rh help</code> · agent 可加 <code>--json</code> 获取机器可读输出
+</footer>
+
+<script type="module" src="/app.js"></script>
+</body>
+</html>

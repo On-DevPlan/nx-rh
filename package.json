@@ -1,0 +1,45 @@
+{
+  "name": "nx-rh",
+  "version": "0.1.0",
+  "description": "npx-repo-hub — 本机仓库与 Agent Skill 的统一管理中枢：Web 面板与同构 CLI 共享同一 service 层",
+  "type": "module",
+  "bin": {
+    "nx-rh": "bin/cli.mjs"
+  },
+  "main": "src/index.js",
+  "exports": {
+    ".": "./src/index.js"
+  },
+  "scripts": {
+    "start": "node bin/cli.mjs serve",
+    "dev": "node --watch bin/cli.mjs serve --no-open",
+    "test": "node tests/smoke.mjs"
+  },
+  "packageManager": "pnpm@10.33.0",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/On-DevPlan/nx-rh.git"
+  },
+  "homepage": "https://github.com/On-DevPlan/nx-rh#readme",
+  "bugs": {
+    "url": "https://github.com/On-DevPlan/nx-rh/issues"
+  },
+  "engines": {
+    "node": ">=18.17"
+  },
+  "files": [
+    "bin/",
+    "src/",
+    "README.md"
+  ],
+  "keywords": [
+    "cli",
+    "web-panel",
+    "repo-manager",
+    "agent-tools",
+    "skills",
+    "symlink",
+    "npx"
+  ],
+  "license": "MIT"
+}
