@@ -12,13 +12,14 @@ function parseTags(tags) {
   return [];
 }
 
-function normalizeRepoInput({ path, name, tags, notes }) {
+function normalizeRepoInput({ path, name, tags, notes, desc }) {
   const abs = resolve(String(path || ''));
   return {
     id: newId('r'),
     name: (name || basename(abs) || 'repo').trim(),
     path: abs,
     tags: parseTags(tags),
+    desc: (desc || '').trim(),
     notes: (notes || '').trim(),
     addedAt: new Date().toISOString(),
     updatedAt: new Date().toISOString(),
@@ -47,6 +48,7 @@ export async function updateRepo(id, patch) {
     if (!r) throw new Error('repo 不存在: ' + id);
     if (patch.name !== undefined) r.name = String(patch.name).trim();
     if (patch.tags !== undefined) r.tags = parseTags(patch.tags);
+    if (patch.desc !== undefined) r.desc = String(patch.desc).trim();
     if (patch.notes !== undefined) r.notes = String(patch.notes);
     if (patch.path !== undefined) r.path = resolve(String(patch.path));
     r.updatedAt = new Date().toISOString();

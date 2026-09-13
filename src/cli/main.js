@@ -67,7 +67,7 @@ function helpText(storePath) {
 
 仓库管理（= Web「仓库」页）:
   nx-rh repo list [--json]                                仓库清单
-  nx-rh repo add <path> [--name N] [--tags a,b] [--notes T]
+  nx-rh repo add <path> [--name N] [--tags a,b] [--desc D] [--notes T]
   nx-rh repo update <id> [--name N] [--tags a,b] [--notes T]
   nx-rh repo remove <id>
   nx-rh repo scan <root> [--depth 3]                      扫描发现 git 仓库并登记
@@ -194,13 +194,13 @@ export async function runCli(argv) {
       }
       case 'repo add': {
         if (!rest[0]) throw new Error('用法: repo add <path> [--name N] [--tags a,b] [--notes T]');
-        const data = await repos.addRepo({ path: rest[0], name: flags.name, tags: flags.tags, notes: flags.notes });
+        const data = await repos.addRepo({ path: rest[0], name: flags.name, tags: flags.tags, notes: flags.notes, desc: flags.desc });
         out(data, (r) => `已登记: ${r.name} -> ${r.path}`, json);
         return;
       }
       case 'repo update': {
         if (!rest[0]) throw new Error('用法: repo update <id> [--name] [--tags] [--notes]');
-        const data = await repos.updateRepo(rest[0], { name: flags.name, tags: flags.tags, notes: flags.notes });
+        const data = await repos.updateRepo(rest[0], { name: flags.name, tags: flags.tags, notes: flags.notes, desc: flags.desc });
         out(data, (r) => `已更新: ${r.name}`, json);
         return;
       }

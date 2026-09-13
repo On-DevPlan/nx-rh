@@ -152,7 +152,7 @@ function renderRepos() {
     .map((r) => {
       const g = state.statuses.find((s) => s.id === r.id)?.git;
       return `<tr>
-        <td>${esc(r.name)}</td>
+        <td>${esc(r.name)}${r.desc ? `<div class="muted" style="font-size:11px">${esc(r.desc)}</div>` : ''}</td>
         <td class="path">${esc(r.path)}</td>
         <td>${r.tags.map((t) => `<span class="tag">${esc(t)}</span>`).join('')}</td>
         <td class="mono">${esc(g?.branch || '-')}</td>
@@ -186,9 +186,14 @@ $('#repoAdd').addEventListener('click', () => guard(async () => {
   if (!path) { toast('请输入仓库路径'); return; }
   await api('/api/repos', {
     method: 'POST',
-    body: { path, name: $('#repoName').value.trim() || undefined, tags: $('#repoTags').value.trim() || undefined },
+    body: {
+      path,
+      name: $('#repoName').value.trim() || undefined,
+      desc: $('#repoDesc').value.trim() || undefined,
+      tags: $('#repoTags').value.trim() || undefined,
+    },
   });
-  $('#repoPath').value = ''; $('#repoName').value = ''; $('#repoTags').value = '';
+  $('#repoPath').value = ''; $('#repoName').value = ''; $('#repoDesc').value = ''; $('#repoTags').value = '';
   await loadRepos();
 }));
 
