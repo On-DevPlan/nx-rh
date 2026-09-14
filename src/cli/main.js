@@ -8,6 +8,7 @@ import { loadStore } from '../core/store.js';
 import * as repos from '../services/repos.js';
 import * as skills from '../services/skills.js';
 import * as bundled from '../services/bundled.js';
+import * as github from '../services/github.js';
 import { merge3 } from '../core/diff.js';
 
 const VERSION = JSON.parse(readFileSync(new URL('../../package.json', import.meta.url), 'utf8')).version;
@@ -100,6 +101,12 @@ Skill 管理（= Web「Skill」页）:
   nx-rh setting get [key]
   nx-rh setting set <key> <value>                         skillCentralPath / skillSyncMode
 
+GitHub 连接器（= Web「GitHub」页，需已安装 gh 并登录）:
+  nx-rh gh status [--json]                               检查 gh 可用性与登录态
+  nx-rh gh view <owner/repo> [--json]                    查看仓库概览
+  nx-rh gh search <query> [--limit N] [--json]           搜索 GitHub 仓库
+  nx-rh gh mine [--limit N] [--json]                     列出当前用户的仓库
+
 通用:
   --json   机器可读输出（agent 模式）
   --store  本次运行覆盖存储路径`;
@@ -154,6 +161,40 @@ function renderSyncResult(r) {
   }
   const files = (r.files || []).map((f) => `  ${f.file}  ${f.side}`).join('\n');
   return `冲突: ${r.files.length} 个文件不一致\n${files}\n用 --force 覆盖，或 skill apply 按文件选侧`;
+}
+
+function renderRepoOverview(r) {
+  const lines = [
+    r.nameWithOwner + (r.isPrivate ? '  [private]' : '') + (r.isArchived ? '  [archived]' : ''),
+    r.description || '（无描述）',
+    '',
+    '  语言:     ' + (r.primaryLanguage || '-') + (r.languages.length ? '  (' + r.languages.join(', ') + ')' : ''),
+    '  Stars:    ' + r.stargazersCount,
+    '  Forks:    ' + r.forkCount,
+    '  Watchers: ' + r.watchers,
+    '  Issues:   ' + r.openIssues + '  PR: ' + r.pullRequests,
+    '  默认分支: ' + (r.defaultBranch || '-'),
+    '  License:  ' + (r.license || '-'),
+    '  创建:     ' + (r.createdAt || '').slice(0, 10),
+    '  更新:     ' + (r.updatedAt || '').slice(0, 10),
+    '  推送:     ' + (r.pushedAt || '').slice(0, 10),
+    '  最新版本: ' + (r.latestRelease || '-'),
+    '  URL:      ' + r.url,
+  ];
+  if (r.homepageUrl) lines.push('  主页:     ' + r.homepageUrl);
+  if (r.topics.length) lines.push('  主题:     ' + r.topics.join(', '));
+  return lines.join('\n');
+}
+
+function renderSearchResults(list) {
+  if (!list.length) return '（无结果）';
+  const lines = ['找到 ' + list.length + ' 个仓库:'];
+  for (const r of list) {
+    const star = String(r.stargazersCount).padStart(6);
+    const lang = (r.primaryLanguage || '-').padEnd(12);
+    lines.push('  ' + star + ' stars  ' + lang + '  ' + r.nameWithOwner + '  ' + (r.description || '').slice(0, 50));
+  }
+  return lines.join('\n');
 }
 
 // ---- 主分发 ----
@@ -511,6 +552,30 @@ export async function runCli(argv) {
         ]);
         const data = merge3(base, a, b);
         out(data, (d) => d.merged, json);
+        return;
+      }
+
+      // ---- github ----
+      case 'gh status': {
+        const data = await github.ghStatus();
+        out(data, (d) => d.available ? 'gh 可用:\n' + d.message : 'gh 不可用:\n' + d.message, json);
+        return;
+      }
+      case 'gh view': {
+        if (!rest[0]) throw new Error('用法: gh view <owner/repo>');
+        const data = await github.viewRepo(rest[0]);
+        out(data, renderRepoOverview, json);
+        return;
+      }
+      case 'gh search': {
+        if (!rest[0]) throw new Error('用法: gh search <query> [--limit N]');
+        const data = await github.searchRepos(rest.slice(0).join(' '), parseInt(flags.limit, 10) || 10);
+        out(data, renderSearchResults, json);
+        return;
+      }
+      case 'gh mine': {
+        const data = await github.listMyRepos(parseInt(flags.limit, 10) || 30);
+        out(data, renderSearchResults, json);
         return;
       }
 

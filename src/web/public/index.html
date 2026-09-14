@@ -13,6 +13,7 @@
   <nav>
     <button class="tab active" data-tab="repos">仓库</button>
     <button class="tab" data-tab="skills">Skill</button>
+    <button class="tab" data-tab="github">GitHub</button>
     <button class="tab" data-tab="settings">设置</button>
   </nav>
   <div class="meta" id="storePath"></div>
@@ -100,6 +101,30 @@
     <div class="cli-hint">
       CLI 等价：nx-rh skill compare --central C --project P · nx-rh skill platform-set &lt;name&gt; --project P --adapter A [--off] · nx-rh skill sync &lt;name&gt; --project P
     </div>
+  </section>
+
+  <!-- ============ GitHub ============ -->
+  <section id="tab-github" class="panel">
+    <div class="toolbar">
+      <input id="ghRepoInput" placeholder="owner/repo 或 GitHub URL" size="30" spellcheck="false">
+      <button id="ghViewBtn" class="btn">查看概览</button>
+      <span class="sep"></span>
+      <input id="ghSearchInput" placeholder="搜索关键词" size="20" spellcheck="false">
+      <input id="ghSearchLimit" placeholder="数量" size="3" value="10">
+      <button id="ghSearchBtn" class="btn">搜索</button>
+      <button id="ghMineBtn" class="btn ghost">我的仓库</button>
+      <span class="muted" id="ghStatus"></span>
+    </div>
+    <div id="ghOverview" class="card hidden"></div>
+    <div id="ghResults" class="card hidden">
+      <table id="ghResultTable">
+        <thead><tr>
+          <th style="width:80px">Stars</th><th style="width:100px">语言</th><th>仓库</th><th>描述</th><th style="width:100px">更新</th>
+        </tr></thead>
+        <tbody></tbody>
+      </table>
+    </div>
+    <div class="cli-hint">CLI 等价：nx-rh gh view &lt;owner/repo&gt; · nx-rh gh search &lt;query&gt; · nx-rh gh mine</div>
   </section>
 
   <!-- ============ 设置 ============ -->

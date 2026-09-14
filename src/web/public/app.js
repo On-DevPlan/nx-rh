@@ -93,6 +93,7 @@ document.querySelectorAll('.tab').forEach((btn) => {
     document.querySelectorAll('.panel').forEach((p) => p.classList.toggle('active', p.id === 'tab-' + btn.dataset.tab));
     if (btn.dataset.tab === 'skills') guard(loadSkills);
     if (btn.dataset.tab === 'repos') guard(loadRepos);
+    if (btn.dataset.tab === 'github') guard(loadGhStatus);
   });
 });
 
@@ -734,6 +735,109 @@ document.addEventListener('click', (e) => {
       state.settings.skillProjectCandidates = list;
     }
     renderSelectors(); renderSettings(); await loadSkills();
+  });
+});
+
+// ================= GitHub 连接器 =================
+
+async function loadGhStatus() {
+  try {
+    const s = await api('/api/gh/status');
+    $('#ghStatus').textContent = s.available ? 'gh 已登录' : 'gh 未就绪';
+    $('#ghStatus').style.color = s.available ? '' : '#c00';
+  } catch (e) {
+    $('#ghStatus').textContent = 'gh 检查失败';
+  }
+}
+
+function renderGhOverview(r) {
+  const box = $('#ghOverview');
+  box.classList.remove('hidden');
+  $('#ghResults').classList.add('hidden');
+  const badge = [];
+  if (r.isPrivate) badge.push('private');
+  if (r.isArchived) badge.push('archived');
+  if (r.isFork) badge.push('fork');
+  const topics = r.topics && r.topics.length ? '<div class="muted" style="margin-top:6px">主题: ' + esc(r.topics.join(', ')) + '</div>' : '';
+  box.innerHTML = `
+    <div class="colhead">
+      <h3><a href="${esc(r.url)}" target="_blank">${esc(r.nameWithOwner)}</a> ${badge.length ? '<span class="muted">' + badge.join(' ') + '</span>' : ''}</h3>
+      <span class="muted">${esc(r.primaryLanguage || '-')}</span>
+    </div>
+    <div style="padding:12px 16px">
+      <div style="margin-bottom:8px">${esc(r.description || '（无描述）')}</div>
+      <div class="settings">
+        <dt>Stars</dt><dd>${r.stargazersCount}</dd>
+        <dt>Forks</dt><dd>${r.forkCount}</dd>
+        <dt>Watchers</dt><dd>${r.watchers}</dd>
+        <dt>Open Issues</dt><dd>${r.openIssues}</dd>
+        <dt>Open PRs</dt><dd>${r.pullRequests}</dd>
+        <dt>默认分支</dt><dd>${esc(r.defaultBranch || '-')}</dd>
+        <dt>License</dt><dd>${esc(r.license || '-')}</dd>
+        <dt>最新版本</dt><dd>${esc(r.latestRelease || '-')}</dd>
+        <dt>创建时间</dt><dd>${esc(String(r.createdAt || '').slice(0, 10))}</dd>
+        <dt>更新时间</dt><dd>${esc(String(r.updatedAt || '').slice(0, 10))}</dd>
+        <dt>推送时间</dt><dd>${esc(String(r.pushedAt || '').slice(0, 10))}</dd>
+        <dt>语言</dt><dd>${esc((r.languages || []).join(', ') || r.primaryLanguage || '-')}</dd>
+        ${r.homepageUrl ? '<dt>主页</dt><dd><a href="' + esc(r.homepageUrl) + '" target="_blank">' + esc(r.homepageUrl) + '</a></dd>' : ''}
+      </div>
+      ${topics}
+    </div>`;
+}
+
+function renderGhResults(list) {
+  const box = $('#ghResults');
+  box.classList.remove('hidden');
+  $('#ghOverview').classList.add('hidden');
+  const tbody = box.querySelector('tbody');
+  tbody.innerHTML = list.map((r) => `
+    <tr>
+      <td>${r.stargazersCount}</td>
+      <td>${esc(r.primaryLanguage || '-')}</td>
+      <td><a href="${esc(r.url)}" target="_blank" data-repo="${esc(r.nameWithOwner)}" class="gh-repo-link">${esc(r.nameWithOwner)}</a></td>
+      <td>${esc(r.description || '').slice(0, 60)}</td>
+      <td>${esc(String(r.updatedAt || '').slice(0, 10))}</td>
+    </tr>`).join('');
+}
+
+$('#ghViewBtn').addEventListener('click', () => guard(async () => {
+  const repo = $('#ghRepoInput').value.trim();
+  if (!repo) { toast('请输入 owner/repo'); return; }
+  const r = await api('/api/gh/view?repo=' + encodeURIComponent(repo));
+  renderGhOverview(r);
+}));
+
+$('#ghRepoInput').addEventListener('keydown', (e) => {
+  if (e.key === 'Enter') $('#ghViewBtn').click();
+});
+
+$('#ghSearchBtn').addEventListener('click', () => guard(async () => {
+  const q = $('#ghSearchInput').value.trim();
+  if (!q) { toast('请输入搜索关键词'); return; }
+  const limit = parseInt($('#ghSearchLimit').value, 10) || 10;
+  const list = await api('/api/gh/search?q=' + encodeURIComponent(q) + '&limit=' + limit);
+  renderGhResults(list);
+}));
+
+$('#ghSearchInput').addEventListener('keydown', (e) => {
+  if (e.key === 'Enter') $('#ghSearchBtn').click();
+});
+
+$('#ghMineBtn').addEventListener('click', () => guard(async () => {
+  const list = await api('/api/gh/mine?limit=30');
+  renderGhResults(list);
+}));
+
+// 点击搜索结果中的仓库名直接查看概览
+document.addEventListener('click', (e) => {
+  const link = e.target.closest('.gh-repo-link');
+  if (!link) return;
+  e.preventDefault();
+  guard(async () => {
+    const repo = link.dataset.repo;
+    $('#ghRepoInput').value = repo;
+    const r = await api('/api/gh/view?repo=' + encodeURIComponent(repo));
+    renderGhOverview(r);
   });
 });
 

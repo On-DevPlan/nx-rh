@@ -4,6 +4,7 @@ import { readFileSync } from 'node:fs';
 import * as repos from '../services/repos.js';
 import * as skills from '../services/skills.js';
 import * as bundled from '../services/bundled.js';
+import * as github from '../services/github.js';
 import { merge3 } from '../core/diff.js';
 import { storePathFromEnv } from '../core/paths.js';
 
@@ -88,6 +89,12 @@ const routes = [
 
   // ---- 设置 ----
   ['POST', /^\/api\/settings$/, (_m, _q, b) => skills.updateSettings(b)],
+
+  // ---- GitHub 连接器（= CLI: nx-rh gh ...） ----
+  ['GET', /^\/api\/gh\/status$/, () => github.ghStatus()],
+  ['GET', /^\/api\/gh\/view$/, (_m, q) => github.viewRepo(q.get('repo') || '')],
+  ['GET', /^\/api\/gh\/search$/, (_m, q) => github.searchRepos(q.get('q') || '', parseInt(q.get('limit'), 10) || 10)],
+  ['GET', /^\/api\/gh\/mine$/, (_m, q) => github.listMyRepos(parseInt(q.get('limit'), 10) || 30)],
 
   // ---- 工具原语 ----
   ['POST', /^\/api\/util\/merge$/, (_m, _q, b) => merge3(b.base, b.a, b.b, { a: b.labelA || 'ours', b: b.labelB || 'theirs' })],
