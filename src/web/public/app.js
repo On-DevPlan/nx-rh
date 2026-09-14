@@ -453,20 +453,13 @@ function bindSelCheck(containerId) {
 bindSelCheck('#centralList');
 bindSelCheck('#projectList');
 
-// 平台小按钮：开 = 同步到该平台；关 = 移除该平台下的副本/链接（至少保留一个平台）
+// 平台小按钮：开 = 同步到该平台；关 = 移除该平台下的副本/链接。
+// 链接可随意关闭（不影响实体锚点）；实体由服务端兜底：若会清零实体则返回 blocked。
 async function togglePlatform(btn) {
   const project = $('#projectSelect').value;
   if (!project) { toast('请先选择项目目录'); return; }
   const turningOff = btn.dataset.on === '1';
   const name = btn.dataset.name;
-  if (turningOff) {
-    const skill = state.projectSkills.find((x) => x.name === name);
-    const onIds = platformScope().filter((id) => (skill?.platforms || []).some((p) => p.id === id));
-    if (onIds.length <= 1) {
-      toast('至少保留一个平台；要移除整个 skill 请用「删除」按钮');
-      return;
-    }
-  }
   const body = { name, project, adapter: btn.dataset.adapter, enabled: !turningOff, force: false, mode: $('#syncMode').value };
   let r = await api('/api/skills/platform', { method: 'POST', body });
   if (r.status === 'conflict') {
@@ -474,6 +467,7 @@ async function togglePlatform(btn) {
     r = await api('/api/skills/platform', { method: 'POST', body: { ...body, force: true } });
   }
   if (r.status === 'conflict') { toast('仍有冲突，未覆盖'); return; }
+  if (r.status === 'blocked') { toast(r.reason); return; }
   const anchorNote = r.anchor?.converted ? `\n已自动物化「${r.anchor.converted.name}」作为实体锚点` : '';
   if (r.removed) toast(`${r.platform}：已关闭${anchorNote}`);
   else if (r.skipped) toast(`${r.platform}：已是最新`);

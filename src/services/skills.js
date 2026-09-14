@@ -623,8 +623,20 @@ export async function setPlatform({ name, project, adapter, enabled, mode, force
   if (!(await pathExists(dst))) {
     return { status: 'ok', skipped: true, platform: a.id, reason: '该平台本就没有此 skill' };
   }
-  // 先删，再检查：若删掉的是实体且项目里已无实体，自动物化其他软链接兜底
+  // 实体平台：若移除后项目将没有任何实体、且没有可物化的软链接，则阻止（保证至少一个实体）
   const ltOff = await detectLinkType(dst);
+  if (!ltOff) {
+    const rest = await scanProjectSkillsWithShape(projRoot);
+    const restReal = rest.filter((x) => !x.linkType && x.path !== dst);
+    const restLinks = rest.filter((x) => x.linkType && x.path !== dst);
+    if (!restReal.length && !restLinks.length) {
+      return {
+        status: 'blocked',
+        platform: a.id,
+        reason: '项目内已无其他实体 skill，也没有可转换的软链接；删除将导致没有任何实体，已阻止（请从中心同步或推送到中心后再操作）',
+      };
+    }
+  }
   await fsp.rm(dst, { recursive: true, force: true });
   const anchor = ltOff ? null : await ensureRealAnchor(projRoot, name);
   return { status: 'ok', removed: true, platform: a.id, path: dst, anchor };
