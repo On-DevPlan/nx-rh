@@ -7,20 +7,24 @@
 
 数据落在一个地方：用户目录下的单一 JSON 文件（`~/.nx-rh/store.json`），web 表单和 CLI 读写的是同一份。
 
-包管理器：pnpm。运行时：Node >= 18.17，零第三方依赖。
+包管理器：pnpm。运行时：Node >= 18.17（运行零依赖）；开发期依赖 Vite + React 构建面板。
 
 ## 快速开始
 
 ```bash
 # 开发模式（本仓库内）
-node bin/cli.mjs serve              # 默认 http://127.0.0.1:7800，自动打开浏览器
-node bin/cli.mjs serve --no-open    # 不打开浏览器
-pnpm start                          # 等价
+pnpm install                 # 安装开发依赖（vite / react）
+pnpm run dev:serve           # 起 API 服务（127.0.0.1:7800）
+pnpm run dev                 # 起 Vite dev server（127.0.0.1:5180，/api 代理到 7800）
+
+# 生产模式（构建产物，npx 零依赖运行）
+pnpm run build               # vite build → src/web/public/
+pnpm start                   # build + serve，默认 http://127.0.0.1:7800
 
 # 发布为 npm 包后
 npx nx-rh serve
 
-# 冒烟测试（33 项，临时存储，不碰用户目录）
+# 冒烟测试（构建 + 66 项，临时存储，不碰用户目录）
 pnpm test
 ```
 
@@ -29,7 +33,7 @@ pnpm test
 ```
 ┌─────────────┐        ┌─────────────┐
 │  Web 面板    │        │  agent CLI  │
-│ (原生 fetch) │        │  nx-rh ...  │
+│ React+Vite  │        │  nx-rh ...  │
 └──────┬──────┘        └──────┬──────┘
        │ /api/*               │ --json
        ▼                      ▼
@@ -62,12 +66,28 @@ src/
     skills.js            # skill 识别 / 软链接与复制同步 / 冲突 / 适配器
   cli/main.js            # 命令分发（每条命令 = 一个 service 函数）
   web/
-    server.js            # node:http 静态 + /api 路由
+    server.js            # node:http 静态 + /api 路由（零依赖，与前端框架无关）
     api.js               # 路由表（每条路由 = 一个 service 函数）
     open.js              # 跨平台打开浏览器
-    public/              # index.html / app.js / style.css（无构建步骤）
-tests/smoke.mjs          # 33 项全链路冒烟测试
+    frontend/            # React 源码（Vite root）
+      main.jsx           # 入口：Provider 组装
+      App.jsx            # 壳：tab 导航（注册表驱动）+ hash 路由
+      store.jsx          # 全局状态 + localStorage 持久化（视图/路径/多选勾选）
+      api/client.js      # fetch 封装
+      components/ui.jsx  # toast / dialog / modal / diff 渲染
+      views/
+        registry.js      # 视图注册表（新增面板 = 写组件 + 登记一行）
+        reposView.jsx    # 仓库页
+        skillsView.jsx   # Skill 页
+        githubView.jsx   # GitHub 页
+        settingsView.jsx # 设置页
+    public/              # vite build 产物（gitignore，发版/启动前构建）
+vite.config.js           # root=frontend，outDir=public，dev 模式 /api 代理到 7800
+tests/smoke.mjs          # 66 项全链路冒烟测试
 ```
+
+前端约定：无 emoji、黑白清晰、正常圆角；不用浏览器原生弹窗（alert/confirm/prompt 一律页内
+toast/dialog）；用户选择（当前视图、中心/项目路径、多选勾选）全部 localStorage 持久化，刷新不丢。
 
 ## 存储
 

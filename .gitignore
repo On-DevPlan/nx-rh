@@ -1,6 +1,8 @@
 # 依赖与产物
 node_modules/
-dist/
+
+# 前端构建产物（vite build 输出，serve 与发版前生成）
+src/web/public/
 *.log
 
 # 工作区私有数据
