@@ -69,12 +69,16 @@ try {
   // git 仓库状态：测试内自建 git fixture（不依赖 .claude/repo 参考克隆——CI 上不存在）
   const gitRepo = join(tmp, 'git-fixture');
   mkdirSync(gitRepo, { recursive: true });
-  for (const [cmd] of [
-    ['init', '-q'], ['config', 'user.email', 't@t'], ['config', 'user.name', 't'],
-  ]) spawnSync('git', [cmd], { cwd: gitRepo });
+  const gitStep = (args) => {
+    const r = spawnSync('git', args, { cwd: gitRepo, encoding: 'utf8' });
+    if (r.status !== 0) throw new Error('git fixture ' + args.join(' ') + ' 失败: ' + (r.stderr || '').trim());
+  };
+  gitStep(['init', '-q', '-b', 'main']);
+  gitStep(['config', 'user.email', 't@t']);
+  gitStep(['config', 'user.name', 't']);
   writeFileSync(join(gitRepo, 'a.txt'), 'a\n');
-  spawnSync('git', ['add', '.'], { cwd: gitRepo });
-  spawnSync('git', ['commit', '-qm', 'init'], { cwd: gitRepo });
+  gitStep(['add', '.']);
+  gitStep(['commit', '-qm', 'init']);
   check('repo add git repo', cli(['repo', 'add', gitRepo, '--name', 'git-ref']).status === 0);
   const statuses = cliJson(['repo', 'status']);
   const gitRow = Array.isArray(statuses) ? statuses.find((r) => r.name === 'git-ref') : null;
