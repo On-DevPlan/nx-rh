@@ -66,11 +66,18 @@ try {
   const list = cliJson(['repo', 'list']);
   check('repo list --json', Array.isArray(list) && list.length === 1 && list[0].name === 'central-repo');
 
-  // git 仓库状态（用参考克隆）
-  const skillsRepo = join(ROOT, '..', '.claude', 'repo', 'skills');
-  check('repo add git repo', cli(['repo', 'add', skillsRepo, '--name', 'skills-ref']).status === 0);
+  // git 仓库状态：测试内自建 git fixture（不依赖 .claude/repo 参考克隆——CI 上不存在）
+  const gitRepo = join(tmp, 'git-fixture');
+  mkdirSync(gitRepo, { recursive: true });
+  for (const [cmd] of [
+    ['init', '-q'], ['config', 'user.email', 't@t'], ['config', 'user.name', 't'],
+  ]) spawnSync('git', [cmd], { cwd: gitRepo });
+  writeFileSync(join(gitRepo, 'a.txt'), 'a\n');
+  spawnSync('git', ['add', '.'], { cwd: gitRepo });
+  spawnSync('git', ['commit', '-qm', 'init'], { cwd: gitRepo });
+  check('repo add git repo', cli(['repo', 'add', gitRepo, '--name', 'git-ref']).status === 0);
   const statuses = cliJson(['repo', 'status']);
-  const gitRow = Array.isArray(statuses) ? statuses.find((r) => r.name === 'skills-ref') : null;
+  const gitRow = Array.isArray(statuses) ? statuses.find((r) => r.name === 'git-ref') : null;
   check('git status 解析', !!gitRow && !!gitRow.git.branch && !gitRow.git.error, gitRow && gitRow.git.branch);
   const nonGit = Array.isArray(statuses) ? statuses.find((r) => r.name === 'central-repo') : null;
   check('非 git 目录状态容错', !!nonGit && !!nonGit.git.error);
