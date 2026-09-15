@@ -78,7 +78,8 @@ try {
   check('repo add git repo', cli(['repo', 'add', gitRepo, '--name', 'git-ref']).status === 0);
   const statuses = cliJson(['repo', 'status']);
   const gitRow = Array.isArray(statuses) ? statuses.find((r) => r.name === 'git-ref') : null;
-  check('git status 解析', !!gitRow && !!gitRow.git.branch && !gitRow.git.error, gitRow && gitRow.git.branch);
+  check('git status 解析', !!gitRow && !!gitRow.git.branch && !gitRow.git.error,
+    gitRow ? `branch=${gitRow.git.branch} err=${gitRow.git.error}` : 'gitRow=null（git-ref 未出现在 status 列表）');
   const nonGit = Array.isArray(statuses) ? statuses.find((r) => r.name === 'central-repo') : null;
   check('非 git 目录状态容错', !!nonGit && !!nonGit.git.error);
 
