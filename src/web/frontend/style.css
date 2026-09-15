@@ -230,6 +230,17 @@ td.ops .btn { margin: 0 3px 3px 0; }
 .muted { color: var(--mid); }
 .bad { font-weight: 700; }
 
+/* ---------- 点击即复制的路径/标识 ---------- */
+.copyable {
+  cursor: copy;
+  border-bottom: 1px dashed transparent;
+  transition: border-color 0.12s, color 0.12s;
+}
+.copyable:hover { border-bottom-color: var(--mid); }
+.copyable:active { color: var(--ink); }
+/* 适配器总表里多个可复制项并排 */
+dd .adapter-dir { display: inline-block; margin-right: 14px; }
+
 /* ---------- 设置页 ---------- */
 .settings { display: grid; grid-template-columns: 120px 1fr; gap: 10px 16px; align-items: center; }
 .settings dt { color: var(--mid); font-size: 12px; }

@@ -2,7 +2,7 @@
 import { useState } from 'react';
 import { api } from '../api/client.js';
 import { useStore } from '../store.jsx';
-import { useToast, useGuard, useDialog } from '../components/ui.jsx';
+import { useToast, useGuard, useDialog, Copyable } from '../components/ui.jsx';
 
 function shortLabel(adapterId, adapters) {
   const a = adapters.find((x) => x.id === adapterId);
@@ -74,7 +74,7 @@ export default function SettingsView() {
 
   const candidateRows = (list, kind) => list.length ? list.map((p) => (
     <div key={p} className="row">
-      <span className="mono">{p}</span>
+      <Copyable className="mono" text={p}>{p}</Copyable>
       <span className="acts">
         <button className="btn small ghost" onClick={() => removeCandidate(kind, p)}>移除</button>
       </span>
@@ -136,8 +136,8 @@ export default function SettingsView() {
               <option value="copy">复制</option>
             </select>
           </dd>
-          <dt>适配器总表</dt><dd className="mono">{adapters.map((a) => `${a.id} = ${a.dir}`).join('   ')}</dd>
-          <dt>存储文件</dt><dd className="mono">{boot?.storePath}</dd>
+          <dt>适配器总表</dt><dd className="mono">{adapters.map((a) => <Copyable key={a.id} className="adapter-dir" text={a.dir} title={`点击复制 ${a.id} 目录`}>{a.id} = {a.dir}</Copyable>)}</dd>
+          <dt>存储文件</dt><dd className="mono"><Copyable text={boot?.storePath}>{boot?.storePath}</Copyable></dd>
           <dt>面板端口</dt><dd>默认 7800（<code>nx-rh serve --port</code> 可改，仅绑定 127.0.0.1）</dd>
         </div>
       </div>

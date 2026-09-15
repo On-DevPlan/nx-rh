@@ -1,7 +1,7 @@
 // GitHub 页：gh CLI 连接器（概览 / 搜索 / 我的仓库）。
 import { useState } from 'react';
 import { api } from '../api/client.js';
-import { useGuard } from '../components/ui.jsx';
+import { useGuard, Copyable } from '../components/ui.jsx';
 
 export default function GithubView() {
   const guard = useGuard();
@@ -84,6 +84,7 @@ export default function GithubView() {
               <dt>推送时间</dt><dd>{fmtDate(overview.pushedAt)}</dd>
               <dt>语言</dt><dd>{(overview.languages || []).join(', ') || overview.primaryLanguage || '-'}</dd>
               {overview.homepageUrl ? <><dt>主页</dt><dd><a href={overview.homepageUrl} target="_blank" rel="noreferrer">{overview.homepageUrl}</a></dd></> : null}
+              <dt>仓库地址</dt><dd className="mono"><Copyable text={overview.url}>{overview.url}</Copyable></dd>
             </div>
             {overview.topics?.length ? <div className="muted" style={{ marginTop: 6 }}>主题: {overview.topics.join(', ')}</div> : null}
           </div>

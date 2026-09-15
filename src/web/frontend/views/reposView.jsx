@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { api } from '../api/client.js';
 import { useStore } from '../store.jsx';
-import { useGuard, useDialog, Modal, DiffPre } from '../components/ui.jsx';
+import { useGuard, useDialog, Modal, DiffPre, Copyable } from '../components/ui.jsx';
 
 function statusCell(g) {
   if (!g) return <span className="muted">未刷新</span>;
@@ -77,8 +77,6 @@ export default function ReposView() {
       await refreshStatuses();
     } else if (act === 'open') {
       await api('/api/repos/open', { method: 'POST', body: { id: r.id } });
-    } else if (act === 'copy') {
-      try { await navigator.clipboard.writeText(r.path); } catch { /* 剪贴板不可用时静默 */ }
     } else if (act === 'del') {
       const ok = await dialog({
         message: `删除仓库登记「${r.name}」？（仅移除登记，磁盘文件不受影响）`,
@@ -126,16 +124,15 @@ export default function ReposView() {
                     {r.name}
                     {r.desc ? <div className="muted" style={{ fontSize: 11 }}>{r.desc}</div> : null}
                   </td>
-                  <td className="path">{r.path}</td>
+                  <td className="path"><Copyable text={r.path}>{r.path}</Copyable></td>
                   <td>{r.tags.map((t) => <span key={t} className="tag">{t}</span>)}</td>
-                  <td className="mono">{g?.branch || '-'}</td>
+                  <td className="mono"><Copyable text={g?.branch || '-'} title="点击复制分支名">{g?.branch || '-'}</Copyable></td>
                   <td>{statusCell(g)}</td>
                   <td className="ops">
                     {['diff', 'pull', 'push'].map((a) => (
                       <button key={a} className="btn small ghost" onClick={() => rowAct(a, r)}>{a}</button>
                     ))}
                     <button className="btn small ghost" onClick={() => rowAct('open', r)}>打开</button>
-                    <button className="btn small ghost" onClick={() => rowAct('copy', r)}>复制路径</button>
                     <button className="btn small ghost" onClick={() => rowAct('del', r)}>删除</button>
                   </td>
                 </tr>

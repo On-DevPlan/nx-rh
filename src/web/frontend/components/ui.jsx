@@ -38,6 +38,40 @@ export function useGuard() {
   }, [toast]);
 }
 
+// ---- 点击即复制：所有路径/长标识的展示标准 ----
+// 点一下复制全文；hover 显示「点击复制」提示；复制成功 toast 确认。
+export function Copyable({ text, className = '', title, children }) {
+  const toast = useToast();
+  const copy = async () => {
+    const v = String(text ?? '');
+    try {
+      await navigator.clipboard.writeText(v);
+      toast('已复制: ' + (v.length > 60 ? v.slice(0, 57) + '...' : v));
+    } catch {
+      // 剪贴板 API 不可用（非安全上下文等）：退回 execCommand
+      try {
+        const ta = document.createElement('textarea');
+        ta.value = v;
+        ta.style.cssText = 'position:fixed;opacity:0';
+        document.body.appendChild(ta);
+        ta.select();
+        document.execCommand('copy');
+        ta.remove();
+        toast('已复制: ' + (v.length > 60 ? v.slice(0, 57) + '...' : v));
+      } catch {
+        toast('复制失败（剪贴板不可用）');
+      }
+    }
+  };
+  return (
+    <span
+      className={'copyable' + (className ? ' ' + className : '')}
+      title={title || '点击复制'}
+      onClick={copy}
+    >{children !== undefined ? children : text}</span>
+  );
+}
+
 // ---- 对话框：确认 / 输入（Promise 风格，对应 vanilla 版 dialog()） ----
 
 export function useDialog() {

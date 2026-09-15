@@ -2,7 +2,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { api } from '../api/client.js';
 import { useStore } from '../store.jsx';
-import { useToast, useGuard, useDialog, Modal, DiffPre } from '../components/ui.jsx';
+import { useToast, useGuard, useDialog, Modal, DiffPre, Copyable } from '../components/ui.jsx';
 
 function shortLabel(adapterId, adapters) {
   const a = adapters.find((x) => x.id === adapterId);
@@ -288,7 +288,7 @@ export default function SkillsView() {
             {centralSkills.length ? centralSkills.map((c) => (
               <div key={c.name} className="row">
                 <input type="checkbox" checked={selCentral.has(c.name)} onChange={() => toggleSel('selCentral', c.name)} />
-                <span className="name">{c.name}</span>
+                <Copyable className="name" text={c.name} title="点击复制 skill 名">{c.name}</Copyable>
                 <span className="desc">{c.description}</span>
                 {relationTag(c)}
                 <span className="acts">
@@ -311,7 +311,7 @@ export default function SkillsView() {
               return (
                 <div key={s.name} className="row">
                   <input type="checkbox" checked={selProject.has(s.name)} onChange={() => toggleSel('selProject', s.name)} />
-                  <span className="name">{s.name}</span>
+                  <Copyable className="name" text={s.name} title="点击复制 skill 名">{s.name}</Copyable>
                   {projectStateTag(s)}
                   <span className="plats">
                     {scope.map((id) => {
@@ -349,7 +349,7 @@ export default function SkillsView() {
               const mark = { same: '一致', linked: '链接', differ: '冲突', 'only-central': '仅中心', 'only-project': '仅项目' }[r.state];
               return (
                 <div key={r.name} className="row">
-                  <span className="name">{r.name}</span>
+                  <Copyable className="name" text={r.name} title="点击复制 skill 名">{r.name}</Copyable>
                   <span className="desc">{r.description}</span>
                   {r.platforms.length ? (
                     <span className="plats">{r.platforms.map((p) => <span key={p.id} className="pill on">{shortLabel(p.id, adapters)}</span>)}</span>
