@@ -181,7 +181,7 @@ curl -s -o /dev/null -w "%{http_code} %{content_type}\n" http://localhost:5180/a
     "dev:serve": "node bin/<name>.mjs serve --no-open",
     "build": "vite build",
     "start": "pnpm run build && node bin/<name>.mjs serve",
-    "test": "pnpm run lint && pnpm run build && node tests/smoke.mjs && node --test \"tests/unit/*.test.mjs\""
+    "test": "pnpm run lint && pnpm run build && node tests/smoke.mjs && node --test tests/unit/*.test.mjs"
   }
 }
 ```
@@ -225,6 +225,8 @@ curl -s -o /dev/null -w "%{http_code} %{content_type}\n" http://localhost:5180/a
 | serve 只用 dev 模式验证 | 打包后白屏 | `pnpm start` 必须能在干净环境跑通 |
 | **代理前缀与前端源码目录同名**（`/api` vs `src/.../api/`） | dev 模式整页白屏，报错却是 `ECONNREFUSED` 或 404，离根因很远 | 代理加 `bypass` 分流；单测钉住（见上节） |
 | 反过来只用 `pnpm start` 验证、从不开 dev | 代理分流这类只影响 dev 的 bug 长期潜伏 | 交付前**两种模式都跑一遍** |
+| **`node --test "tests/unit/*.test.mjs"` 带引号** | Node 20 不支持 glob，sh 也不展开引号内容 → CI 报 `Could not find '.../\*.test.mjs'`，本地却过（Node 22+ 会自己展开） | **去掉引号**：sh 会展开成文件列表，任何 node 版本都能跑。或把 CI 的 node 提到 22 |
+| 本地 `pnpm test` 绿、CI 红 | 多半是 Node 版本差异（本地 24 / CI 20） | CI 的 node-version 与本机对齐，别让它长期落后 |
 | 忘记把 `public/` 加进 `.gitignore` | 构建产物入库，冲突不断 | 产物、`node_modules`、临时工具目录都忽略 |
 | 用了 `node:test` 却没写 `engines` | 老版本 Node 上直接崩 | 声明 `engines.node` |
 | 零依赖原则中途破功 | npx 首次下载变慢，体验毁掉 | 需要编译的依赖一律不做，改用系统已有 CLI |
