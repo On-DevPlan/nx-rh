@@ -1,8 +1,9 @@
 // Skill 页：中心 <-> 项目两侧列表、多选勾选（持久化）、平台 pill、比较、冲突选侧。
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { api } from '../api/client.js';
-import { useStore } from '../store.jsx';
-import { useToast, useGuard, useDialog, Modal, DiffPre, Copyable } from '../components/ui.jsx';
+import { api } from '../../web/frontend/api/client.js';
+import { useStore } from '../../web/frontend/store.jsx';
+import { useToast, useGuard, useDialog, Modal, DiffPre, Copyable } from '../../web/frontend/components/ui.jsx';
+import { CliHints } from '../../web/frontend/components/CliHints.jsx';
 
 function shortLabel(adapterId, adapters) {
   const a = adapters.find((x) => x.id === adapterId);
@@ -86,7 +87,7 @@ export default function SkillsView() {
       input: true,
     });
     if (!p) return;
-    const list = await api('/api/candidates', { method: 'POST', body: { kind, path: p } });
+    const list = await api(`/api/skills/${kind}`, { method: 'POST', body: { path: p } });
     const newBoot = await api('/api/bootstrap');
     patchUi(kind === 'central'
       ? { central: list[list.length - 1] || '' }
@@ -105,7 +106,7 @@ export default function SkillsView() {
     if (!cur) return;
     const ok = await dialog({ message: `从候选移除${kind === 'central' ? '中心仓库' : '项目目录'}？\n${cur}\n（仅移出列表，不动磁盘）`, danger: true });
     if (!ok) return;
-    const list = await api('/api/candidates', { method: 'POST', body: { kind, path: cur, remove: true } });
+    const list = await api(`/api/skills/${kind}`, { method: 'DELETE', body: { path: cur } });
     if (kind === 'central') {
       patchUi({ central: list[0] || '' });
       await api('/api/settings', { method: 'POST', body: { skillCentralPath: list[0] || '' } });
@@ -180,7 +181,7 @@ export default function SkillsView() {
       danger: true,
     });
     if (!ok) return;
-    const r = await api('/api/skills/remove-project', { method: 'POST', body: { name, project: ui.project } });
+    const r = await api('/api/skills/remove', { method: 'POST', body: { name, project: ui.project } });
     const anchorNote = r.anchor?.converted ? `\n已自动物化「${r.anchor.converted.name}」作为实体锚点` : '';
     toast(r.removed.length ? `已删除（${r.removed.map((x) => x.platform).join(', ')}）${anchorNote}` : r.reason);
     await loadSkills();
@@ -306,7 +307,6 @@ export default function SkillsView() {
           <div className="card list">
             {projectSkills.length ? projectSkills.map((s) => {
               const scope = pillScope(s, projectSkills, settings, adapters);
-              const on = new Set((s.platforms || []).map((p) => p.id));
               const isLink = (s.platforms || []).some((p) => p.linkType);
               return (
                 <div key={s.name} className="row">
@@ -365,9 +365,7 @@ export default function SkillsView() {
         </div>
       ) : null}
 
-      <div className="cli-hint">
-        CLI 等价：nx-rh skill compare --central C --project P · nx-rh skill platform-set &lt;name&gt; --project P --adapter A [--off] · nx-rh skill sync &lt;name&gt; --project P
-      </div>
+      <CliHints module="skills" />
 
       {modal ? <Modal title={modal.title} onClose={() => setModal(null)}>{modal.node}</Modal> : null}
       {dialogNode}

@@ -1,6 +1,6 @@
-// 通用 UI 件：toast、对话框、弹窗、pill、diff 渲染。
+// 通用 UI 件：toast、对话框、弹窗、错误边界、diff 渲染。
 // 约定延续自 vanilla 版：无 emoji、不用浏览器原生弹窗（alert/confirm/prompt 一律页内实现）。
-import { createContext, useCallback, useContext, useEffect, useRef, useState } from 'react';
+import { Component, createContext, useCallback, useContext, useEffect, useRef, useState } from 'react';
 
 // ---- toast：页内轻提示（自动消失） ----
 
@@ -76,6 +76,10 @@ export function Copyable({ text, className = '', title, children }) {
 
 export function useDialog() {
   const [state, setState] = useState(null); // {resolve, ...opts}
+  // 用 ref 读输入框，而不是 document.querySelector('.dlg-input')——
+  // 后者绕开 React 直接摸 DOM，页面上有第二个同名类名时就会读错。
+  const inputRef = useRef(null);
+
   const close = useCallback((val) => {
     setState((s) => { if (s && s.resolve) s.resolve(val); return null; });
   }, []);
@@ -91,6 +95,7 @@ export function useDialog() {
         {state.message ? <div className="dlg-msg">{state.message}</div> : null}
         {state.input ? (
           <input
+            ref={inputRef}
             className="dlg-input"
             autoFocus
             spellCheck="false"
@@ -106,10 +111,7 @@ export function useDialog() {
           <button className="btn ghost" onClick={() => close(null)}>取消</button>
           <button
             className={'btn' + (state.danger ? ' danger' : '')}
-            onClick={() => {
-              const inp = document.querySelector('.dlg-input');
-              close(state.input ? (inp ? inp.value.trim() : null) : true);
-            }}
+            onClick={() => close(state.input ? (inputRef.current?.value.trim() ?? null) : true)}
           >
             {state.okText || '确定'}
           </button>
@@ -119,6 +121,39 @@ export function useDialog() {
   ) : null;
 
   return { dialog, node };
+}
+
+// ---- 错误边界：把崩溃限制在单个视图内 ----
+// 视图都是 lazy() 加载的，没有这层兜底时，任何一个视图抛错（或 chunk 加载失败）
+// 都会让整个面板白屏，用户连切到别的 tab 自救都做不到。
+
+export class ErrorBoundary extends Component {
+  constructor(props) {
+    super(props);
+    this.state = { error: null };
+  }
+
+  static getDerivedStateFromError(error) {
+    return { error };
+  }
+
+  componentDidCatch(error, info) {
+    console.error('[nx-rh] 视图渲染失败:', error, info);
+  }
+
+  render() {
+    if (!this.state.error) return this.props.children;
+    return (
+      <div className="card" style={{ padding: 16 }}>
+        <div className="colhead"><h3>这个面板出错了</h3></div>
+        <div className="dlg-msg">{String(this.state.error?.message || this.state.error)}</div>
+        <div className="muted" style={{ marginBottom: 10 }}>
+          其他面板不受影响，可以切到别的 tab 继续操作；控制台有完整堆栈。
+        </div>
+        <button className="btn" onClick={() => this.setState({ error: null })}>重试</button>
+      </div>
+    );
+  }
 }
 
 // ---- 弹窗：大块内容（diff / 冲突详情 / 命令输出） ----

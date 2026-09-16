@@ -1,8 +1,9 @@
 // 设置页：中心/项目候选管理、平台范围、同步模式、适配器总表。
 import { useState } from 'react';
-import { api } from '../api/client.js';
-import { useStore } from '../store.jsx';
-import { useToast, useGuard, useDialog, Copyable } from '../components/ui.jsx';
+import { api } from '../../web/frontend/api/client.js';
+import { useStore } from '../../web/frontend/store.jsx';
+import { useToast, useGuard, useDialog, Copyable } from '../../web/frontend/components/ui.jsx';
+import { CliHints } from '../../web/frontend/components/CliHints.jsx';
 
 function shortLabel(adapterId, adapters) {
   const a = adapters.find((x) => x.id === adapterId);
@@ -23,7 +24,7 @@ export default function SettingsView() {
   const addCandidate = (kind) => guard(async () => {
     const p = (kind === 'central' ? centralInput : projectInput).trim();
     if (!p) { toast(kind === 'central' ? '请输入中心仓库路径' : '请输入项目根目录'); return; }
-    const list = await api('/api/candidates', { method: 'POST', body: { kind, path: p } });
+    const list = await api(`/api/skills/${kind}`, { method: 'POST', body: { path: p } });
     if (kind === 'central') {
       setCentralInput('');
       await api('/api/settings', { method: 'POST', body: { skillCentralPath: list[list.length - 1] } });
@@ -37,7 +38,7 @@ export default function SettingsView() {
   const removeCandidate = (kind, path) => guard(async () => {
     const ok = await dialog({ message: `移除候选？\n${path}`, danger: true });
     if (!ok) return;
-    const list = await api('/api/candidates', { method: 'POST', body: { kind, path, remove: true } });
+    const list = await api(`/api/skills/${kind}`, { method: 'DELETE', body: { path } });
     if (kind === 'central' && settings.skillCentralPath === path) {
       await api('/api/settings', { method: 'POST', body: { skillCentralPath: list[0] || '' } });
       patchUi({ central: list[0] || '' });
@@ -141,6 +142,9 @@ export default function SettingsView() {
           <dt>面板端口</dt><dd>默认 7800（<code>nx-rh serve --port</code> 可改，仅绑定 127.0.0.1）</dd>
         </div>
       </div>
+
+      <CliHints module="settings" />
+
       {dialogNode}
     </>
   );

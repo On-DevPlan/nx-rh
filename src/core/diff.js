@@ -100,8 +100,6 @@ export function unifiedDiff(aText, bText, aName = 'a', bName = 'b') {
 // 两侧同时变更且不同 -> 输出 <<<<<<< / ======= / >>>>>>> 冲突块。
 export function merge3(baseText, aText, bText, labels = { a: 'ours', b: 'theirs' }) {
   const base = String(baseText ?? '').split('\n');
-  const a = String(aText ?? '').split('\n');
-  const b = String(bText ?? '').split('\n');
 
   const hA = hunksAgainst(base, diffOps(baseText, aText));
   const hB = hunksAgainst(base, diffOps(baseText, bText));

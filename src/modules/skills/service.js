@@ -1,192 +1,18 @@
 // Skill 管理 service：中心仓库 <-> 项目两侧的识别、软链接/复制同步、冲突分析。
 // 链接算法移植自 vercel-labs/skills 的 installer.ts（junction/权限降级/自指防护），
 // 业务语义（中心仓库 + 分组）延续 br_controller 的 fileops.go 设计。
-import { basename, dirname, isAbsolute, join, relative, resolve } from 'node:path';
+import { basename, dirname, isAbsolute, join, resolve } from 'node:path';
 import fsp from 'node:fs/promises';
-import { createHash } from 'node:crypto';
-import { loadStore, mutateStore, ARRAY_SETTINGS } from '../core/store.js';
-import { unifiedDiff } from '../core/diff.js';
+import { unifiedDiff } from '../../core/diff.js';
+import { exists, pathExists, md5Of, diffTrees } from '../../core/fstree.js';
+import { parseFrontmatter } from '../../core/frontmatter.js';
+import { detectLinkType, createSkillLink, sameRealPath } from '../../core/link.js';
+import { assertSafeName, assertSafeRelPath } from '../../core/paths.js';
+import { badInput, notFound } from '../../core/errors.js';
+import { ADAPTERS } from './adapters.js';
+import { centralPath, getSettings } from '../settings/service.js';
 
-// ─── 适配器表（平台适配） ───────────────────────────────────────────
-// universal: 直接读 .agents/skills，无需为它建链接（vercel skills 的核心概念）
-export const ADAPTERS = [
-  { id: 'claude-code', name: 'Claude Code', dir: '.claude/skills', globalDir: '.claude/skills', universal: false },
-  { id: 'agents', name: 'Universal (.agents)', dir: '.agents/skills', globalDir: '.agents/skills', universal: true },
-  { id: 'cursor', name: 'Cursor', dir: '.cursor/skills', globalDir: '.cursor/skills', universal: false },
-  { id: 'codex', name: 'Codex', dir: '.codex/skills', globalDir: '.codex/skills', universal: false },
-  { id: 'gemini-cli', name: 'Gemini CLI', dir: '.gemini/skills', globalDir: '.gemini/skills', universal: false },
-  { id: 'copilot', name: 'GitHub Copilot', dir: '.copilot/skills', globalDir: '.copilot/skills', universal: false },
-  { id: 'windsurf', name: 'Windsurf', dir: '.windsurf/skills', globalDir: '.codeium/windsurf/skills', universal: false },
-  { id: 'codebuddy', name: 'CodeBuddy', dir: '.codebuddy/skills', globalDir: '.codebuddy/skills', universal: false },
-  { id: 'iflow-cli', name: 'iFlow CLI', dir: '.iflow/skills', globalDir: '.iflow/skills', universal: false },
-];
-
-export function listAdapters() {
-  return ADAPTERS.map((a) => ({ ...a }));
-}
-
-async function exists(p) {
-  try {
-    await fsp.access(p);
-    return true;
-  } catch {
-    return false;
-  }
-}
-
-// lstat 存在性：不跟随链接——悬空链接（目标已被删）也算存在，才能被识别与删除
-async function pathExists(p) {
-  try {
-    await fsp.lstat(p);
-    return true;
-  } catch {
-    return false;
-  }
-}
-
-function md5Of(buf) {
-  return createHash('md5').update(buf).digest('hex');
-}
-
-// 名称安全校验：拒绝路径穿越（保留中文等合法命名，与 fileops.go 语义一致）
-export function assertSafeName(name) {
-  if (!name || typeof name !== 'string' || /[\\/]/.test(name) || name.includes('..') || name.startsWith('.')) {
-    throw new Error('非法 skill 名称: ' + name);
-  }
-  return name;
-}
-
-// ─── 设置 ──────────────────────────────────────────────────────────
-
-export async function getSettings() {
-  return (await loadStore()).settings;
-}
-
-function toArray(v) {
-  if (Array.isArray(v)) return v.map((x) => String(x).trim()).filter(Boolean);
-  if (typeof v === 'string') return v.split(',').map((x) => x.trim()).filter(Boolean);
-  return [];
-}
-
-export async function updateSettings(patch) {
-  return mutateStore((s) => {
-    for (const [k, v] of Object.entries(patch || {})) {
-      if (k === 'skillCentralPath') {
-        const p = resolve(String(v || ''));
-        s.settings.skillCentralPath = v ? p : '';
-        if (v && !s.settings.skillCentralCandidates.some((c) => c.toLowerCase() === p.toLowerCase())) {
-          s.settings.skillCentralCandidates.push(p);
-        }
-        continue;
-      }
-      if (ARRAY_SETTINGS.includes(k)) {
-        s.settings[k] = toArray(v);
-        continue;
-      }
-      if (v !== undefined) s.settings[k] = String(v);
-    }
-    if (s.settings.skillSyncMode !== 'copy') s.settings.skillSyncMode = 'symlink';
-    if (!s.settings.platforms.length) s.settings.platforms = ['claude-code'];
-    return { ...s.settings };
-  });
-}
-
-// 记住一个项目目录，供 UI 下拉多选项使用
-export async function addProjectCandidate(path) {
-  if (!path) return (await loadStore()).settings.skillProjectCandidates;
-  return mutateStore((s) => {
-    const abs = resolve(String(path));
-    if (!s.settings.skillProjectCandidates.some((p) => p.toLowerCase() === abs.toLowerCase())) {
-      s.settings.skillProjectCandidates.push(abs);
-    }
-    return [...s.settings.skillProjectCandidates];
-  });
-}
-
-// 移除一个项目目录候选（仅从列表移除，不动磁盘/登记）
-export async function removeProjectCandidate(path) {
-  return mutateStore((s) => {
-    const abs = resolve(String(path));
-    s.settings.skillProjectCandidates = s.settings.skillProjectCandidates.filter(
-      (p) => p.toLowerCase() !== abs.toLowerCase()
-    );
-    return [...s.settings.skillProjectCandidates];
-  });
-}
-
-export async function getCentralPath() {
-  const s = await loadStore();
-  if (!s.settings.skillCentralPath) {
-    throw new Error('未设置 skill 中心仓库路径（nx-rh skill central <path>）');
-  }
-  return resolve(s.settings.skillCentralPath);
-}
-
-export async function setCentralPath(path) {
-  if (!path) throw new Error('path 不能为空');
-  await updateSettings({ skillCentralPath: resolve(String(path)) });
-  return { skillCentralPath: resolve(String(path)) };
-}
-
-// ─── SKILL.md 解析（与 fileops.go / gitimporter.go 同语义，另修 CRLF） ──
-// 关键点：Windows 上 SKILL.md 通常是 CRLF，先归一化换行再逐行解析，
-// 否则 JS 正则的 `$`（非 multiline）无法匹配行尾残留的 \r，name/description 会全部丢失。
-
-function parseFrontmatter(raw) {
-  const content = String(raw ?? '')
-    .replace(/^\uFEFF/, '')
-    .replace(/\r\n?/g, '\n');
-  const m = /^---[ \t]*\n([\s\S]*?)\n---[ \t]*(\n|$)/.exec(content);
-  if (!m) return { name: '', description: '' };
-  const lines = m[1].split('\n');
-  return {
-    name: readField(lines, 'name').trim(),
-    description: readField(lines, 'description').trim(),
-  };
-}
-
-// 去掉包裹的成对引号
-function unquote(v) {
-  const s = v.trim();
-  if (s.length >= 2 && ((s.startsWith('"') && s.endsWith('"')) || (s.startsWith("'") && s.endsWith("'")))) {
-    return s.slice(1, -1).trim();
-  }
-  return s;
-}
-
-// 读取 frontmatter 字段：支持单行值、引号值、| / > 块标量、以及缩进续行
-function readField(lines, key) {
-  const re = new RegExp('^' + key + ':[ \\t]*(.*)$');
-  for (let i = 0; i < lines.length; i++) {
-    const m = re.exec(lines[i]);
-    if (!m) continue;
-    const rawVal = m[1].trim();
-    const isBlock = /^[|>][-+]?$/.test(rawVal);
-    if (!isBlock && rawVal !== '') return unquote(rawVal);
-
-    // 块标量或空值：收集后续缩进行（YAML 多行标量）
-    const block = [];
-    for (let j = i + 1; j < lines.length; j++) {
-      const l = lines[j];
-      if (l.trim() === '') {
-        block.push('');
-        continue;
-      }
-      if (!/^[ \t]/.test(l)) break;
-      block.push(stripIndent(l));
-    }
-    const text = block.join('\n').trim();
-    if (text) return rawVal.startsWith('>') ? text.replace(/\s*\n\s*/g, ' ').trim() : text;
-    return unquote(rawVal);
-  }
-  return '';
-}
-
-function stripIndent(l) {
-  if (l.startsWith('  ')) return l.slice(2);
-  if (l.startsWith('\t')) return l.slice(1);
-  return l.replace(/^[ \t]+/, '');
-}
+// 平台适配器表见 ./adapters.js；设置读写见 ../settings/service.js（基础模块，单向只读依赖）。
 
 async function readSkill(dir) {
   const mdPath = join(dir, 'SKILL.md');
@@ -204,18 +30,6 @@ async function readSkill(dir) {
   };
 }
 
-// 链接类型检测：symlink / junction（启发式与 fileops.go 一致）
-async function detectLinkType(p) {
-  const lst = await fsp.lstat(p).catch(() => null);
-  if (!lst) return '';
-  if (lst.isSymbolicLink()) return 'symlink';
-  if (process.platform === 'win32' && lst.isDirectory()) {
-    const st = await fsp.stat(p).catch(() => null);
-    if (st && (lst.dev !== st.dev || lst.ino !== st.ino)) return 'junction';
-  }
-  return '';
-}
-
 // ─── 两侧扫描 ──────────────────────────────────────────────────────
 
 // 中心仓库布局：根目录下直接是 skill 目录；兼容早期的 {central}/skills/<name>（只读）
@@ -229,7 +43,7 @@ async function centralSkillDir(central, name) {
 
 export async function listSkills(side = 'central', explicitPath) {
   if (side === 'central') {
-    const central = explicitPath ? resolve(String(explicitPath)) : await getCentralPath();
+    const central = explicitPath ? resolve(String(explicitPath)) : await centralPath();
     // rel 为空 = 根目录直接是 skill；skills/ 子目录为旧布局兼容
     return scanRoot(central, [
       { id: 'central', rel: '' },
@@ -237,7 +51,7 @@ export async function listSkills(side = 'central', explicitPath) {
     ]);
   }
   if (side === 'project') {
-    if (!explicitPath) throw new Error('project 路径不能为空');
+    if (!explicitPath) throw badInput('project 路径不能为空');
     const root = resolve(String(explicitPath));
     const list = await scanRoot(root, ADAPTERS.map((a) => ({ id: a.id, rel: a.dir })));
     // 附带"该 skill 存在于哪些平台（适配器）"的信息，供平台小按钮渲染
@@ -252,7 +66,7 @@ export async function listSkills(side = 'central', explicitPath) {
     }
     return list;
   }
-  throw new Error('side 必须是 central 或 project');
+  throw badInput('side 必须是 central 或 project');
 }
 
 async function scanRoot(root, locations) {
@@ -296,98 +110,7 @@ async function scanRoot(root, locations) {
   return out;
 }
 
-// ─── 链接创建（移植 vercel-labs/skills installer.ts 的关键防护） ────
-
-function samePath(a, b) {
-  if (!a || !b) return false;
-  const na = resolve(a);
-  const nb = resolve(b);
-  return process.platform === 'win32' ? na.toLowerCase() === nb.toLowerCase() : na === nb;
-}
-
-// 父目录本身是软链时，解析出"真实父目录 + 原文件名"，防止相对链接算错
-async function resolveParentSymlinks(p) {
-  const abs = resolve(p);
-  try {
-    return join(await fsp.realpath(dirname(abs)), basename(abs));
-  } catch {
-    return abs;
-  }
-}
-
-export async function createSkillLink(target, linkPath) {
-  try {
-    const absT = resolve(target);
-    const absL = resolve(linkPath);
-
-    // 防自指：双方 realpath 相同视为已就绪（避免 rm -rf 删掉源）
-    const realT = await fsp.realpath(absT).catch(() => absT);
-    const realL = await fsp.realpath(absL).catch(() => absL);
-    if (samePath(realT, realL)) return { ok: true, linkType: '', already: true };
-
-    const realT2 = await resolveParentSymlinks(absT);
-    const realL2 = await resolveParentSymlinks(absL);
-    if (samePath(realT2, realL2)) return { ok: true, linkType: '', already: true };
-
-    // 清理旧目标：链接只删本体，实体目录递归删除
-    try {
-      const st = await fsp.lstat(absL);
-      if (st.isSymbolicLink()) await fsp.rm(absL, { force: true });
-      else await fsp.rm(absL, { recursive: true, force: true });
-    } catch {
-      // ENOENT：目标不存在，直接创建
-    }
-
-    await fsp.mkdir(dirname(absL), { recursive: true });
-
-    if (process.platform === 'win32') {
-      // junction 不需要开发者模式/管理员；要求绝对目标
-      await fsp.symlink(realT2, absL, 'junction');
-      return { ok: true, linkType: 'junction' };
-    }
-    // POSIX：相对目标，整目录搬迁后链接仍有效
-    const rel = relative(await resolveParentSymlinks(dirname(absL)), realT2);
-    await fsp.symlink(rel, absL);
-    return { ok: true, linkType: 'symlink' };
-  } catch (err) {
-    return { ok: false, error: err.message };
-  }
-}
-
-// ─── 目录树差异（fileops.go 只比 SKILL.md；这里逐文件 md5） ────────
-
-async function walkFiles(root) {
-  const files = new Map();
-  async function walk(dir, rel) {
-    const entries = await fsp.readdir(dir, { withFileTypes: true }).catch(() => []);
-    for (const e of entries) {
-      const abs = join(dir, e.name);
-      const r = rel ? `${rel}/${e.name}` : e.name;
-      if (e.isDirectory()) await walk(abs, r);
-      else if (e.isFile()) {
-        const buf = await fsp.readFile(abs).catch(() => null);
-        if (buf === null) continue;
-        files.set(r, { abs, md5: md5Of(buf), size: buf.length });
-      }
-    }
-  }
-  await walk(root, '');
-  return files;
-}
-
-export async function diffTrees(aRoot, bRoot) {
-  const [a, b] = await Promise.all([walkFiles(aRoot), walkFiles(bRoot)]);
-  const out = [];
-  for (const [rel, fa] of a) {
-    const fb = b.get(rel);
-    if (!fb) out.push({ file: rel, side: 'only-central' });
-    else if (fa.md5 !== fb.md5) out.push({ file: rel, side: 'both-differ' });
-  }
-  for (const [rel] of b) {
-    if (!a.has(rel)) out.push({ file: rel, side: 'only-project' });
-  }
-  return out;
-}
+// 链接创建与类型识别见 core/link.js；目录树差异见 core/fstree.js。
 
 async function findProjectSkillDir(projRoot, name) {
   for (const a of ADAPTERS) {
@@ -401,7 +124,7 @@ async function findProjectSkillDir(projRoot, name) {
 async function pickAdapterDir(projRoot, adapterId) {
   if (adapterId) {
     const a = ADAPTERS.find((x) => x.id === adapterId);
-    if (!a) throw new Error('未知 adapter: ' + adapterId);
+    if (!a) throw badInput('未知 adapter: ' + adapterId);
     return a.dir;
   }
   for (const a of ADAPTERS) {
@@ -415,10 +138,10 @@ async function pickAdapterDir(projRoot, adapterId) {
 // 中心 -> 项目
 export async function syncSkill({ name, project, mode, adapter, force }) {
   name = assertSafeName(name);
-  const central = await getCentralPath();
+  const central = await centralPath();
   const src = await centralSkillDir(central, name);
-  if (!src) throw new Error('中心仓库不存在该 skill: ' + name);
-  if (!project) throw new Error('project 不能为空');
+  if (!src) throw notFound('中心仓库不存在该 skill: ' + name);
+  if (!project) throw badInput('project 不能为空');
   const projRoot = resolve(String(project));
 
   const settings = await getSettings();
@@ -433,7 +156,7 @@ export async function syncSkill({ name, project, mode, adapter, force }) {
     const target = await fsp.readlink(dst).catch(() => null);
     if (target) {
       const absT = isAbsolute(target) ? target : resolve(dirname(dst), target);
-      if (samePath(absT, src)) return { status: 'ok', skipped: true, mode: m, linkType: lt, path: dst };
+      if (await sameRealPath(absT, src)) return { status: 'ok', skipped: true, mode: m, linkType: lt, path: dst };
     }
   }
 
@@ -470,10 +193,10 @@ export async function syncSkill({ name, project, mode, adapter, force }) {
 // 项目 -> 中心
 export async function pushSkill({ name, project, force }) {
   name = assertSafeName(name);
-  if (!project) throw new Error('project 不能为空');
-  const central = await getCentralPath();
+  if (!project) throw badInput('project 不能为空');
+  const central = await centralPath();
   const src = await findProjectSkillDir(resolve(String(project)), name);
-  if (!src) throw new Error('项目中未找到 skill: ' + name);
+  if (!src) throw notFound('项目中未找到 skill: ' + name);
 
   const lt = await detectLinkType(src);
   if (lt) {
@@ -496,9 +219,9 @@ export async function pushSkill({ name, project, force }) {
 // 链接 -> 实体目录（物化）
 export async function materializeSkill({ name, project }) {
   name = assertSafeName(name);
-  if (!project) throw new Error('project 不能为空');
+  if (!project) throw badInput('project 不能为空');
   const dst = await findProjectSkillDir(resolve(String(project)), name);
-  if (!dst) throw new Error('项目中未找到 skill: ' + name);
+  if (!dst) throw notFound('项目中未找到 skill: ' + name);
 
   const lt = await detectLinkType(dst);
   if (!lt) return { converted: false, message: '已是实体文件' };
@@ -513,12 +236,12 @@ export async function materializeSkill({ name, project }) {
 // 冲突详情：逐文件 md5 + 文本 diff
 export async function skillConflict({ name, project }) {
   name = assertSafeName(name);
-  if (!project) throw new Error('project 不能为空');
-  const central = await getCentralPath();
+  if (!project) throw badInput('project 不能为空');
+  const central = await centralPath();
   const src = await centralSkillDir(central, name);
-  if (!src) throw new Error('中心仓库不存在该 skill: ' + name);
+  if (!src) throw notFound('中心仓库不存在该 skill: ' + name);
   const dst = await findProjectSkillDir(resolve(String(project)), name);
-  if (!dst) throw new Error('项目中未找到 skill: ' + name);
+  if (!dst) throw notFound('项目中未找到 skill: ' + name);
 
   const files = await diffTrees(src, dst);
   for (const f of files) {
@@ -541,14 +264,13 @@ export async function skillConflict({ name, project }) {
 // 冲突解决：按文件选侧（central 覆盖项目 / project 覆盖中心）
 export async function applySkillSide({ name, project, file, side }) {
   name = assertSafeName(name);
-  if (!file || /[\\/]/.test(file) || file.includes('..') || isAbsolute(file)) {
-    throw new Error('非法文件路径: ' + file);
-  }
-  if (!project) throw new Error('project 不能为空');
-  const central = await getCentralPath();
+  // skill 目录下只允许单层文件，但必须允许 .gitignore 这类前导点文件
+  file = assertSafeRelPath(file, { label: '文件路径', allowSubdir: false });
+  if (!project) throw badInput('project 不能为空');
+  const central = await centralPath();
   const srcDir = (await centralSkillDir(central, name)) || join(central, name);
   const dst = await findProjectSkillDir(resolve(String(project)), name);
-  if (!dst) throw new Error('项目中未找到 skill: ' + name);
+  if (!dst) throw notFound('项目中未找到 skill: ' + name);
 
   if (side === 'central') {
     await fsp.cp(join(srcDir, file), join(dst, file), { force: true });
@@ -558,7 +280,7 @@ export async function applySkillSide({ name, project, file, side }) {
     await fsp.cp(join(dst, file), join(srcDir, file), { force: true });
     return { ok: true, side, file };
   }
-  throw new Error('side 必须是 central 或 project');
+  throw badInput('side 必须是 central 或 project');
 }
 
 // ─── 平台开关（项目侧：把 skill 提供给/撤销于某个平台） ──────────────
@@ -566,7 +288,7 @@ export async function applySkillSide({ name, project, file, side }) {
 // 查询某个 skill 在各平台（适配器）下的存在形态
 export async function platformStatus({ name, project } = {}) {
   name = assertSafeName(name);
-  if (!project) throw new Error('project 不能为空');
+  if (!project) throw badInput('project 不能为空');
   const projRoot = resolve(String(project));
   const out = [];
   for (const a of ADAPTERS) {
@@ -580,30 +302,30 @@ export async function platformStatus({ name, project } = {}) {
 // 打开/关闭某个平台：打开=同步到该适配器目录；关闭=仅移除该适配器下的副本/链接
 export async function setPlatform({ name, project, adapter, enabled, mode, force } = {}) {
   name = assertSafeName(name);
-  if (!project) throw new Error('project 不能为空');
+  if (!project) throw badInput('project 不能为空');
   const a = ADAPTERS.find((x) => x.id === adapter);
-  if (!a) throw new Error('未知平台: ' + adapter);
+  if (!a) throw badInput('未知平台: ' + adapter);
   const projRoot = resolve(String(project));
   const dst = join(projRoot, a.dir, name);
 
   if (enabled) {
     // 优先走中心；中心没有该 skill（或未设置中心）时，从项目内旁支本地创建，不再强依赖中心
-    const central = await getCentralPath().catch(() => '');
+    const central = await centralPath().catch(() => '');
     const centralDir = central ? await centralSkillDir(central, name) : null;
     if (centralDir) {
       const r = await syncSkill({ name, project: projRoot, adapter: a.id, mode, force });
       return { ...r, platform: a.id };
     }
     const src = await findProjectSkillDir(projRoot, name);
-    if (!src) throw new Error(`中心与项目中都不存在该 skill: ${name}`);
-    if (samePath(src, dst)) return { status: 'ok', skipped: true, platform: a.id };
+    if (!src) throw notFound(`中心与项目中都不存在该 skill: ${name}`);
+    if (await sameRealPath(src, dst)) return { status: 'ok', skipped: true, platform: a.id };
 
     if (await pathExists(dst)) {
       const ltDst = await detectLinkType(dst);
       if (ltDst) {
         const t = await fsp.readlink(dst).catch(() => null);
         const absT = t ? (isAbsolute(t) ? t : resolve(dirname(dst), t)) : '';
-        if (samePath(absT, src)) return { status: 'ok', skipped: true, platform: a.id, linkType: ltDst };
+        if (await sameRealPath(absT, src)) return { status: 'ok', skipped: true, platform: a.id, linkType: ltDst };
       } else {
         const files = await diffTrees(dst, src);
         if (files.length && !force) return { status: 'conflict', platform: a.id, files, path: dst };
@@ -645,11 +367,11 @@ export async function setPlatform({ name, project, adapter, enabled, mode, force
 // ─── 多选比较（中心 vs 项目） ────────────────────────────────────────
 
 export async function compareSkills({ central, project, names } = {}) {
-  if (!project) throw new Error('project 不能为空');
-  const centralPath = central ? resolve(String(central)) : await getCentralPath();
+  if (!project) throw badInput('project 不能为空');
+  const centralRoot = central ? resolve(String(central)) : await centralPath();
   const projRoot = resolve(String(project));
 
-  const cs = await listSkills('central', centralPath);
+  const cs = await listSkills('central', centralRoot);
   const ps = await listSkills('project', projRoot);
   const filter = names && names.length ? new Set(names) : null;
 
@@ -682,7 +404,7 @@ export async function compareSkills({ central, project, names } = {}) {
 
   const count = (s) => rows.filter((r) => r.state === s).length;
   return {
-    central: centralPath,
+    central: centralRoot,
     project: projRoot,
     summary: {
       total: rows.length,
@@ -694,30 +416,6 @@ export async function compareSkills({ central, project, names } = {}) {
     },
     rows,
   };
-}
-
-// ─── 中心仓库候选目录（多选下拉） ───────────────────────────────────
-
-export async function addCentralCandidate(path) {
-  if (!path) return (await loadStore()).settings.skillCentralCandidates;
-  return mutateStore((s) => {
-    const abs = resolve(String(path));
-    if (!s.settings.skillCentralCandidates.some((p) => p.toLowerCase() === abs.toLowerCase())) {
-      s.settings.skillCentralCandidates.push(abs);
-    }
-    return [...s.settings.skillCentralCandidates];
-  });
-}
-
-export async function removeCentralCandidate(path) {
-  return mutateStore((s) => {
-    const abs = resolve(String(path));
-    s.settings.skillCentralCandidates = s.settings.skillCentralCandidates.filter(
-      (p) => p.toLowerCase() !== abs.toLowerCase()
-    );
-    if (samePath(s.settings.skillCentralPath, abs)) s.settings.skillCentralPath = '';
-    return [...s.settings.skillCentralCandidates];
-  });
 }
 
 // ─── 实体锚点兜底：项目内至少保留一个实体（非链接）skill ─────────────
@@ -763,7 +461,7 @@ async function ensureRealAnchor(projRoot, preferOtherOf = '') {
 // 若删掉的是最后一个实体，会先自动物化其他软链接兜底，保证项目内至少一个实体。
 export async function removeProjectSkill({ name, project } = {}) {
   name = assertSafeName(name);
-  if (!project) throw new Error('project 不能为空');
+  if (!project) throw badInput('project 不能为空');
   const projRoot = resolve(String(project));
   const removed = [];
   for (const a of ADAPTERS) {

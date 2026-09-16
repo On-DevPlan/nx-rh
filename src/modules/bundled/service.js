@@ -4,20 +4,16 @@ import { homedir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import fsp from 'node:fs/promises';
-import { diffTrees } from './skills.js';
+import { diffTrees } from '../../core/fstree.js';
+import { parseFrontmatter } from '../../core/frontmatter.js';
+import { assertSafeName } from '../../core/paths.js';
+import { notFound } from '../../core/errors.js';
 
-// assets/ 在包根，src/services/ 的上两级
-const ASSETS_DIR = fileURLToPath(new URL('../../assets/', import.meta.url));
+// assets/ 在包根，src/modules/bundled/ 的上三级
+const ASSETS_DIR = fileURLToPath(new URL('../../../assets/', import.meta.url));
 
 // 默认安装到 Claude Code 的用户级 skills 目录
 export const DEFAULT_SKILLS_DIR = join(homedir(), '.claude', 'skills');
-
-function assertSafeName(name) {
-  if (!name || typeof name !== 'string' || /[\\/]/.test(name) || name.includes('..') || name.startsWith('.')) {
-    throw new Error('非法 skill 名称: ' + name);
-  }
-  return name;
-}
 
 async function pathExists(p) {
   try {
@@ -39,29 +35,28 @@ export async function listBundledSkills() {
   for (const e of entries) {
     if (!e.isDirectory()) continue;
     const dir = join(ASSETS_DIR, e.name);
+    // 用不存在的路径当哨兵，diffTrees 会把包内文件全列为 only-central，等于列出文件清单
     const files = await diffTrees(dir, join(dir, '__nx_rh_missing__'));
     if (!files.length) continue;
-    let description = '';
+
+    // 描述解析复用 core/frontmatter.js —— 这里原本抄了一份简化正则，
+    // 于是 CRLF / 块标量 / 引号的处理与 skills 侧并不一致。
     const md = await fsp.readFile(join(dir, 'SKILL.md'), 'utf8').catch(() => null);
-    if (md) {
-      const m = /^---[ \t]*\n([\s\S]*?)\n---/m.exec(md.replace(/^\uFEFF/, '').replace(/\r\n?/g, '\n'));
-      if (m) {
-        const dm = /^description:[ \t]*(.+)$/m.exec(m[1]);
-        if (dm) description = dm[1].trim().replace(/^["']|["']$/g, '');
-      }
-    }
+    const description = md ? parseFrontmatter(md).description : '';
     out.push({ name: e.name, dir, files: files.length, description });
   }
   return out.sort((a, b) => a.name.localeCompare(b.name));
 }
 
 // 安装内置 skill 到目标 skills 目录（默认 ~/.claude/skills）
+// 返回 { status: 'ok' | 'conflict', ... }——已存在且内容不同是**业务结果**，
+// 需要用户决定是否覆盖，不是错误。
 export async function installBundledSkill({ name = 'repo-hub', to, force } = {}) {
   name = assertSafeName(name);
   const src = join(ASSETS_DIR, name);
   if (!(await pathExists(join(src, 'SKILL.md')))) {
     const available = (await listBundledSkills()).map((s) => s.name).join(', ') || '(无)';
-    throw new Error(`未找到内置 skill: ${name}（可用: ${available}）`);
+    throw notFound(`未找到内置 skill: ${name}（可用: ${available}）`);
   }
 
   const targetRoot = resolve(to || DEFAULT_SKILLS_DIR);

@@ -1,10 +1,11 @@
 // 仓库管理 service：登记、CRUD、目录扫描、git 状态与远端操作。
-// 该层是 Web API 与 CLI 的共同底层——按钮与命令在这里汇合。
+// 本文件是业务真相源，不含任何传输层概念（不认识 argv，也不认识 HTTP）。
 import { basename, join, resolve } from 'node:path';
 import fsp from 'node:fs/promises';
-import { spawn } from 'node:child_process';
-import { loadStore, mutateStore, newId } from '../core/store.js';
-import { gitStatus, gitDiff, gitPull, gitPush, gitResolve } from '../core/git.js';
+import { loadStore, mutateStore, newId } from '../../core/store.js';
+import { gitStatus, gitDiff, gitPull, gitPush, gitResolve } from '../../core/git.js';
+import { openPath } from '../../core/open.js';
+import { badInput, notFound, conflict } from '../../core/errors.js';
 
 function parseTags(tags) {
   if (Array.isArray(tags)) return tags.map((t) => String(t).trim()).filter(Boolean);
@@ -31,11 +32,11 @@ export async function listRepos() {
 }
 
 export async function addRepo(input) {
-  if (!input || !input.path) throw new Error('path 不能为空');
+  if (!input || !input.path) throw badInput('path 不能为空');
   const repo = normalizeRepoInput(input);
   await mutateStore((s) => {
     if (s.repos.some((r) => r.path.toLowerCase() === repo.path.toLowerCase())) {
-      throw new Error('该路径已登记: ' + repo.path);
+      throw conflict('该路径已登记: ' + repo.path);
     }
     s.repos.push(repo);
   });
@@ -45,7 +46,7 @@ export async function addRepo(input) {
 export async function updateRepo(id, patch) {
   return mutateStore((s) => {
     const r = s.repos.find((x) => x.id === id);
-    if (!r) throw new Error('repo 不存在: ' + id);
+    if (!r) throw notFound('repo 不存在: ' + id);
     if (patch.name !== undefined) r.name = String(patch.name).trim();
     if (patch.tags !== undefined) r.tags = parseTags(patch.tags);
     if (patch.desc !== undefined) r.desc = String(patch.desc).trim();
@@ -59,20 +60,20 @@ export async function updateRepo(id, patch) {
 export async function removeRepo(id) {
   return mutateStore((s) => {
     const idx = s.repos.findIndex((x) => x.id === id);
-    if (idx < 0) throw new Error('repo 不存在: ' + id);
+    if (idx < 0) throw notFound('repo 不存在: ' + id);
     return s.repos.splice(idx, 1)[0];
   });
 }
 
 // id 或绝对路径均可定位（agent 场景常直接给路径）
-async function getRepo(idOrPath) {
+export async function getRepo(idOrPath) {
   const s = await loadStore();
   let r = s.repos.find((x) => x.id === idOrPath);
   if (!r) {
     const p = resolve(idOrPath);
     r = s.repos.find((x) => x.path.toLowerCase() === p.toLowerCase());
   }
-  if (!r) throw new Error('repo 不存在: ' + idOrPath);
+  if (!r) throw notFound('repo 不存在: ' + idOrPath);
   return r;
 }
 
@@ -137,9 +138,7 @@ export async function repoStatus(id) {
     return [{ ...r, git: await gitStatus(r.path) }];
   }
   const s = await loadStore();
-  return Promise.all(
-    s.repos.map(async (r) => ({ ...r, git: await gitStatus(r.path) }))
-  );
+  return Promise.all(s.repos.map(async (r) => ({ ...r, git: await gitStatus(r.path) })));
 }
 
 export async function repoDiff(id, file) {
@@ -165,13 +164,6 @@ export async function repoResolve(id, file, side) {
 // 在系统文件管理器中打开（"操作 OS 方便"的最小切口）
 export async function repoOpen(id) {
   const r = await getRepo(id);
-  const plat = process.platform;
-  try {
-    if (plat === 'win32') spawn('explorer', [r.path], { detached: true, stdio: 'ignore' }).unref();
-    else if (plat === 'darwin') spawn('open', [r.path], { detached: true, stdio: 'ignore' }).unref();
-    else spawn('xdg-open', [r.path], { detached: true, stdio: 'ignore' }).unref();
-  } catch {
-    // 打开失败不视为错误
-  }
+  openPath(r.path);
   return { opened: r.path };
 }

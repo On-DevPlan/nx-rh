@@ -1,9 +1,10 @@
 // 仓库页：登记 / 扫描 / 状态表 / diff·pull·push·open·删除。
-// 每个按钮 = 一条 /api 路由 = 一条 CLI 命令（cli-hint 标注等价命令）。
+// 每个按钮 = 一条 HTTP 路由 = 一条 CLI 命令（三者同源于模块的 action 声明）。
 import { useCallback, useEffect, useState } from 'react';
-import { api } from '../api/client.js';
-import { useStore } from '../store.jsx';
-import { useGuard, useDialog, Modal, DiffPre, Copyable } from '../components/ui.jsx';
+import { api } from '../../web/frontend/api/client.js';
+import { useStore } from '../../web/frontend/store.jsx';
+import { useGuard, useDialog, Modal, DiffPre, Copyable } from '../../web/frontend/components/ui.jsx';
+import { CliHints } from '../../web/frontend/components/CliHints.jsx';
 
 function statusCell(g) {
   if (!g) return <span className="muted">未刷新</span>;
@@ -72,8 +73,11 @@ export default function ReposView() {
       setModal({ title: 'pull 结果', node: <DiffPre text={text} /> });
       await refreshStatuses();
     } else if (act === 'push') {
+      // 推送失败现在会抛错（EXTERNAL），由 useGuard 统一 toast——
+      // 改造前是返回 {ok:false} 并在弹窗里显示「推送失败」，可退出码仍是 0，
+      // agent 拿到的是「成功」，与 README 承诺的「写操作显式报错」相矛盾。
       const out = await api('/api/repos/push', { method: 'POST', body: { id: r.id } });
-      setModal({ title: 'push 结果', node: <DiffPre text={out.ok ? out.output || '(无输出)' : '推送失败: ' + out.output} /> });
+      setModal({ title: 'push 结果', node: <DiffPre text={out.output || '(无输出)'} /> });
       await refreshStatuses();
     } else if (act === 'open') {
       await api('/api/repos/open', { method: 'POST', body: { id: r.id } });
@@ -141,7 +145,7 @@ export default function ReposView() {
           </tbody>
         </table>
       </div>
-      <div className="cli-hint">CLI 等价：nx-rh repo add &lt;path&gt; · nx-rh repo scan &lt;root&gt; · nx-rh repo status --json</div>
+      <CliHints module="repos" />
 
       {modal ? <Modal title={modal.title} onClose={() => setModal(null)}>{modal.node}</Modal> : null}
       {dialogNode}

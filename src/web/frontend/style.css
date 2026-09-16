@@ -249,7 +249,23 @@ dd .adapter-dir { display: inline-block; margin-right: 14px; }
 .row-inline input { flex: 1; }
 
 /* ---------- 提示条 ---------- */
-.cli-hint { color: var(--mid); font-size: 11.5px; padding: 2px 4px; font-family: ui-monospace, Consolas, monospace; }
+.cli-hint {
+  color: var(--mid);
+  font-size: 11.5px;
+  padding: 6px 4px 2px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 8px;
+  align-items: baseline;
+}
+.cli-hint-label { flex-basis: 100%; }
+/* CLI 命令串：一条命令一个可点击复制的 chip，密集但可读 */
+.cli-cmd {
+  background: var(--soft);
+  border-radius: 5px;
+  padding: 1px 6px;
+  white-space: nowrap;
+}
 
 /* ---------- 弹窗 ---------- */
 .modal {

@@ -86,10 +86,15 @@ nx-rh repo diff <id> [--file F]
 
 ```bash
 nx-rh repo pull <id>     # fetch + pull --no-edit；冲突时结果里带 conflicted 列表
-nx-rh repo push <id>     # 直接 push；失败原因在 output 里
+nx-rh repo push <id>     # 直接 push
 ```
 
 **注意**：`pull` 遇到冲突不会自动合并，返回的 `conflicted` 数组就是需要人工决策的文件清单。
+
+**失败形态**：`pull` / `push` 失败时**不再返回 `{ok:false, output}`**，而是抛错并以
+`exit 1` 结束，`--json` 下给出 `{"ok":false,"error":"…","code":"EXTERNAL"}`，
+失败原因在 `error` 里（不再有 `output` 字段）。唯一的例外是 `pull` 产生的冲突——
+那是业务结果，仍以 `status: "conflict"` + `conflicted` 数组正常返回，退出码为 0。
 
 ### 7. 解决冲突文件
 

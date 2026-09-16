@@ -1,6 +1,6 @@
 {
   "name": "nx-rh",
-  "version": "0.5.1",
+  "version": "0.6.0",
   "description": "npx-repo-hub — 本机仓库与 Agent Skill 的统一管理中枢：Web 面板与同构 CLI 共享同一 service 层",
   "type": "module",
   "bin": {
@@ -15,7 +15,10 @@
     "dev": "vite",
     "dev:serve": "node bin/cli.mjs serve --no-open",
     "start": "pnpm run build && node bin/cli.mjs serve",
-    "test": "pnpm run build && node tests/smoke.mjs"
+    "lint": "eslint .",
+    "test": "pnpm run lint && pnpm run build && pnpm run test:smoke && pnpm run test:unit",
+    "test:smoke": "node tests/smoke.mjs",
+    "test:unit": "node --test \"tests/unit/*.test.mjs\""
   },
   "packageManager": "pnpm@10.33.0",
   "repository": {
@@ -33,7 +36,8 @@
     "bin/",
     "src/",
     "assets/",
-    "README.md"
+    "README.md",
+    "CHANGELOG.md"
   ],
   "prepublishOnly": "pnpm run build && pnpm test",
   "keywords": [
@@ -48,6 +52,7 @@
   "license": "MIT",
   "devDependencies": {
     "@vitejs/plugin-react": "^6.1.1",
+    "eslint": "^10.10.0",
     "vite": "^8.3.0"
   },
   "dependencies": {

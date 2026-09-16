@@ -1,45 +1,45 @@
 // GitHub 连接器：通过 gh CLI 查询仓库概览与搜索。
-// 零依赖：直接 spawn gh 命令，复用用户已有的登录态与配置。
+// 零依赖：直接 spawn gh，复用用户已有的登录态与配置。
 import { spawn } from 'node:child_process';
+import { badInput, external } from '../../core/errors.js';
 
 function runGh(args, { timeoutMs = 15000 } = {}) {
   return new Promise((resolve, reject) => {
-    const child = spawn('gh', args, {
-      stdio: ['ignore', 'pipe', 'pipe'],
-      windowsHide: true,
-    });
+    const child = spawn('gh', args, { stdio: ['ignore', 'pipe', 'pipe'], windowsHide: true });
     let stdout = '';
     let stderr = '';
     const timer = setTimeout(() => {
       child.kill();
-      reject(new Error('gh 命令超时（' + timeoutMs + 'ms）'));
+      reject(external('gh 命令超时（' + timeoutMs + 'ms）'));
     }, timeoutMs);
     child.stdout.on('data', (d) => { stdout += d.toString(); });
     child.stderr.on('data', (d) => { stderr += d.toString(); });
     child.on('error', (err) => {
       clearTimeout(timer);
-      if (err.code === 'ENOENT') reject(new Error('未找到 gh 命令，请先安装 GitHub CLI 并登录（gh auth login）'));
-      else reject(err);
+      if (err.code === 'ENOENT') {
+        reject(external('未找到 gh 命令，请先安装 GitHub CLI 并登录（gh auth login）'));
+      } else {
+        reject(external(String(err.message || err)));
+      }
     });
     child.on('close', (code) => {
       clearTimeout(timer);
       if (code === 0) resolve(stdout.trim());
-      else reject(new Error(stderr.trim() || 'gh 退出码 ' + code));
+      else reject(external(stderr.trim() || 'gh 退出码 ' + code));
     });
   });
 }
 
-// 规范化 owner/repo 输入：支持 "owner/repo"、完整 URL、纯 repo 名（需配合 --owner）
+// 规范化 owner/repo 输入：支持 "owner/repo"、完整 URL、带 .git 后缀
 function parseRepo(input) {
   let s = String(input || '').trim();
-  if (!s) throw new Error('仓库标识不能为空（格式: owner/repo）');
-  // 去掉 URL 前缀
+  if (!s) throw badInput('仓库标识不能为空（格式: owner/repo）');
   s = s.replace(/^https?:\/\/github\.com\//, '');
   s = s.replace(/^git@github\.com:/, '');
   s = s.replace(/\.git$/, '');
   s = s.replace(/\/$/, '');
   const parts = s.split('/').filter(Boolean);
-  if (parts.length < 2) throw new Error('格式应为 owner/repo，收到: ' + input);
+  if (parts.length < 2) throw badInput('格式应为 owner/repo，收到: ' + input);
   return parts.slice(0, 2).join('/');
 }
 
@@ -51,21 +51,15 @@ const REPO_FIELDS = [
   'repositoryTopics', 'latestRelease',
 ];
 
-// 查看单个仓库概览
 export async function viewRepo(input) {
   const repo = parseRepo(input);
-  const json = await runGh([
-    'repo', 'view', repo,
-    '--json', REPO_FIELDS.join(','),
-  ]);
-  const raw = JSON.parse(json);
-  return normalizeRepo(raw);
+  const json = await runGh(['repo', 'view', repo, '--json', REPO_FIELDS.join(',')]);
+  return normalizeRepo(JSON.parse(json));
 }
 
-// 搜索仓库
 export async function searchRepos(query, limit = 10) {
   const q = String(query || '').trim();
-  if (!q) throw new Error('搜索关键词不能为空');
+  if (!q) throw badInput('搜索关键词不能为空');
   const n = Math.min(Math.max(parseInt(limit, 10) || 10, 1), 30);
   const json = await runGh([
     'search', 'repos', q,
@@ -88,7 +82,6 @@ export async function searchRepos(query, limit = 10) {
   }));
 }
 
-// 列出当前用户的仓库（可选）
 export async function listMyRepos(limit = 30) {
   const n = Math.min(Math.max(parseInt(limit, 10) || 30, 1), 100);
   const json = await runGh([
@@ -110,13 +103,14 @@ export async function listMyRepos(limit = 30) {
   }));
 }
 
-// 检查 gh 是否可用且已登录
+// 检查 gh 是否可用且已登录。
+// 这里刻意**不抛**：gh 缺失是环境常态而非操作失败，面板需要把它渲染成一条状态提示。
 export async function ghStatus() {
   try {
     const out = await runGh(['auth', 'status']);
     return { available: true, message: out };
   } catch (err) {
-    return { available: false, message: String(err && err.message || err) };
+    return { available: false, message: String((err && err.message) || err) };
   }
 }
 
@@ -124,9 +118,7 @@ export async function ghStatus() {
 
 function normalizeRepo(r) {
   const lang = r.primaryLanguage && r.primaryLanguage.name ? r.primaryLanguage.name : null;
-  const languages = Array.isArray(r.languages)
-    ? r.languages.map((l) => l && l.name).filter(Boolean)
-    : [];
+  const languages = Array.isArray(r.languages) ? r.languages.map((l) => l && l.name).filter(Boolean) : [];
   const topics = Array.isArray(r.repositoryTopics)
     ? r.repositoryTopics.map((t) => t && t.topic && t.topic.name).filter(Boolean)
     : [];

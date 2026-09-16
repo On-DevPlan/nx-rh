@@ -66,6 +66,14 @@ try {
   const list = cliJson(['repo', 'list']);
   check('repo list --json', Array.isArray(list) && list.length === 1 && list[0].name === 'central-repo');
 
+  // CRUD 完备性（CLI 侧）。HTTP 侧由 tests/unit/registry.test.mjs 的 resource 断言覆盖——
+  // 那里保证五个操作同时具备 cli 与 http，这里保证它们在 CLI 上真的跑得通。
+  const repoId = list[0].id;
+  check('repo get 取单条', cliJson(['repo', 'get', repoId]).name === 'central-repo');
+  check('repo get 不存在时失败', cli(['repo', 'get', 'r_not_exist']).status === 1);
+  check('repo update 改描述', cliJson(['repo', 'update', repoId, '--desc', '改过的']).desc === '改过的');
+  check('repo update 后再 get 能读到', cliJson(['repo', 'get', repoId]).desc === '改过的');
+
   // git 仓库状态：测试内自建 git fixture（不依赖 .claude/repo 参考克隆——CI 上不存在）
   const gitRepo = join(tmp, 'git-fixture');
   mkdirSync(gitRepo, { recursive: true });
@@ -119,6 +127,22 @@ try {
   check('apply 选中心侧', cli(['skill', 'apply', 'demo-skill', '--project', project, '--file', 'SKILL.md', '--side', 'central']).status === 0);
   const conf2 = cliJson(['skill', 'conflict', 'demo-skill', '--project', project]);
   check('冲突已解决', conf2.files.length === 0);
+
+  // 前导点文件（.gitignore）必须能走完 conflict -> apply 全流程。
+  // 文件路径校验一度复用了「目录名」的规则（拒绝前导点），结果是 conflict 列得出、
+  // apply 却报「非法文件路径」——冲突永远无法按文件落地。
+  writeFileSync(join(project, '.claude', 'skills', 'demo-skill', '.gitignore'), 'node_modules\n');
+  writeFileSync(join(central, 'skills', 'demo-skill', '.gitignore'), 'dist\n');
+  const dotConf = cliJson(['skill', 'conflict', 'demo-skill', '--project', project]);
+  check('.gitignore 冲突被列出', dotConf.files.some((f) => f.file === '.gitignore' && f.side === 'both-differ'));
+  check(
+    'apply --file .gitignore 成功（前导点文件不被当非法路径）',
+    cli(['skill', 'apply', 'demo-skill', '--project', project, '--file', '.gitignore', '--side', 'central']).status === 0
+  );
+
+  // 参数缺失时的报错必须带「用法:」——agent-workflow.md 教 agent 用它判定参数错误。
+  const usageErr = cli(['skill', 'sync', 'demo-skill']);
+  check('参数缺失报错含「用法:」锚点', usageErr.status === 1 && (usageErr.stdout + usageErr.stderr).includes('用法:'));
 
   // ---- 9. 推送到中心 ----
   writeFileSync(skillMd, readFileSync(skillMd, 'utf8').replace('hello', 'hello-pushed'));
@@ -289,7 +313,7 @@ try {
   check('删除后变仅中心', cmp3.rows[0].state === 'only-central');
 
   // ---- 14. Web API ----
-  const { startServer } = await import(pathToFileURL(join(ROOT, '..', 'src', 'web', 'server.js')).href);
+  const { startServer } = await import(pathToFileURL(join(ROOT, '..', 'src', 'runtime', 'server.js')).href);
   const server = await startServer({ port: 0 });
   const base = 'http://127.0.0.1:' + server.address().port;
 
@@ -312,6 +336,38 @@ try {
     await fetch(base + '/api/skills?side=project&path=' + encodeURIComponent(project))
   ).json();
   check('api skills project', skillsRes.ok && skillsRes.data.length === 1);
+
+  // 平台开关有两条入口：CLI 用 --off，面板传 enabled。二者必须走同一条分支。
+  // 这里曾经出过严重回归——action 里写成 `enabled: !ctx.off`，面板传来的 false
+  // 被 !undefined 顶成 true，于是面板上「关闭平台」永远关不掉；而当时的测试
+  // 只覆盖了 CLI 的 --off，所以完全没被发现。
+  const postPlatform = async (body) =>
+    (await (await fetch(base + '/api/skills/platform', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify(body),
+    })).json()).data;
+
+  const viaCli = cliJson([
+    'skill', 'platform-set', 'demo-skill', '--project', project, '--adapter', 'claude-code', '--off',
+  ]);
+  const viaPanel = await postPlatform({
+    name: 'demo-skill', project, adapter: 'claude-code', enabled: false,
+  });
+  check(
+    '平台开关：面板 enabled:false 与 CLI --off 走同一分支',
+    viaPanel.status === viaCli.status,
+    `panel=${JSON.stringify(viaPanel)} cli=${JSON.stringify(viaCli)}`
+  );
+
+  const panelOn = await postPlatform({
+    name: 'demo-skill', project, adapter: 'claude-code', enabled: true,
+  });
+  check('平台开关：面板 enabled:true 能重新开启', panelOn.status === 'ok' && !panelOn.removed, JSON.stringify(panelOn));
+
+  // /api/skills 不带 side 时应默认 central，而不是 400
+  const defSide = await (await fetch(base + '/api/skills')).json();
+  check('GET /api/skills 默认 side=central', defSide.ok === true, JSON.stringify(defSide).slice(0, 120));
 
   const bundledRes = await (await fetch(base + '/api/bundled')).json();
   check(

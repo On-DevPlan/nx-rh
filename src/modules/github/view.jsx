@@ -1,7 +1,8 @@
 // GitHub 页：gh CLI 连接器（概览 / 搜索 / 我的仓库）。
 import { useState } from 'react';
-import { api } from '../api/client.js';
-import { useGuard, Copyable } from '../components/ui.jsx';
+import { api } from '../../web/frontend/api/client.js';
+import { useGuard, Copyable } from '../../web/frontend/components/ui.jsx';
+import { CliHints } from '../../web/frontend/components/CliHints.jsx';
 
 export default function GithubView() {
   const guard = useGuard();
@@ -115,7 +116,7 @@ export default function GithubView() {
         </div>
       ) : null}
 
-      <div className="cli-hint">CLI 等价：nx-rh gh view &lt;owner/repo&gt; · nx-rh gh search &lt;query&gt; · nx-rh gh mine</div>
+      <CliHints module="github" />
     </>
   );
 }

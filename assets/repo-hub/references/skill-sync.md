@@ -11,9 +11,11 @@
 ## 数据模型
 
 ```
-{中心仓库}/skills/<name>/SKILL.md          ← 唯一真相源
+{中心仓库}/<name>/SKILL.md                 ← 唯一真相源（中心仓库根目录下直接就是 skill）
 {项目}/<适配器目录>/<name>/SKILL.md        ← 项目侧（claude-code 即 .claude/skills）
 ```
+
+> 早期布局 `{中心仓库}/skills/<name>/` 仍可读兼容，但新内容一律写在根目录下。
 
 - 中心仓库路径由 `skills.skillCentralPath` 决定：`nx-rh skill central <path>`
 - 适配器目录表由 `nx-rh skill adapters` 列出（claude-code / agents / cursor / codex / gemini-cli / copilot / windsurf / codebuddy / iflow-cli）
