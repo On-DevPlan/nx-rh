@@ -10,4 +10,5 @@ export const VIEWS = [
   { id: 'skills', title: 'Skill', component: lazy(() => import('../../modules/skills/view.jsx')) },
   { id: 'github', title: 'GitHub', component: lazy(() => import('../../modules/github/view.jsx')) },
   { id: 'settings', title: '设置', component: lazy(() => import('../../modules/settings/view.jsx')) },
+  { id: 'env', title: '环境变量', component: lazy(() => import('../../modules/env/view.jsx')) },
 ];

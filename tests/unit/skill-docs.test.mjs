@@ -18,7 +18,9 @@ const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..', '..');
 const SKILL_DIR = join(ROOT, '.claude', 'skills', 'server-cli-web-scaffold');
 const SKILL_NAME = 'server-cli-web-scaffold';
 
-const main = readFileSync(join(SKILL_DIR, 'SKILL.md'), 'utf8');
+// 换行归一：仓库里的 .md 在 Windows 检出后是 CRLF，而下面的 frontmatter 正则按 LF 写。
+// 不归一的话这条断言只在 Windows 上红——本地测试长期带一个假失败，真问题会被它掩盖。
+const main = readFileSync(join(SKILL_DIR, 'SKILL.md'), 'utf8').replace(/\r\n/g, '\n');
 const refFiles = readdirSync(join(SKILL_DIR, 'references')).filter((f) => f.endsWith('.md'));
 const refNames = refFiles.map((f) => f.replace(/\.md$/, ''));
 

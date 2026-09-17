@@ -17,6 +17,7 @@
 | 错误码 | `code` 字段可取 `INVALID_INPUT` / `NOT_FOUND` / `CONFLICT` / `BLOCKED` / `EXTERNAL` / `INTERNAL`，**优先用它分支**，比匹配错误文本稳 |
 | 错误文本 | 中文可读定位（如 `未设置 skill 中心仓库路径`），仍可作兜底判断 |
 | 幂等 | 重复执行安全：已就绪返回 `skipped`；重复登记报错但不产生脏数据 |
+| `--dry-run` | **破坏性写命令都支持**：只返回将发生的改动的 diff，不落盘、不产生副作用。先 dry-run 看清再决定是否执行 |
 | 存储覆盖 | `NX_RH_STORE=<path>` 或 `--store <path>` 指定 store，**测试必须指向临时目录** |
 
 **一次拿齐上下文**：`nx-rh bootstrap --json` 返回版本、存储路径、设置、适配器表、仓库清单，

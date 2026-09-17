@@ -312,13 +312,119 @@ try {
   const cmp3 = cliJson(['skill', 'compare', '--central', central2, '--project', proj3]);
   check('删除后变仅中心', cmp3.rows[0].state === 'only-central');
 
-  // ---- 14. Web API ----
+  // ---- 14. 环境变量（只读 + dry-run：这里绝不真写注册表）----
+  //
+  // 本模块是唯一「状态不在临时 store 里」的模块——它改的是操作系统注册表。
+  // 所以冒烟只走两条安全路径：读，以及按设计就不落盘的 --dry-run。
+  // 写操作永远不进冒烟测试：那会改掉跑测试这台机器的 PATH。
+  if (process.platform !== 'win32') {
+    // CI 跑在 ubuntu-latest 上，这条才是 CI 实际覆盖的路径：
+    // 非 win32 必须报**可分类的**错，而不是崩溃、也不是假装成功。
+    const st = cliJson(['env', 'status']);
+    check('env status 在非 win32 上 supported=false', st.supported === false, JSON.stringify(st));
+
+    const list = cli(['env', 'list', '--json']);
+    let code = null;
+    try { code = JSON.parse(list.stdout).code; } catch { /* 非 JSON 输出说明崩了，下面会失败 */ }
+    check('env list 在非 win32 报 BLOCKED 而不是崩溃', list.status === 1 && code === 'BLOCKED', list.stdout.slice(0, 120));
+    check('env 写在非 win32 上同样被拦下', cli(['env', 'set', 'X', '1', '--json']).status === 1);
+  } else {
+    const st = cliJson(['env', 'status']);
+    check('env status 报告平台 / 提权 / 两个 scope 的可写性',
+      st.supported === true && typeof st.elevated === 'boolean' && !!st.scopeWritable, JSON.stringify(st));
+    check('env status 的用户级始终可写（HKCU 属于当前用户）', st.scopeWritable.user === true);
+
+    const ls = cliJson(['env', 'list']);
+    check('env list 返回合并视图 + 生效 PATH',
+      Array.isArray(ls.merged) && Array.isArray(ls.path) && !!ls.scopes?.user, JSON.stringify(ls).slice(0, 140));
+    check('env list 的每条都带来源与遮蔽标记',
+      ls.merged.every((m) => (m.scope === 'user' || m.scope === 'system') &&
+        typeof m.shadow === 'boolean' && typeof m.duplicate === 'boolean'));
+
+    const pl = cliJson(['env', 'path', 'list']);
+    check('env path list 按条目返回两个 scope 的 PATH', Array.isArray(pl.user) && Array.isArray(pl.system));
+
+    check('env snapshot list 可读', Array.isArray(cliJson(['env', 'snapshot', 'list'])));
+
+    // ---- dry-run 的惰性：本模块最该被断言的一条 ----
+    // PATH 是唯一「改错就让整台机器命令行不可用」的东西，所以必须证明
+    // dry-run 路径连一个字节都没写。
+    const probe = 'NX_RH_SMOKE_PROBE_' + process.pid;
+    const before = cliJson(['env', 'path', 'list']);
+
+    const dry = cliJson(['env', 'set', probe, 'x', '--dry-run']);
+    check('env set --dry-run 返回 diff 而不是结果', dry.dryRun === true && typeof dry.diff === 'string');
+    check('env set --dry-run 之后变量仍不存在', cli(['env', 'get', probe]).status === 1);
+    check('env set --dry-run 不产生快照副作用', dry.snapshot === undefined);
+
+    const pathDry = cliJson(['env', 'path', 'add', 'C:\\nx-rh-smoke-nonexistent', '--dry-run']);
+    check('env path add --dry-run 给出将发生的改动',
+      pathDry.dryRun === true && /nx-rh-smoke-nonexistent/.test(pathDry.diff));
+
+    const after = cliJson(['env', 'path', 'list']);
+    check('env path add --dry-run 真的没动 PATH',
+      JSON.stringify(before.user) === JSON.stringify(after.user) &&
+      JSON.stringify(before.system) === JSON.stringify(after.system));
+
+    // 删除不存在的条目是幂等跳过，不是错误（与 setting 的 removeCandidate 同一立场）
+    check('env path remove 不存在的条目时幂等跳过',
+      cliJson(['env', 'path', 'remove', 'C:\\nx-rh-smoke-nonexistent']).status === 'skipped');
+
+    // 保类型：往一个含 %VAR% 的新变量写值，默认应为 ExpandString
+    const kindDry = cliJson(['env', 'set', probe + '_KIND', '%USERPROFILE%\\bin', '--dry-run']);
+    check('env set 含 %VAR% 的新值默认落 ExpandString', /ExpandString/.test(kindDry.diff), kindDry.diff);
+  }
+
+  // ---- 15. Web API ----
   const { startServer } = await import(pathToFileURL(join(ROOT, '..', 'src', 'runtime', 'server.js')).href);
   const server = await startServer({ port: 0 });
   const base = 'http://127.0.0.1:' + server.address().port;
 
   const boot = await (await fetch(base + '/api/bootstrap')).json();
   check('api bootstrap', boot.ok && boot.data.repos.length === 2);
+
+  // ---- 环境变量的 HTTP 侧（同样只走读与 dry-run）----
+  // 这段的存在理由：面板调的每条路由都必须真的能通，而 CLI 与 HTTP 虽同源于
+  // action 声明，参数整形（body vs flag）却是两条路径——只测 CLI 会漏掉这一半。
+  const envStatusRes = await (await fetch(base + '/api/env/status')).json();
+  check('api env status', envStatusRes.ok && typeof envStatusRes.data.supported === 'boolean');
+
+  if (process.platform === 'win32') {
+    const envListRes = await (await fetch(base + '/api/env')).json();
+    check('api env list', envListRes.ok && Array.isArray(envListRes.data.merged));
+
+    const envPathRes = await (await fetch(base + '/api/env/path')).json();
+    check('api env path list', envPathRes.ok && Array.isArray(envPathRes.data.user));
+
+    // PUT /api/env/:name 带 dry-run —— 面板的编辑弹窗就走这条
+    const envDryRes = await (
+      await fetch(base + '/api/env/NX_RH_SMOKE_HTTP', {
+        method: 'PUT',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ value: 'x', scope: 'user', 'dry-run': true }),
+      })
+    ).json();
+    check('api env set 走 dry-run 返回 diff', envDryRes.ok && envDryRes.data.dryRun === true && !!envDryRes.data.diff);
+    check('api env set dry-run 之后变量仍不存在',
+      (await fetch(base + '/api/env/NX_RH_SMOKE_HTTP')).status === 404);
+
+    // 字面量路由必须压过 :name 参数路由（/api/env/path 不能被当成变量名 "path" 之外的路径）
+    check('api /api/env/path 未被 /api/env/:name 抢走', envPathRes.ok);
+
+    // POST /api/env/path 带 dry-run
+    const pathDryRes = await (
+      await fetch(base + '/api/env/path', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ dir: 'C:\\nx-rh-smoke-http', scope: 'user', 'dry-run': true }),
+      })
+    ).json();
+    check('api env path add 走 dry-run', pathDryRes.ok && pathDryRes.data.dryRun === true);
+  } else {
+    const envListRes = await (await fetch(base + '/api/env')).json();
+    check('api env list 在非 win32 返回可分类错误',
+      !envListRes.ok && envListRes.code === 'BLOCKED', JSON.stringify(envListRes).slice(0, 120));
+  }
 
   const html = await (await fetch(base + '/')).text();
   check('web 首页', html.includes('npx-repo-hub') && !/[\u{1F300}-\u{1FAFF}\u{2600}-\u{27BF}]/u.test(html));

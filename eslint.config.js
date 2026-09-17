@@ -50,6 +50,9 @@ export default defineConfig([
   {
     // 功能域模块之间禁止互相依赖。需要共享的东西下沉到 core/。
     // 唯一的只读例外是 settings（基础模块），故不在禁列。
+    //
+    // 这份禁列是**逐模块枚举**的，因此每新增一个模块都必须回来补一行——
+    // 漏补不会报错，只是新模块悄悄变成「谁都可以依赖」，规则随模块数增加持续衰减。
     files: ['src/modules/**/*.js'],
     rules: {
       'no-restricted-imports': [
@@ -57,7 +60,7 @@ export default defineConfig([
         {
           patterns: [
             {
-              group: ['../repos/*', '../skills/*', '../github/*', '../bundled/*', '../system/*'],
+              group: ['../repos/*', '../skills/*', '../github/*', '../bundled/*', '../system/*', '../env/*'],
               message: '模块之间不得互相依赖；共享逻辑请下沉到 core/。唯一例外是 ../settings/service.js。',
             },
           ],

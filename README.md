@@ -93,9 +93,10 @@ src/
     frontmatter.js       # SKILL.md frontmatter 解析
     link.js              # 目录链接创建与识别（junction / symlink）
     open.js              # 打开浏览器 / 文件管理器
+    envvars.js           # 环境变量平台驱动（PowerShell ↔ Windows 注册表；posix 位置已预留）
   modules/               # 功能域，每个自包含
     system/              # bootstrap / health（聚合模块，无视图）
-    repos/  skills/  settings/  github/  bundled/
+    repos/  skills/  settings/  env/  github/  bundled/
       index.js           #   action 声明（CLI + HTTP + help）
       service.js         #   业务逻辑
       view.jsx           #   面板视图
@@ -187,8 +188,23 @@ localStorage 持久化，刷新不丢。
 | `nx-rh skill project list\|add\|remove <path>` | 项目目录候选 |
 | `nx-rh skill platform [ids...]` | 默认平台范围 / 默认平台 |
 | `nx-rh setting get [key]` / `setting set k=v [k2=v2 ...]` | 设置页 |
+| `nx-rh env status` | 环境变量页：能力横幅（平台 / 提权 / 两个 scope 可否写） |
+| `nx-rh env list [--scope user\|system]` | 变量表（不带 scope 则合并两 scope 并标注遮蔽与拼接） |
+| `nx-rh env get <name>` | 单变量详情（两个 scope 的值 + 生效判断） |
+| `nx-rh env set <name> [<value>] [--scope S] [--kind string\|expand] [--dry-run] [--no-notify]` | 编辑 / 新增变量 |
+| `nx-rh env remove <name> [--scope S] [--dry-run]` | 删除变量 |
+| `nx-rh env path list [--scope S]` | PATH 条目列表 |
+| `nx-rh env path add <dir> [--scope S] [--first] [--dry-run]` | PATH 追加一行 |
+| `nx-rh env path remove <dir> [--scope S] [--dry-run]` | PATH 移除一行 |
+| `nx-rh env snapshot list` / `save [label]` / `restore <id> [--dry-run]` | 快照与回滚 |
 | `nx-rh gh status` / `view <owner/repo>` / `search <q> [--limit N]` / `mine [--limit N]` | GitHub 页 |
 | `nx-rh bundled list` / `skill install [name] [--to DIR] [--force]` | 内置 skill 包 |
+
+> `env` 模块是唯一改**操作系统状态**而非本仓库状态的模块：它读写 Windows 注册表里的
+> 持久化环境变量（用户级 `HKCU\Environment` / 系统级 `HKLM\...\Session Manager\Environment`）。
+> 因此它的每条写命令都有 `--dry-run`，且写入前会自动快照到 `~/.nx-rh/env_snapshots/`。
+> 系统级写入需要以管理员身份运行；未提权时系统级只读。仅支持 Windows（其余平台返回
+> 可分类的 `BLOCKED`，不假装成功）。
 
 REST API 与命令**严格一一对应**：每条路由都由某条 action 的 `http` 字段声明，
 而该 action 必然带有 `cli`。例如 `POST /api/skills/sync` ⇔ `nx-rh skill sync`。

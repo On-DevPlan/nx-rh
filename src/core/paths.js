@@ -6,7 +6,15 @@ import { badInput } from './errors.js';
 export const APP_NAME = 'nx-rh';
 export const APP_DIR = join(homedir(), '.nx-rh');
 export const STORE_PATH = join(APP_DIR, 'store.json');
+// 环境变量快照：每次写注册表之前自动落一份，可回滚。
+// 与 store.json 同处 ~/.nx-rh/，但单独一个目录——快照会累积（保留最近若干份），
+// 混在配置目录里会让「这是配置还是备份」变得分不清。
+export const ENV_SNAPSHOT_DIR = join(APP_DIR, 'env_snapshots');
 export const DEFAULT_PORT = 7800;
+
+export function envSnapshotDir() {
+  return ENV_SNAPSHOT_DIR;
+}
 
 // 允许测试与多实例覆盖存储位置：NX_RH_STORE 环境变量优先
 export function storePathFromEnv() {
