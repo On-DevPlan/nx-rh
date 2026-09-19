@@ -2,6 +2,51 @@
 
 本文件记录对外可见的变更。格式参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)。
 
+## [0.8.0] - 2026-09-19
+
+### Fixed
+
+- **HTTP 路由排序：字面量段必须压过同长度的参数段。** 旧 `compareRoutes` 只在
+  「同位置字面量 vs 参数」时比较，`GET /api/env`（env.list，全字面量）会排在
+  `GET /api/env/:name`（env.get）之后——`/api/env/list` 这类路径把 `list` 当变量名去查。
+  新规则：**字面量段总数多者优先**，其次段数、其次逐段字面量。配反向断言钉住
+  四对「字面量 vs :param」冲突路径（`/api/env/status|path|snapshots`）。
+- **env 页布局：顶层容器误用 `.settings`。** 那是设置页 dt/dd 的
+  `grid-template-columns: 120px 1fr` 两列网格——env 页 5 张卡片被 Grid 交错摆放，
+  能力横幅 / 新增 / 快照掉进 **120px 左列**被压成竖条（变量表占右列所以看起来
+  「只有左边是坏的」）。改为新的 `.stack` 单列容器，并在类名旁留注释说明为什么
+  不能复用 `settings`。
+- **CLI 等价提示粘成一坨**：`nx-rh env statusnx-rh env list…`——命令之间没有分隔符。
+  命令之间加间隔点（弱化、不可点），文案改为通顺句子；末尾「加 --json 得机器可读输出」
+  独立成行。同时修 map 里无 key Fragment 的 React 警告。
+- **`style.css` 重写时丢失的规则补回**：`footer`（全局页脚——丢了这个是上一轮
+  「页脚小字 UI 不对」的根因）、`.d-add` / `.d-del` / `.conflict-file`（diff 高亮，
+  丢了之后冲突行只是普通文字）。
+
+### Added
+
+- **`pnpm run dev` 一条命令起全部**（`scripts/dev.mjs`）：先起 vite（5180），
+  ready 后自动拉 serve（7800），一个 Ctrl-C 两个都退。**直接 spawn node 二进制
+  而非 npm.cmd**——后者在 Windows 上会重排参数；vite 显式 `--host 127.0.0.1`，
+  绕开 Node 18+ 默认 IPv6（`::1`）监听导致 `127.0.0.1` 连接被拒的坑。
+  dev 启动器只服务本地开发；`pnpm start`（prod）不变，发布包不带这层。
+- **面板视觉密度体系**（核心显示与交互件分层）：
+  行 / 表格 / 输入框 28px 高 + 12px 字号；按钮 / tab 32px（比行厚 4px，
+  明确「这是可按的」）；次级标签 22px / 11px。
+- **新拟物阴影只给交互件**：按钮四态（默认凸起 / hover 光晕 / 按下内嵌 + 下沉 1px /
+  禁用内凹）、tab.active 单层、input:focus 内凹（替代外发光）。
+  **容器（卡片 / 行 / 表格 / 标签）不带任何 box-shadow**——主体是连续的流，
+  全部分隔靠 1px 浅底线（`.row border-bottom`、`.card + .card border-top`），
+  不用 margin / 投影撑空间。
+
+### Changed
+
+- **skill：`02-web-panel.md` 合并为「Web 端要求」单一来源**——面板交互规范与
+  视觉规范（密度 / 立体感 / 分隔 / 实操 / 反 AI-default 自检）在同一份里
+  （写视图时两套规则要同时满足），原来拆出去的设计 ref 已并回并删除。
+  新增 `references/07-framework-runtime.md`（dev 两进程为什么 / 端口绑定 /
+  Windows spawn 三坑 / CI 不走 dev），主文档路由表同步。
+
 ## [0.7.0] - 2026-09-17
 
 ### Added

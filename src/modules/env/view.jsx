@@ -175,7 +175,10 @@ export default function EnvView() {
   );
 
   return (
-    <div className="settings">
+    // 注意不是 "settings"——那是设置页 dt/dd 的 120px 两列网格。
+    // env 页曾误用它当容器名，结果 5 张 card 被 grid 交错塞进 120px 的左列，
+    // 横幅 / 新增 / 快照全被压成窄条。这里只需要一个纵向单列容器。
+    <div className="stack">
       {/* 能力横幅：进页面就知道系统级能不能写，而不是点了才报错 */}
       <div className="card">
         <div className="colhead">

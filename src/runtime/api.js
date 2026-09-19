@@ -11,7 +11,16 @@ import { toErrorPayload, httpStatusOf, CODES } from '../core/errors.js';
 // 为什么要排序而不是按声明顺序：`GET /api/repos/status` 与 `GET /api/repos/:id`
 // 都能匹配 `/api/repos/status`，谁先声明谁赢。一旦有人调整 actions 顺序，
 // 前者就会被后者抢走——这种 bug 只在运行时、且只在特定路径上出现，极难排查。
+//
 // 排序后，声明顺序不再影响匹配结果。
+//
+// 历史上的坑：只按"同位置字面量优先"判定，会让 `/api/env/status` 与
+// `/api/env/:name` **平局**（都在第 3 段，a 是字面量 b 是参数，按本应字面量胜出，
+// 但当数组长度正好相同时，sort 把后面声明的放前面——而 `:name` 这条通常声明在
+// status 之后，于是 `/api/env/list` 落到 `:name` 上，把 `list` 当变量名去查了）。
+//
+// 正确比较：算"前 N 段里**字面量段**的总个数"，多者优先；同字数时
+// 按"从左到右遇到的第一处分歧段"——字面量胜出。
 function routeSpecificity([, pattern]) {
   return pattern.split('/').filter(Boolean);
 }
@@ -19,12 +28,16 @@ function routeSpecificity([, pattern]) {
 function compareRoutes(a, b) {
   const pa = routeSpecificity(a.action.http);
   const pb = routeSpecificity(b.action.http);
-  for (let i = 0; i < Math.min(pa.length, pb.length); i++) {
-    const litA = !pa[i].startsWith(':');
-    const litB = !pb[i].startsWith(':');
-    if (litA !== litB) return litA ? -1 : 1; // 字面量在前
+  const litA = pa.filter((s) => !s.startsWith(':')).length;
+  const litB = pb.filter((s) => !s.startsWith(':')).length;
+  if (litA !== litB) return litB - litA; // 字面量段越多越具体
+  if (pa.length !== pb.length) return pb.length - pa.length;
+  for (let i = 0; i < pa.length; i++) {
+    const litA2 = !pa[i].startsWith(':');
+    const litB2 = !pb[i].startsWith(':');
+    if (litA2 !== litB2) return litA2 ? -1 : 1;
   }
-  return pb.length - pa.length; // 更长的（更具体）在前
+  return 0;
 }
 
 const ROUTES = ACTIONS.filter((a) => a.http)

@@ -99,6 +99,8 @@ web/        React 壳，只 import 各模块的 view.jsx
 | [[04-state-storage]] | 定存储时：放哪、怎么写不坏、怎么让测试不污染用户目录 |
 | [[05-release-actions]] | 配发版流水线时：**用 gh 建仓库（默认公开）**、gh secret、npm token、tag 幂等；以及 push 之后怎么用 gh 盯住流水线 |
 | [[06-extension-loop]] | **每次新增/修改一个功能域时必读**——闭环落点表（12 处，逐个标注「漏了会怎样、谁会发现」）、三处**没有任何断言**的静默失效点（`src/index.js` 导出 / eslint 互依禁列 / `assets/` 文档单向漂移）、以及怎么验证闸门本身真的会触发 |
+| [[02-web-panel]] | **写 / 改一个视图时必读**——Web 端完整要求：三条核心不变量（单色 / 状态标签 / 立体感边界）、密度双层（行 28px · 按钮 32px · 字号 12px）、分隔规则（1px 浅底线，主体完全连续）、弹窗 / 复制 / 错误边界 / 视图注册表，以及反 AI-default 自检 |
+| [[07-framework-runtime]] | **dev 模式 / 日常跑项目时必读**——为什么是 vite + serve 两个进程而非一条命令、`pnpm run dev` 启动器、Node 18+ IPv6 / `--host 127.0.0.1`、跨平台 spawn 坑（npm.cmd / Git Bash / cwd 校准） |
 
 ## 验收清单
 

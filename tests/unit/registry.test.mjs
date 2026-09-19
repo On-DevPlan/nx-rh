@@ -270,6 +270,48 @@ test('routes 反查：每条 HTTP 路由都能定位回自己的命令', async (
   assert.deepEqual(missed, [], `这些路由反查不到对应命令:\n${missed.join('\n')}`);
 });
 
+// CRITICAL：字面量段必须压过同长度的 :param 段——本机实测过 `compareRoutes`
+// 旧版会让 `/api/env/list` 走到 `:name`，把 list 当变量名去查。
+// 这里挑几对「字面量 vs :param」冲突的路径，断言字面量那条胜出。
+const LITERAL_VS_PARAM_FIXTURES = [
+  { req: 'GET /api/env/status',     expectId: 'env.status' },
+  { req: 'GET /api/env/path',       expectId: 'env.path.list' },
+  { req: 'GET /api/env/snapshots',  expectId: 'env.snapshot.list' },
+  { req: 'POST /api/env/snapshots', expectId: 'env.snapshot.save' },
+];
+
+test('路由排序：字面量段压过同长度的 :param 段', async () => {
+  const { handleApi } = await import(
+    pathToFileURL(join(ROOT, 'src', 'runtime', 'api.js')).href
+  );
+  for (const f of LITERAL_VS_PARAM_FIXTURES) {
+    const [method, path] = f.req.split(' ');
+    // 伪造最小 req / res（handleApi 不读 req.body，只看 method + url + pathname）
+    const req = { method, headers: {}, url: path, on: () => {}, once: () => {} };
+    const body = [];
+    let status;
+    const res = {
+      writeHead: (s) => { status = s; return res; },
+      end: (b) => { body.push(b ?? ''); return res; },
+    };
+    await handleApi(req, res, { pathname: path });
+
+    let payload = {};
+    try { payload = JSON.parse(body.join('') || '{}'); } catch {}
+
+    // 命中的应是字面量那条 action；命中错时 status=404 且 message 含「接口不存在」
+    if (status === 404 || /接口不存在/.test(payload.error || '')) {
+      assert.fail(`${f.req} 没命中路由（${payload.error || status}）—— ${f.expectId} 应胜出`);
+    }
+    // 进一步：不该把字面量当变量名去查（那是被 :name 抢走时的错误信息）
+    const tail = path.split('/').pop();
+    assert.ok(
+      !new RegExp(`不存在: ${tail}`).test(payload.error || ''),
+      `${f.req} 走到了 :name，把 "${tail}" 当变量名去查`,
+    );
+  }
+});
+
 test('routes 正查：--module 过滤，且纯 CLI 命令如实标注 http:null', async () => {
   const repos = await routesAction.run({ module: 'repos' });
   assert.ok(repos.length > 0);

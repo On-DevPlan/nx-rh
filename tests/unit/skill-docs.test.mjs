@@ -64,7 +64,8 @@ test('每个 ref 都有回链与足够内容', () => {
 });
 
 test('ref 的章节编号连续（「一 二 三 …」不跳号不重复）', () => {
-  const order = ['一', '二', '三', '四', '五', '六', '七', '八', '九', '十'];
+  const order = ['一', '二', '三', '四', '五', '六', '七', '八', '九', '十',
+                  '十一', '十二', '十三', '十四', '十五', '十六'];
   for (const f of refFiles) {
     const text = readFileSync(join(SKILL_DIR, 'references', f), 'utf8');
     const nums = [...text.matchAll(/^## ([一二三四五六七八九十]+)、/gm)].map((m) => m[1]);

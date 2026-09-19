@@ -67,7 +67,10 @@ export default function App() {
       </main>
 
       <footer>
-        面板上每个按钮都有同构 CLI 命令（见各页底部提示）· <code>nx-rh help</code> · agent 可加 <code>--json</code> 获取机器可读输出
+        每个按钮都有同构的 CLI 命令<span className="fsep"> · </span>
+        命令表见 <code>nx-rh help</code>
+        <span className="fsep"> · </span>
+        agent 可加 <code>--json</code> 获取机器可读输出
       </footer>
     </>
   );
