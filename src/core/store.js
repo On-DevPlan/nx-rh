@@ -20,7 +20,7 @@ const EMPTY = () => ({
     skillCentralCandidates: [], // 中心仓库候选目录（下拉多选项）
     skillProjectCandidates: [], // 项目目录候选（下拉多选项）
   },
-  repos: [],
+  repos: [], // 仓库登记（repos 模块的所有数据；git 能力已移除，登记保留）
   skillGroups: [{ id: 'ungrouped', name: '未分组', skills: [] }],
 });
 

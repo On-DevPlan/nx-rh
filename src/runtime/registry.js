@@ -14,10 +14,9 @@ import repos from '../modules/repos/index.js';
 import skills from '../modules/skills/index.js';
 import settings from '../modules/settings/index.js';
 import env from '../modules/env/index.js';
-import github from '../modules/github/index.js';
 import bundled from '../modules/bundled/index.js';
 
-export const MODULES = [system, repos, skills, settings, env, github, bundled].sort(
+export const MODULES = [system, repos, skills, settings, env, bundled].sort(
   (a, b) => (a.order ?? 100) - (b.order ?? 100)
 );
 

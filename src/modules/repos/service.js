@@ -1,9 +1,10 @@
-// 仓库管理 service：登记、CRUD、目录扫描、git 状态与远端操作。
+// 仓库登记 service：登记、CRUD、目录扫描。
 // 本文件是业务真相源，不含任何传输层概念（不认识 argv，也不认识 HTTP）。
+// 刻意不碰 git：只记录「这台机器上有哪些仓库、它们分别是什么」，
+// 状态与读写交给 git 本身（面板做不好的东西不做，见 README）。
 import { basename, join, resolve } from 'node:path';
 import fsp from 'node:fs/promises';
 import { loadStore, mutateStore, newId } from '../../core/store.js';
-import { gitStatus, gitDiff, gitPull, gitPush, gitResolve } from '../../core/git.js';
 import { openPath } from '../../core/open.js';
 import { badInput, notFound, conflict } from '../../core/errors.js';
 
@@ -51,7 +52,14 @@ export async function updateRepo(id, patch) {
     if (patch.tags !== undefined) r.tags = parseTags(patch.tags);
     if (patch.desc !== undefined) r.desc = String(patch.desc).trim();
     if (patch.notes !== undefined) r.notes = String(patch.notes);
-    if (patch.path !== undefined) r.path = resolve(String(patch.path));
+    if (patch.path !== undefined) {
+      const abs = resolve(String(patch.path));
+      // 改路径同样要防重复登记，否则两条记录指向同一目录，扫描时无法判断是否已登记
+      if (s.repos.some((x) => x.id !== id && x.path.toLowerCase() === abs.toLowerCase())) {
+        throw conflict('该路径已登记: ' + abs);
+      }
+      r.path = abs;
+    }
     r.updatedAt = new Date().toISOString();
     return r;
   });
@@ -91,6 +99,7 @@ const SKIP_DIRS = new Set([
   'AppData',
 ]);
 
+// 含 .git（目录或文件——worktree / submodule 下是文件）即视为一个仓库根
 async function hasGitDir(dir) {
   try {
     await fsp.stat(join(dir, '.git'));
@@ -100,7 +109,7 @@ async function hasGitDir(dir) {
   }
 }
 
-// 扫描根目录下的 git 仓库并登记（跳过依赖类大目录，允许 .claude 等点目录）
+// 扫描根目录下的仓库并登记（跳过依赖类大目录，允许 .claude 等点目录）
 export async function scanRepos(root, depth = 3) {
   const absRoot = resolve(String(root || ''));
   const found = [];
@@ -130,35 +139,6 @@ export async function scanRepos(root, depth = 3) {
     }
   }
   return { root: absRoot, scanned: found.length, added };
-}
-
-export async function repoStatus(id) {
-  if (id) {
-    const r = await getRepo(id);
-    return [{ ...r, git: await gitStatus(r.path) }];
-  }
-  const s = await loadStore();
-  return Promise.all(s.repos.map(async (r) => ({ ...r, git: await gitStatus(r.path) })));
-}
-
-export async function repoDiff(id, file) {
-  const r = await getRepo(id);
-  return gitDiff(r.path, file);
-}
-
-export async function repoPull(id) {
-  const r = await getRepo(id);
-  return gitPull(r.path);
-}
-
-export async function repoPush(id) {
-  const r = await getRepo(id);
-  return gitPush(r.path);
-}
-
-export async function repoResolve(id, file, side) {
-  const r = await getRepo(id);
-  return gitResolve(r.path, file, side);
 }
 
 // 在系统文件管理器中打开（"操作 OS 方便"的最小切口）

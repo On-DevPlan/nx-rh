@@ -35,9 +35,9 @@ export function assertSafeName(name, label = 'skill 名称') {
 }
 
 // 相对路径校验：一切来自外部的「某个目录内的文件路径」都要过这里。
-// 允许子目录（git 的 --file 常带路径）与前导点（.gitignore / .github/workflows/x.yml）。
-// 拒绝绝对路径与 .. 段——历史上 applySkillSide 做了这类校验而 gitResolve/gitDiff 没做，
-// 同一类输入校验强度不一致，本身就是可乘之口。
+// 允许子目录与前导点（skill 里的 .gitignore、.github/workflows/x.yml 都是正常文件）。
+// 拒绝绝对路径与 .. 段——这类校验一旦只在部分入口做，就会留下可乘之口。
+// （历史上 skill apply 做了而 git diff / resolve 没做，同一类输入强度不一致。）
 //
 // 返回**归一化后**的路径（折叠重复分隔符、去掉 './' 段），调用方应使用返回值。
 export function assertSafeRelPath(input, { label = '文件路径', allowSubdir = true } = {}) {

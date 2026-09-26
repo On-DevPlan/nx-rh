@@ -1,11 +1,30 @@
 # nx-rh · npx-repo-hub
 
-本机 git 仓库与 Agent Skill 的管理中枢。一个 `npx` 命令起一个 Web 面板，
+本机仓库登记与 Agent Skill 的管理中枢。一个 `npx` 命令起一个 Web 面板，
 同时提供同构 CLI——**面板上的每个按钮，底层都是同一条 CLI 命令**，
 输出 `--json` 即可被任何 agent 直接消费。
 
 本项目同时用作 **server-web-cli 类项目的标准模板**：三端同源不是靠人维护两份清单，
 而是由一份 action 声明派生，并由 lint 与测试强制。见 [架构](#架构action-三端同源)。
+
+## 为什么不管 git
+
+本工具**不做任何 git 操作**：没有 status / diff / pull / push / resolve 冲突。
+
+这不是没做完，是主动砍掉的。上一版做过：把 git 的 porcelain 状态解析成
+「分支 · 领先落后 · 变更 · 冲突」显示在面板上，还带行内 diff 与一键 pull/push。
+结果是**半吊子**——用户看到「冲突 3 个文件」，点进去只能一行行读原始 diff 文本，
+既没有 hunk 级的取舍，也没有 rebase/merge 策略、凭据、进度与失败恢复。
+要做成能用的东西就得自己实现一个 git 客户端，而那件事有 IDE、有 git 自己、
+有几十个成熟 GUI 在做，**永远做得比这里好**。
+
+真正危险的不是功能少，而是**给出可信外观的错误结论**：面板上显示「干净」，
+用户就不再跑 `git status` 了；而那是个只看了 porcelain 首行、没管 stash /
+submodule / worktree / 未跟踪目录的实现。「看着像知道，实际不知道」比空白更糟。
+
+所以边界划在这里：**本工具维护「有哪些仓库、在哪、干什么用」这份登记表**，
+git 的事交给 git 自己。登记表是 git 给不了的东西——它跨仓库、带标签与描述，
+让 agent 不必每次重新问「这个是哪个项目」。
 
 ## 快速开始
 
@@ -20,7 +39,7 @@ pnpm start            # 构建 + 起面板
 # 发布为 npm 包后
 npx nx-rh serve
 
-# 校验：lint + 构建 + 66 项端到端冒烟 + 43 项单元/一致性测试
+# 校验：lint + 构建 + 端到端冒烟 + 单元/一致性测试
 pnpm test
 ```
 
@@ -44,7 +63,7 @@ pnpm test
         └──────────────────┬───────────────────────┘
                            ▼
         ┌──────────────────────────────────────────┐
-        │  core：存储 / git / diff / 文件树 / 错误   │
+        │  core：存储 / diff / 文件树 / 错误         │
         └──────────────────────────────────────────┘
 ```
 
@@ -87,7 +106,6 @@ src/
     paths.js             # 常量、存储路径、名称/路径安全校验
     errors.js            # AppError + code→HTTP/exit 的唯一映射点
     store.js             # JSON 存储：原子写 + mtime 失效检测
-    git.js               # git CLI 封装
     diff.js              # LCS 行级 diff + unified 输出 + diff3-lite 三方合并
     fstree.js            # 存在性、md5、目录树差异
     frontmatter.js       # SKILL.md frontmatter 解析
@@ -96,7 +114,7 @@ src/
     envvars.js           # 环境变量平台驱动（PowerShell ↔ Windows 注册表；posix 位置已预留）
   modules/               # 功能域，每个自包含
     system/              # bootstrap / health（聚合模块，无视图）
-    repos/  skills/  settings/  env/  github/  bundled/
+    repos/  skills/  settings/  env/  bundled/
       index.js           #   action 声明（CLI + HTTP + help）
       service.js         #   业务逻辑
       view.jsx           #   面板视图
@@ -141,6 +159,7 @@ localStorage 持久化，刷新不丢。
       "id": "r_xxx",
       "name": "nx-rh",
       "path": "D:/code/js/proj/nx-rh",
+      "desc": "仓库登记与 skill 同步中枢",
       "tags": ["tool"],
       "notes": "",
       "addedAt": "...",
@@ -162,15 +181,11 @@ localStorage 持久化，刷新不丢。
 | `nx-rh help [模块]` / `version` / `bootstrap` / `health` | — |
 | `nx-rh routes [--module M] [--http "METHOD /api/path"]` | 命令 ↔ 路由对照；`--http` 可由端点反查命令 |
 | `nx-rh repo list` | 仓库页：清单 |
-| `nx-rh repo get <id>` | 单条登记信息（不跑 git） |
+| `nx-rh repo get <id\|path>` | 单条登记信息 |
 | `nx-rh repo add <path> [--name N] [--desc D] [--tags a,b] [--notes T]` | 添加仓库 |
-| `nx-rh repo update <id> [...]` | 编辑登记 |
+| `nx-rh repo update <id> [...]` | 编辑登记（含 `--path` 改路径） |
 | `nx-rh repo remove <id>` | 删除登记（不动磁盘） |
-| `nx-rh repo scan <root> [--depth 3]` | 扫描目录发现 git 仓库 |
-| `nx-rh repo status [id]` | 刷新状态 |
-| `nx-rh repo diff <id> [--file F]` | 行内 diff 按钮 |
-| `nx-rh repo pull <id>` / `push <id>` | 行内 pull/push 按钮 |
-| `nx-rh repo resolve <id> --file F --side ours\|theirs` | 冲突文件落地 |
+| `nx-rh repo scan <root> [--depth 3]` | 扫描目录发现仓库 |
 | `nx-rh repo open <id>` | 在文件管理器中打开 |
 | `nx-rh skill adapters` | 适配器清单 |
 | `nx-rh skill list --side central\|project [--path P]` | 识别两侧 |
@@ -197,7 +212,6 @@ localStorage 持久化，刷新不丢。
 | `nx-rh env path add <dir> [--scope S] [--first] [--dry-run]` | PATH 追加一行 |
 | `nx-rh env path remove <dir> [--scope S] [--dry-run]` | PATH 移除一行 |
 | `nx-rh env snapshot list` / `save [label]` / `restore <id> [--dry-run]` | 快照与回滚 |
-| `nx-rh gh status` / `view <owner/repo>` / `search <q> [--limit N]` / `mine [--limit N]` | GitHub 页 |
 | `nx-rh bundled list` / `skill install [name] [--to DIR] [--force]` | 内置 skill 包 |
 
 > `env` 模块是唯一改**操作系统状态**而非本仓库状态的模块：它读写 Windows 注册表里的
@@ -222,6 +236,9 @@ nx-rh routes --json                       # 含每条的完整签名（位置参
 反向查找复用路由编译时的正则，所以带参路由也能匹配具体实例
 （`DELETE /api/repos/r_abc` → `nx-rh repo remove`）。
 `http: null` 的命令（如 `setting get`）会如实标注为「仅 CLI」。
+
+> `repo` 模块只管登记（路径 / 名称 / 描述 / 标签 / 备注 / 扫描发现），
+> 不含任何 git 操作——原因见上面的[「为什么不管 git」](#为什么不管-git)。
 
 > Git Bash 注意：`--http /api/x` 这种以 `/` 开头的值会被 MSYS 改写成 Windows 路径。
 > 加上方法前缀（`--http "GET /api/x"`）或设 `MSYS_NO_PATHCONV=1` 即可。
@@ -262,7 +279,7 @@ nx-rh skill install --force         # 目标已存在且不同时覆盖
 ```
 
 - 安装是**三态**的：不存在 → 安装；存在且一致 → `skipped`；存在且不同 → `conflict` 列文件清单（须显式 `--force`）
-- 结构遵循渐进式披露：主 `SKILL.md` 只放**核心原则 + ref-map**，场景细节全部在 `references/`（`repo-ops` / `skill-sync` / `agent-workflow`）
+- 结构遵循渐进式披露：主 `SKILL.md` 只放**核心原则 + ref-map**，场景细节全部在 `references/`（`repo-registry` / `skill-sync` / `env-manage` / `agent-workflow`）
 - 扩展方式：新增 `assets/repo-hub/references/<场景>.md` 并在主文档路由表补一行「何时读取」
 - Web 面板「Skill」页有对应按钮（`安装 repo-hub skill`），等价于上述命令
 
@@ -304,6 +321,8 @@ nx-rh skill install --force         # 目标已存在且不同时覆盖
 ## 设计约定
 
 - **三端同源**：一条 action 声明驱动 CLI、HTTP、面板；不写第二份命令清单。
+- **划定边界，而不是补齐功能**：砍掉 git 客户端、GitHub 连接器都遵循同一条标准——
+  这件事我们做得比现有工具好吗？做不到就不做，半吊子会给用户「可信的错误结论」。
 - **无 emoji**：面板、CLI 输出、代码注释全程无 emoji。
 - **黑白清晰**：单色 CSS（黑字白底、粗边框、悬停反色），系统字体，路径与 diff 用等宽字体。
 - **agent 优先**：所有写操作幂等或显式报错；错误以 `exit code 1 + 可解析文本` 返回；

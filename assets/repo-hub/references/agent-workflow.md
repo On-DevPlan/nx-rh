@@ -39,37 +39,33 @@ nx-rh routes --http "POST /api/skills/apply"     # 手里有端点，反查该�
 ### 1. 先诊断，再行动
 
 ```bash
-# 全量状态（一次调用拿到所有仓库）
-nx-rh repo status --json
+# 仓库登记清单一（路径 / 名称 / 描述 / 标签）
+nx-rh repo list --json
 
-# 只关心需要动作的
-nx-rh repo status --json | jq '[.[] | select(.git.behind > 0) | {id, name, behind: .git.behind}]'
-
-# 找有冲突的
-nx-rh repo status --json | jq '[.[] | select((.git.conflicted // []) | length > 0) | .name]'
+# skill 两侧现状
+nx-rh skill list --side project --path <P> --json
 ```
+
+> git 状态（分支 / 领先落后 / 变更 / 冲突）**不在这里**——本工具不提供 git 操作。
+> 需要判断某个仓库要不要拉取时，用 git 自己：`git -C <path> status -sb`。
 
 ### 2. 批量执行（逐项循环 + 收集结果）
 
-单条命令只作用于一个仓库，批量靠外层循环：
+单条命令只作用于一个对象，批量靠外层循环：
 
 ```bash
-for id in $(nx-rh repo status --json | jq -r '.[] | select(.git.behind > 0) | .id'); do
-  nx-rh repo pull "$id" --json
+for name in $(nx-rh skill list --side central --json | jq -r '.[].name'); do
+  nx-rh skill sync "$name" --project <P> --json
 done
 ```
 
-**判读要点**：`pull` 返回的 `conflicted` 非空 = 该项需要人工决策，**不要**在这里自动 `--force`。
+**判读要点**：`sync` 返回的 `files` 非空 = 该项需要人工决策，**不要**在这里自动 `--force`。
 
 ### 3. 结果聚合成报告
 
 ```bash
-# 汇总：干净 / 有变更 / 有冲突 的三类计数
-nx-rh repo status --json | jq '{
-  clean:  [.[] | select(.git.clean)] | length,
-  dirty:  [.[] | select((.git.staged|length)+(.git.modified|length)+(.git.untracked|length) > 0)] | length,
-  conflict: [.[] | select((.git.conflicted // []) | length > 0)] | length
-}'
+# 仓库按标签归类计数
+nx-rh repo list --json | jq 'group_by(.tags[]) | map({tag: .[0].tags[0], n: length})'
 ```
 
 向用户汇报时给出：**做了什么**（动作清单）+ **剩余风险**（未处理的冲突、被跳过的项及原因）。
@@ -81,16 +77,16 @@ nx-rh repo status --json | jq '{
 | 参数/用法错误 | `code: "INVALID_INPUT"`，错误文本含「用法:」 | 修正参数后重试，不要盲目重试 |
 | 业务前置缺失 | 错误文本含「未设置」「不存在」 | 先补齐前置（如设置中心仓库），再重试 |
 | 冲突 | 返回 `status: "conflict"`（**退出码 0**） | **停止自动化**，转为逐文件决策后 `apply` |
-| 网络/远端 | `code: "EXTERNAL"`，`error` 含 git 的错误输出 | 可重试；连续失败则上报用户 |
+| 环境不可用 | `code: "EXTERNAL"` / `BLOCKED` | 多为外部工具或平台差异；连续失败则上报用户 |
 
-> 冲突是**业务结果不是失败**：它以退出码 0 正常返回 `{status:"conflict", conflicted:[...]}`，
-> 不能靠退出码判断，要看 `status` 字段。`pull` 的冲突也遵循这条。
+> 冲突是**业务结果不是失败**：它以退出码 0 正常返回 `{status:"conflict", files:[...]}`，
+> 不能靠退出码判断，要看 `status` 字段。
 
 ### 5. 安全边界（agent 必须遵守）
 
-1. **不做破坏性推断**：删除、覆盖、强制推送类操作需明确授权；`--force` 不是"重试按钮"。
+1. **不做破坏性推断**：删除、覆盖类操作需明确授权；`--force` 不是"重试按钮"。
 2. **测试隔离**：任何自测都设 `NX_RH_STORE` 指向临时目录，禁止写真实 `~/.nx-rh/store.json`。
-3. **改动前后留痕**：写操作前后各跑一次 `status` / `conflict`，把差异写进汇报。
+3. **改动前后留痕**：写操作前后各跑一次 `list` / `conflict`，把差异写进汇报。
 4. **不确定就停**：遇到未覆盖的命令或非预期输出，停下来询问，不要猜测参数。
 
 ## 正反例
@@ -98,11 +94,11 @@ nx-rh repo status --json | jq '{
 | 反例 | 问题 | 正例 |
 | --- | --- | --- |
 | 解析 `--json` 时还去 grep 人类可读文本 | 输出格式一变就崩 | 只用 `--json` 的字段 |
-| 批量 pull 时对冲突项自动 `--force` | 静默丢改动 | 收集冲突清单，停下来请用户决策 |
+| 批量 sync 时对冲突项自动 `--force` | 静默丢改动 | 收集冲突清单，停下来请用户决策 |
 | 用真实 store 做自测 | 污染用户数据 | `NX_RH_STORE=/tmp/... nx-rh …` |
 | 失败后无限重试 | 掩盖真实错误 | 按第 4 步分类：先修因再重试 |
 
 ## 与其他场景的衔接
 
-- 需要理解单仓库字段含义 → 读 [[repo-ops]]
+- 需要理解仓库登记字段含义 → 读 [[repo-registry]]
 - 需要处理 skill 两侧不一致 → 读 [[skill-sync]]

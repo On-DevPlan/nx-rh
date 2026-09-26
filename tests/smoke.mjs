@@ -60,7 +60,8 @@ try {
   const settings = cliJson(['setting', 'get']);
   check('setting get', settings.skillCentralPath === central);
 
-  // ---- 3. 仓库 CRUD ----
+  // ---- 3. 仓库登记 CRUD ----
+  // 仓库模块只做登记，不碰 git：状态 / diff / pull / push / resolve 已随 git 能力移除。
   check('repo add', cli(['repo', 'add', central, '--name', 'central-repo', '--tags', 'test,fixture']).status === 0);
   check('repo add 重复路径报错', cli(['repo', 'add', central]).status === 1);
   const list = cliJson(['repo', 'list']);
@@ -73,27 +74,20 @@ try {
   check('repo get 不存在时失败', cli(['repo', 'get', 'r_not_exist']).status === 1);
   check('repo update 改描述', cliJson(['repo', 'update', repoId, '--desc', '改过的']).desc === '改过的');
   check('repo update 后再 get 能读到', cliJson(['repo', 'get', repoId]).desc === '改过的');
+  // 改路径要能定位单条，也要防重复登记（否则两条记录指向同一目录，扫描结果无从判断）
+  const renameTarget = join(tmp, 'rename-target');
+  mkdirSync(renameTarget, { recursive: true });
+  const repo2 = cliJson(['repo', 'add', project, '--name', 'proj-early']);
+  check('repo update 改路径', cliJson(['repo', 'update', repo2.id, '--path', renameTarget]).path === renameTarget);
+  check('repo update 改到已登记路径报错', cli(['repo', 'update', repo2.id, '--path', central]).status === 1);
 
-  // git 仓库状态：测试内自建 git fixture（不依赖 .claude/repo 参考克隆——CI 上不存在）
-  const gitRepo = join(tmp, 'git-fixture');
-  mkdirSync(gitRepo, { recursive: true });
-  const gitStep = (args) => {
-    const r = spawnSync('git', args, { cwd: gitRepo, encoding: 'utf8' });
-    if (r.status !== 0) throw new Error('git fixture ' + args.join(' ') + ' 失败: ' + (r.stderr || '').trim());
-  };
-  gitStep(['init', '-q', '-b', 'main']);
-  gitStep(['config', 'user.email', 't@t']);
-  gitStep(['config', 'user.name', 't']);
-  writeFileSync(join(gitRepo, 'a.txt'), 'a\n');
-  gitStep(['add', '.']);
-  gitStep(['commit', '-qm', 'init']);
-  check('repo add git repo', cli(['repo', 'add', gitRepo, '--name', 'git-ref']).status === 0);
-  const statuses = cliJson(['repo', 'status']);
-  const gitRow = Array.isArray(statuses) ? statuses.find((r) => r.name === 'git-ref') : null;
-  check('git status 解析', !!gitRow && !!gitRow.git.branch && !gitRow.git.error,
-    gitRow ? `branch=${gitRow.git.branch} err=${gitRow.git.error}` : 'gitRow=null（git-ref 未出现在 status 列表）');
-  const nonGit = Array.isArray(statuses) ? statuses.find((r) => r.name === 'central-repo') : null;
-  check('非 git 目录状态容错', !!nonGit && !!nonGit.git.error);
+  // 扫描：只按「有没有 .git」识别仓库，不跑任何 git 子命令
+  const scanRoot = join(tmp, 'scan-root');
+  mkdirSync(join(scanRoot, 'a', '.git'), { recursive: true });
+  mkdirSync(join(scanRoot, 'b', '.git'), { recursive: true });
+  mkdirSync(join(scanRoot, 'not-a-repo'), { recursive: true });
+  const scanned = cliJson(['repo', 'scan', scanRoot, '--depth', '2']);
+  check('repo scan 只登记含 .git 的目录', scanned.scanned === 2 && scanned.added.length === 2, JSON.stringify(scanned.added.map((x) => x.path)));
 
   // ---- 4. skill 识别 ----
   const centralSkills = cliJson(['skill', 'list', '--side', 'central']);
@@ -202,7 +196,7 @@ try {
   const inst = cliJson(['skill', 'install', '--to', skillsHome]);
   check('skill install 安装成功', inst.status === 'ok' && inst.installed === true && inst.files >= 4, JSON.stringify(inst));
   const installedMd = readFileSync(join(skillsHome, 'repo-hub', 'SKILL.md'), 'utf8');
-  check('SKILL.md 落地且含 ref-map', installedMd.includes('场景路由（ref-map）') && installedMd.includes('[[repo-ops]]'));
+  check('SKILL.md 落地且含 ref-map', installedMd.includes('场景路由（ref-map）') && installedMd.includes('[[repo-registry]]'));
   check('references 一并复制', existsSync(join(skillsHome, 'repo-hub', 'references', 'skill-sync.md')));
 
   const again = cliJson(['skill', 'install', '--to', skillsHome]);
@@ -381,7 +375,7 @@ try {
   const base = 'http://127.0.0.1:' + server.address().port;
 
   const boot = await (await fetch(base + '/api/bootstrap')).json();
-  check('api bootstrap', boot.ok && boot.data.repos.length === 2);
+  check('api bootstrap', boot.ok && boot.data.repos.length === 4, JSON.stringify(boot.data.repos?.length));
 
   // ---- 环境变量的 HTTP 侧（同样只走读与 dry-run）----
   // 这段的存在理由：面板调的每条路由都必须真的能通，而 CLI 与 HTTP 虽同源于

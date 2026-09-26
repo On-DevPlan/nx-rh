@@ -2,6 +2,56 @@
 
 本文件记录对外可见的变更。格式参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)。
 
+## [0.9.0] - 2026-09-26 移除 git 能力
+
+### Removed
+
+- **整个 git 执行层（破坏性变更）。** 删掉 `src/core/git.js` 与仓库模块下的
+  12 条 git 相关命令／路由：
+
+  | 移除的命令 | 移除的路由 |
+  | --- | --- |
+  | `repo status [id]` | `GET /api/repos/status` |
+  | `repo diff <id> [--file F]` | `GET /api/repos/diff` |
+  | `repo pull <id>` / `repo push <id>` | `POST /api/repos/pull` / `push` |
+  | `repo resolve <id> --file F --side ours\|theirs` | `POST /api/repos/resolve` |
+
+  仓库模块的面板同时去掉「分支」「状态」两列与行内 diff/pull/push 按钮。
+  **保留**登记本身：`repo list|get|add|update|remove|scan|open` 与面板的仓库页。
+
+  为什么砍：git 客户端是无底洞。上一版把 porcelain 解析成「分支 · 领先落后 ·
+  变更 · 冲突」显示在面板上，但点进冲突只能读原始 diff 文本——没有 hunk 级取舍、
+  没有 merge/rebase 策略、没有凭据、进度与失败恢复。要做成能用的东西就得自己写
+  一个 git 客户端，而那件事 IDE 和几十个成熟 GUI 做得永远比这里好。
+  更危险的是**给出可信外观的错误结论**：面板显示「干净」，用户就不再跑
+  `git status` 了，而那个实现只看了 porcelain 首行。
+  详见 README 新增的「为什么不管 git」一节。
+
+- **GitHub 连接器模块（`gh *`）**：与 git 同批移除。它依赖 gh CLI 登录态，
+  而模块的价值本就在于「和已登记的本地仓库对上」——仓库不再有分支/远端信息后，
+  它退化成一层比浏览器书签好不了多少的外壳。面板的「GitHub」页随之撤掉。
+
+### Changed
+
+- **`repo update` 新增 `--path`**，可以改登记路径；改到已被别的记录占用的路径会
+  显式报错（与 `repo add` 的重复检查同一条规则）。
+- **`repo scan` 不再调用 git**：只做 `.git` 存在性检查（目录或文件——worktree /
+  submodule 下是文件），因此没装 git 的机器也能用。
+- **项目候选下拉不再自动并入已登记仓库**：候选只有设置里维护的那一份。
+  两个来源意味着用户要同步两处心智模型，而合并语义（哪个覆盖哪个）没人记得住。
+- `repo-hub` skill 文档同步：`references/repo-ops.md`（仓库状态/diff/拉推/冲突 SOP）
+  删除，替换为 `references/repo-registry.md`（登记清单的增删改查 + 「本工具不管 git」
+  的边界说明与替代做法）；`SKILL.md` 的适用场景、原则、主流程、路由表一并改写；
+  `references/agent-workflow.md` 里基于 `repo status` 的批量编排示例改为登记清单示例。
+
+### Notes
+
+- **升级提示**：store.json 的 `repos[]` 结构不变，旧数据无需迁移；但只存在于
+  git 状态里的信息（分支、领先落后）本工具不再知道，需要时用
+  `git -C <path> status -sb`。
+- 测试同步：冒烟测试删掉 git fixture（不再依赖机器上装了 git），新增
+  `repo update --path`、重复路径拒绝、`repo scan` 只认 `.git` 三类断言。
+
 ## [0.8.0] - 2026-09-19
 
 ### Fixed

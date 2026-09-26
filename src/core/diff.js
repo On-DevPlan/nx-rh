@@ -2,7 +2,7 @@
 // 用途：
 // - skill 同步时两侧文本差异的展示与选择（Web 弹窗 / CLI 文本）
 // - /api/util/merge 与 CLI skill merge 暴露 merge3 原语，供 agent 编排
-// git 仓库自身的冲突由 git 的 3-way 机制处理（见 core/git.js gitResolve）。
+// 只服务 skill 两侧的内容合并；仓库自己的 git 冲突交给 git 自己的 3-way 机制。
 
 function lcsDp(a, b) {
   const n = a.length;

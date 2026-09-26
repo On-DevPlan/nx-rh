@@ -1,9 +1,13 @@
 // 仓库模块：action 声明是 CLI 命令、HTTP 路由、help 文案的唯一来源。
 // 加一条操作 = 在 actions 里加一项，三端同时获得它。
+//
+// 本模块只管**登记**：路径、名称、描述、标签、备注。
+// git 状态 / diff / pull / push / resolve 一律不做——git 客户端是无底洞，
+// 面板里做不出比 IDE 更好的体验，真要看状态直接用 git 自己（见 README「为什么不管 git」）。
 import * as service from './service.js';
 
 // ---- CLI 人读渲染（Web 端拿 JSON，用不到这些） ----
-// 签名是 (data, ctx)：ctx 让渲染能引用入参（如 repo resolve 要用 --file/--side）。
+// 签名是 (data, ctx)：ctx 让渲染能引用入参。
 
 function renderRepoList(list) {
   if (!list.length) return '（暂无仓库，用 repo add <path> 登记）';
@@ -14,7 +18,6 @@ function renderRepoList(list) {
   return lines.join('\n');
 }
 
-// 单条仓库的登记信息（对应 repo.get）。刻意不跑 git——那是 repo.status 的事。
 function renderRepo(r) {
   const lines = [
     `${r.name}${r.desc ? '  ' + r.desc : ''}`,
@@ -28,27 +31,9 @@ function renderRepo(r) {
   return lines.join('\n');
 }
 
-function renderStatus(list) {
-  return list
-    .map((r) => {
-      const g = r.git;
-      if (g.error) return `[${r.name}] 非 git 仓库`;
-      const parts = [
-        `[${r.name}] 分支 ${g.branch}`,
-        `领先 ${g.ahead} 落后 ${g.behind}`,
-        `暂存 ${g.staged.length} 修改 ${g.modified.length} 未跟踪 ${g.untracked.length}`,
-      ];
-      let line = parts.join(' · ');
-      if (g.conflicted.length) line += ` · 冲突 ${g.conflicted.length} 个文件: ${g.conflicted.join(', ')}`;
-      else if (g.clean) line += ' · 干净';
-      return line;
-    })
-    .join('\n');
-}
-
 export default {
   id: 'repos',
-  title: '仓库管理（= Web「仓库」页）',
+  title: '仓库登记（= Web「仓库」页）',
   order: 10,
   view: () => import('./view.jsx'),
 
@@ -72,7 +57,7 @@ export default {
       id: 'repo.get',
       cli: ['repo', 'get'],
       http: ['GET', '/api/repos/:id'],
-      summary: '查看单个仓库的登记信息（不跑 git）',
+      summary: '查看单个仓库的登记信息',
       args: ['id'],
       run: (ctx) => service.getRepo(ctx.id),
       render: renderRepo,
@@ -96,9 +81,10 @@ export default {
       id: 'repo.update',
       cli: ['repo', 'update'],
       http: ['PATCH', '/api/repos/:id'],
-      summary: '修改仓库名称 / 描述 / 标签 / 备注',
+      summary: '修改仓库路径 / 名称 / 描述 / 标签 / 备注',
       args: ['id'],
       flags: {
+        path: { type: 'string' },
         name: { type: 'string' },
         desc: { type: 'string' },
         tags: { type: 'array' },
@@ -120,62 +106,11 @@ export default {
       id: 'repo.scan',
       cli: ['repo', 'scan'],
       http: ['POST', '/api/repos/scan'],
-      summary: '扫描目录，发现 git 仓库并登记',
+      summary: '扫描目录，发现仓库并登记（按 .git / 目录特征识别）',
       args: ['root'],
       flags: { depth: { type: 'number', default: 3 } },
       run: (ctx) => service.scanRepos(ctx.root, ctx.depth),
-      render: (d) => `扫描 ${d.root}: 发现 ${d.scanned} 个 git 仓库，新登记 ${d.added.length} 个`,
-    },
-    {
-      id: 'repo.status',
-      cli: ['repo', 'status'],
-      http: ['GET', '/api/repos/status'],
-      summary: 'git 状态（分支 / 领先落后 / 变更 / 冲突）',
-      args: [{ name: 'id', required: false }],
-      run: (ctx) => service.repoStatus(ctx.id),
-      render: renderStatus,
-    },
-    {
-      id: 'repo.diff',
-      cli: ['repo', 'diff'],
-      http: ['GET', '/api/repos/diff'],
-      summary: '未暂存差异文本',
-      args: ['id'],
-      flags: { file: { type: 'string' } },
-      run: (ctx) => service.repoDiff(ctx.id, ctx.file),
-      render: (d) => d,
-    },
-    {
-      id: 'repo.pull',
-      cli: ['repo', 'pull'],
-      http: ['POST', '/api/repos/pull'],
-      summary: 'fetch + pull（有冲突时列出文件）',
-      args: ['id'],
-      run: (ctx) => service.repoPull(ctx.id),
-      render: (d) =>
-        d.output + (d.conflicted.length ? `\n冲突文件: ${d.conflicted.join(', ')}` : ''),
-    },
-    {
-      id: 'repo.push',
-      cli: ['repo', 'push'],
-      http: ['POST', '/api/repos/push'],
-      summary: '推送到远端',
-      args: ['id'],
-      run: (ctx) => service.repoPush(ctx.id),
-      render: (d) => d.output || '推送完成',
-    },
-    {
-      id: 'repo.resolve',
-      cli: ['repo', 'resolve'],
-      http: ['POST', '/api/repos/resolve'],
-      summary: '落地单个冲突文件（选一侧）',
-      args: ['id'],
-      flags: {
-        file: { type: 'string', required: true },
-        side: { type: 'string', required: true, enum: ['ours', 'theirs'] },
-      },
-      run: (ctx) => service.repoResolve(ctx.id, ctx.file, ctx.side),
-      render: (d, ctx) => `已按 ${ctx.side} 落地并暂存: ${ctx.file}`,
+      render: (d) => `扫描 ${d.root}: 发现 ${d.scanned} 个仓库，新登记 ${d.added.length} 个`,
     },
     {
       id: 'repo.open',

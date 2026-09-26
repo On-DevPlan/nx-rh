@@ -74,14 +74,13 @@ test('文档提到的每个 CLI flag 都在对应 action 里声明过', async ()
   for (const g of ['json', 'store']) known.add(g);
 
   // 只说「文档提到就应该存在」——反过来（存在但没写进文档）不强制。
-  // 抽取范围必须限定在 nx-rh 调用内：文档里还出现了 git 自己的 flag
-  // （如 `git checkout --ours`、`git pull --no-edit`），那些不属于本次校验。
+  // 抽取范围限定在 nx-rh 调用内；文档里可能出现的非 nx-rh 命令（如 `git -C <p> status`）
+  // 由 `/nx-rh\s+/` 这个锚点本身排除掉。
   const mentioned = new Set();
   for (const file of docFiles()) {
     const text = readFileSync(file, 'utf8');
     for (const m of text.matchAll(/nx-rh\s+([^\n`]*)/g)) {
       // 剥掉行尾注释：文档里会用它解释内部实现
-      // （如 `nx-rh repo pull <id>   # fetch + pull --no-edit` 中的 git 参数）
       const seg = m[1].split('#')[0];
       for (const f of seg.matchAll(/--([a-zA-Z][a-zA-Z0-9-]*)/g)) mentioned.add(f[1]);
     }

@@ -64,16 +64,15 @@ export default function SkillsView() {
   useEffect(() => { loadSkills(); }, [loadSkills]);
 
   const centralCandidates = settings.skillCentralCandidates || [];
-  const projectCandidates = useMemo(() => {
-    const map = new Map();
-    for (const r of boot?.repos || []) map.set(r.path.toLowerCase(), { path: r.path, label: `${r.name}（仓库）  ·  ${r.path}` });
-    for (const p of settings.skillProjectCandidates || []) {
-      const k = p.toLowerCase();
-      if (map.has(k)) map.get(k).label = map.get(k).label.replace('（仓库）', '（仓库+候选）');
-      else map.set(k, { path: p, label: p.replace(/^.*[\\/]/, '') + '  ·  ' + p });
-    }
-    return [...map.values()];
-  }, [boot?.repos, settings.skillProjectCandidates]);
+  // 项目候选只有设置里维护的那一份——「已登记仓库自动进下拉」随
+  // 仓库 git 能力一起撤掉了：候选来源多一份，用户就多一处要同步的心智负担。
+  const projectCandidates = useMemo(
+    () => (settings.skillProjectCandidates || []).map((p) => ({
+      path: p,
+      label: p.replace(/^.*[\\/]/, '') + '  ·  ' + p,
+    })),
+    [settings.skillProjectCandidates]
+  );
 
   // 默认平台下拉选项（设置范围；范围空则兜底 claude-code）
   const platformOpts = useMemo(() => {
@@ -83,7 +82,7 @@ export default function SkillsView() {
 
   const addCandidate = (kind) => guard(async () => {
     const p = await dialog({
-      title: kind === 'central' ? '中心仓库绝对路径（根目录下直接是 skill 目录）' : '项目根目录绝对路径（已登记的仓库会自动出现在下拉里）',
+      title: kind === 'central' ? '中心仓库绝对路径（根目录下直接是 skill 目录）' : '项目根目录绝对路径（加入后会出现在下拉候选里）',
       input: true,
     });
     if (!p) return;

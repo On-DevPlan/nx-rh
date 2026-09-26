@@ -193,8 +193,15 @@ function helpEntries(topic) {
   const byId = all.filter((e) => e.id === t);
   if (byId.length) return byId;
 
+  // 命令组名由已注册的命令表现推，不写死——模块增删（如 gh 的移除）时提示自动跟上。
+  // all 里是 commandEntry（已拍平，没有原始 cli 字段），所以从 command 串里取首词，
+  // 且只收「有多条命令的根词」——那才是命令组，单个的（serve/health）列出来没意义。
+  const roots = all.map((e) => e.command.replace(/^nx-rh\s+/, '').split(/\s+/)[0]);
+  const groups = [...new Set(roots.filter((r) => roots.filter((x) => x === r).length > 1))]
+    .slice(0, 4)
+    .join(' / ');
   const topics = [...new Set(all.map((e) => e.module))].join(', ');
-  throw badInput(`未知帮助主题: ${t}（可用模块: ${topics}；或命令组如 repo / skill / gh）`);
+  throw badInput(`未知帮助主题: ${t}（可用模块: ${topics}；或命令组如 ${groups}）`);
 }
 
 function renderHelp(entries, topic) {

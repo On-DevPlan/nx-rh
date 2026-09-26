@@ -30,7 +30,7 @@ export default defineConfig([
 
   // ---- 分层约束 ----
   {
-    // core 是零业务语义的基础层：常量、存储、git、diff、文件树、错误。
+    // core 是零业务语义的基础层：常量、存储、diff、文件树、错误。
     // 它一旦依赖上层，复用性就没了——而这些正是别的项目要照搬的部分。
     files: ['src/core/**/*.js'],
     rules: {
@@ -60,7 +60,7 @@ export default defineConfig([
         {
           patterns: [
             {
-              group: ['../repos/*', '../skills/*', '../github/*', '../bundled/*', '../system/*', '../env/*'],
+              group: ['../repos/*', '../skills/*', '../bundled/*', '../system/*', '../env/*'],
               message: '模块之间不得互相依赖；共享逻辑请下沉到 core/。唯一例外是 ../settings/service.js。',
             },
           ],

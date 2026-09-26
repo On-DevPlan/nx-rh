@@ -72,6 +72,8 @@ jobs:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
 
       - name: Publish to npm
+        # 发版是**改版本号**这个动作本身授权的：版本还没上 npm 才发布。
+        # 于是「文档 / 重构 / 删功能」这类不动 package.json 的 push 只跑校验不发版。
         if: steps.npm_check.outputs.published == 'false'
         run: npm publish --provenance --access public
         env:
