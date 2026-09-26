@@ -56,7 +56,8 @@ header {
   top: 0;
   z-index: 5;
 }
-.brand { font-weight: 800; letter-spacing: 0.4px; font-size: 13px; }
+.brand { font-weight: 800; letter-spacing: 0.4px; font-size: 13px; display: inline-flex; align-items: center; gap: 7px; }
+.brand img { width: 20px; height: 20px; border-radius: 5px; display: block; }
 .brand .sub { margin-left: 8px; font-weight: 400; color: var(--mid); }
 
 nav { display: inline-flex; gap: 2px; padding: 3px; background: var(--soft); border-radius: var(--radius-pill); }

@@ -41,7 +41,7 @@ export default function App() {
   return (
     <>
       <header>
-        <div className="brand">nx-rh<span className="sub">npx-repo-hub</span></div>
+        <div className="brand"><img src="/logo-rounded.png" alt="" />nx-rh<span className="sub">npx-repo-hub</span></div>
         <nav>
           {VIEWS.map((v) => (
             <button
