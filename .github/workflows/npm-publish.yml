@@ -43,6 +43,21 @@ jobs:
           echo "name=$(node -p "require('./package.json').name")" >> $GITHUB_OUTPUT
           echo "tag=v$(node -p "require('./package.json').version")" >> $GITHUB_OUTPUT
 
+      - name: Verify npm token
+        # 只校验「这个 secret 还能认证」，不发任何东西。
+        #
+        # 为什么必须有这一步：过期/换人的 NPM_TOKEN 在普通 push 上**完全静默**——
+        # 版本已发布 → 跳过 publish，工作流照样绿。于是问题一路潜行到发版当天
+        # 才以 403 爆出来（本项目真实踩过：仓库里的 NPM_TOKEN 停在半个多月前的旧账号，
+        # 而包 owner 是另一个账号，CI 红在 publish 那一步）。
+        # 现在每次 push 都会当面验一次，失效当场变红。
+        #
+        # 刻意不硬编码期望的用户名：该检查要回答的是「这个 token 还能用吗」，
+        # 而不是「是不是某个特定账号」——owner 变更时后者会变成假失败。
+        run: npm whoami
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+
       - name: Check if tag exists
         id: check_tag
         run: |
