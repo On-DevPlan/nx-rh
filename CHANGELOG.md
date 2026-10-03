@@ -152,6 +152,13 @@
 - `skill compare` / `skill conflict` / `skill apply` 三件套（逐文件选侧）——订阅制下
   真相源唯一，冲突只需「覆盖与否」，由 `--force` 表达。
 
+### Fixed
+
+- **多订阅源下 migrate 候选池只扫主源**：`hub add` 会把新源设为主源，旧源里的 skill
+  随之「消失」（点名迁移报 NOT_FOUND）。`selectSourceSkills` 改为聚合**全部**已订阅源
+  （`listAllSourceSkills`，同名去重留主源那份；同名不同内容仍由 sourceEntriesFor 判
+  blocked / `--source`）。回归测试 `tests/unit/skills-multisource.test.mjs`。
+
 ## [0.9.0] - 2026-09-26 移除 git 能力
 
 ### Removed

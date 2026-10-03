@@ -163,6 +163,21 @@ export async function listHubSkills() {
   return scanSkillsRoot(root, { source: p, realOnly: true });
 }
 
+// 全部订阅源的 skill 池（只认实文件，链接是别处真相源的落地副本不算来源）。
+// 主源在前；同名去重留第一份——同名不同内容的真冲突不在这里判，
+// 由 migrate 的 sourceEntriesFor 判定（blocked / --source 显式指定）。
+export async function listAllSourceSkills() {
+  const { sources } = await listSources();
+  const ordered = [...sources].sort((a, b) => Number(b.current) - Number(a.current));
+  const byName = new Map();
+  for (const s of ordered) {
+    if (!s.exists) continue;
+    const skills = await scanSkillsRoot(s.root, { source: s.path, realOnly: true });
+    for (const sk of skills) if (!byName.has(sk.name)) byName.set(sk.name, sk);
+  }
+  return [...byName.values()];
+}
+
 // 一个 skill 名在**实文件**层面出现在哪些订阅源（链接不算，见 scanSkillsRoot）。
 // 出现 ≥2 个且内容不同 = 真冲突：两个真相源打架，迁移前必须先解决或显式 --source。
 async function sourceEntriesFor(name) {
@@ -314,10 +329,10 @@ function applyFilters(list, { include, exclude, match } = {}) {
   return out;
 }
 
-// 从订阅源（当前主源）里筛出要操作的 skill。
+// 从订阅源（**全部**已订阅源，不止主源）里筛出要操作的 skill。
 // 显式点名 → 必须存在（少一个就报错，避免批量里静默漏迁移）。
 export async function selectSourceSkills({ names, all, include, exclude, match } = {}) {
-  const pool = await listHubSkills();
+  const pool = await listAllSourceSkills();
   const byName = new Map(pool.map((s) => [s.name, s]));
   const wanted = nameList(names);
 
