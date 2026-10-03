@@ -2,6 +2,20 @@
 
 本文件记录对外可见的变更。格式参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)。
 
+## [0.10.1] - 2026-10-04 面板白屏修复
+
+### Fixed
+
+- **面板整页白屏（TDZ，0.10.0 的关键回归）**：`store.jsx` 的 `switchScope` 依赖数组
+  引用了下方才声明的 `patchUi`，`skills/view.jsx` 的 `load` 同样引用了后声明的
+  `project`——hook 依赖数组在声明那一刻求值，构成「初始化前访问」，React 根组件
+  直接崩溃、页面只剩空壳。构建与单测都测不出来（lint 无此规则、smoke 只 grep 静态
+  HTML），用无头浏览器 dump-dom 才现形。两处声明都前移，四个视图已逐一无头验证。
+- **`registerDir` 参数名**：recents action 收 `path`，面板误发 `dir`，「注册其他目录」
+  被静默忽略（退化为登记服务进程目录）。
+- **lint 新增 `no-use-before-define`**（前端文件，函数声明放行）：把这类 TDZ 从
+  「运行时才炸」提前到 lint 期拦截，已做反向测试（临时重引入 bug 确认会红）。
+
 ## [0.10.0] - 2026-10-03 Skill 域重写：订阅制（Skill Hub）
 
 ### Added

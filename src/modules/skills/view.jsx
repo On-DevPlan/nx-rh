@@ -102,6 +102,10 @@ export default function SkillsView() {
   const adapters = boot?.adapters || [];
   const source = ui.source || '';
 
+  // 项目 = 右上角激活的目录（无则服务进程目录）。项目级信息只针对它。
+  // 必须声明在 load 之前——load 的依赖数组引用它，声明在后就是 TDZ 白屏。
+  const project = ui.activeScope?.path || boot?.projectRoot || '';
+
   const load = useCallback(async () => {
     const qs = new URLSearchParams();
     if (project) qs.set('project', project);
@@ -111,9 +115,6 @@ export default function SkillsView() {
   }, [project, source]);
 
   useEffect(() => { load(); }, [load]);
-
-  // 项目 = 右上角激活的目录（无则服务进程目录）。项目级信息只针对它。
-  const project = ui.activeScope?.path || boot?.projectRoot || '';
 
   const sources = data?.sources || boot?.sources || [];
   const platformOpts = useMemo(

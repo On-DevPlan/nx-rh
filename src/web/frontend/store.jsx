@@ -51,6 +51,12 @@ export function StoreProvider({ children }) {
 
   useEffect(() => { refreshBoot(); refreshBundled(); }, [refreshBoot, refreshBundled]);
 
+  // 支持对象 patch 与函数式 patch（函数式用于「基于最新 state 修剪」场景，避免闭包旧值覆盖）。
+  // 必须在 switchScope 之前声明——它的依赖数组引用 patchUi，声明在后就是 TDZ 整页白屏。
+  const patchUi = useCallback((patch) => {
+    setUi((u) => (typeof patch === 'function' ? { ...u, ...patch(u) } : { ...u, ...patch }));
+  }, []);
+
   // 作用域跟随「激活的项目」= 右上角选中的最近目录，否则服务进程目录。
   // 写进 api client 后，后续所有请求都带 x-nx-rh-scope，服务端据此切作用域。
   useEffect(() => { setActiveScope(ui.activeScope?.path || null); }, [ui.activeScope]);
@@ -70,16 +76,13 @@ export function StoreProvider({ children }) {
   // 主动登记一个目录（右上角「＋ 注册其他目录」）：登记后立即切过去
   const registerDir = useCallback(async (path) => {
     if (!path) return null;
-    const recents = await api('/api/recents', { method: 'POST', body: { dir: path } }).catch(() => null);
+    // recents action 的参数名是 path（与 CLI `recents add <dir>` 一致），发 dir 会被静默忽略
+    const recents = await api('/api/recents', { method: 'POST', body: { path } }).catch(() => null);
     await refreshBoot().catch(() => {});
     const entry = (recents || []).find((r) => r.path === path) || { scope: path, path };
     return entry;
   }, [refreshBoot]);
 
-  // 支持对象 patch 与函数式 patch（函数式用于「基于最新 state 修剪」场景，避免闭包旧值覆盖）
-  const patchUi = useCallback((patch) => {
-    setUi((u) => (typeof patch === 'function' ? { ...u, ...patch(u) } : { ...u, ...patch }));
-  }, []);
   const toggleSel = useCallback((key, name) => {
     setUi((u) => {
       const set = new Set(u[key]);

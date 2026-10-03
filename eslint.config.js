@@ -81,6 +81,11 @@ export default defineConfig([
     // 只列 web/frontend/** 会让它反过来不受约束（A00 闸 1 的实测反例）。
     files: ['src/web/frontend/**/*.{js,jsx}', 'src/modules/**/view.jsx'],
     rules: {
+      // hook 的依赖数组在「声明那一刻」求职值——数组里引用了下方才声明的
+      // const（patchUi / project 这类），运行时就是 TDZ 整页白屏。
+      // 构建与单测都测不出来（0.10.0 实测连踩两次），只能 lint 期拦。
+      // 函数声明有提升，放行；组件内先声明后使用不受影响。
+      'no-use-before-define': ['error', { variables: true, functions: false, classes: true, allowNamedExports: false }],
       'no-restricted-imports': [
         'error',
         {
