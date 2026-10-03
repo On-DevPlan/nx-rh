@@ -154,10 +154,14 @@
 
 ### Fixed
 
-- **多订阅源下 migrate 候选池只扫主源**：`hub add` 会把新源设为主源，旧源里的 skill
-  随之「消失」（点名迁移报 NOT_FOUND）。`selectSourceSkills` 改为聚合**全部**已订阅源
-  （`listAllSourceSkills`，同名去重留主源那份；同名不同内容仍由 sourceEntriesFor 判
-  blocked / `--source`）。回归测试 `tests/unit/skills-multisource.test.mjs`。
+- **多订阅源下点名迁移只扫主源**：`hub add` 会把新源设为主源，旧源里的 skill 随之
+  「消失」（点名迁移报 NOT_FOUND，CI smoke 抓出）。现在**显式点名**在全部已订阅源里找
+  （新增 `listAllSourceSkills`，同名去重留主源那份；同名不同内容仍由 sourceEntriesFor
+  判 blocked / `--source`）；`--all` / `--include` 全量保持只取当前主源（「把主源铺出去」
+  的语义不变）。回归测试 `tests/unit/skills-multisource.test.mjs`（8 条）。
+- **smoke 三处自身问题**：`skill get` 裸 ref 误放第一个位置参数（契约是先 skill 名后
+  ref）；api bundled 断言还停在旧名 `repo-hub`；「同端口 serve 认领」用 spawnSync 冻住
+  本进程事件循环、被探测服务器永远应答不了——改异步 spawn。
 
 ## [0.9.0] - 2026-09-26 移除 git 能力
 

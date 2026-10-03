@@ -2,7 +2,7 @@
 // 使用临时存储（NX_RH_STORE），并把 HOME/USERPROFILE 指到临时目录——
 // 用户级迁移（~/.claude/skills、~/.workbuddy/skills）因此绝不碰真实用户目录。
 // 运行：pnpm test（或 node tests/smoke.mjs）
-import { spawnSync } from 'node:child_process';
+import { spawn, spawnSync } from 'node:child_process';
 import { existsSync, lstatSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
@@ -42,6 +42,22 @@ function cliJson(args) {
     return { __error: r.stdout + r.stderr };
   }
   return JSON.parse(r.stdout);
+}
+
+// 异步版 cli：子进程运行期间本进程的事件循环保持可用。
+// 「同端口 serve 认领」那条必须用它——被探测的服务器就跑在本进程里，
+// spawnSync 会把事件循环冻住，服务器永远应答不了 probe（800ms 超时 → 误判无人）。
+function cliAsync(args) {
+  return new Promise((resolvePromise) => {
+    const p = spawn(process.execPath, [BIN, ...args], {
+      env: { ...process.env, NX_RH_STORE: storePath, HOME: home, USERPROFILE: home },
+    });
+    let stdout = '';
+    let stderr = '';
+    p.stdout.on('data', (c) => { stdout += c; });
+    p.stderr.on('data', (c) => { stderr += c; });
+    p.on('close', (status) => resolvePromise({ status, stdout, stderr }));
+  });
 }
 
 // ---- fixtures ----
@@ -261,7 +277,8 @@ try {
       !!gotJson.install && !JSON.stringify(gotJson).includes('skill context ==='),
     JSON.stringify(Object.keys(gotJson))
   );
-  const bare = cliJson(['skill', 'get', 'skill-hub', '--json']);
+  // 第一个位置参数是 skill 名，第二个才是 ref（裸名解析）；裸 ref 不能放第一位
+  const bare = cliJson(['skill', 'get', 'nx-rh', 'skill-hub', '--json']);
   check('skill get 裸名 ref 解析到 references/', bare.ref === 'references/skill-hub.md', bare.ref);
   check('skill get 拒绝越界 ref', cli(['skill', 'get', '..', '--json']).status === 1);
   check('skill get 未知名字报可用列表', /未找到内置 skill: nope（可用: /.test(cli(['skill', 'get', 'nope']).stderr || cli(['skill', 'get', 'nope']).stdout));
@@ -430,7 +447,7 @@ try {
   const bundledRes = await (await fetch(base + '/api/bundled')).json();
   check(
     'api bundled 列表',
-    bundledRes.ok && bundledRes.data.skills.some((s) => s.name === 'repo-hub') && !!bundledRes.data.defaultDir
+    bundledRes.ok && bundledRes.data.skills.some((s) => s.name === 'nx-rh') && !!bundledRes.data.defaultDir
   );
 
   const badRes = await (
@@ -445,8 +462,9 @@ try {
   const notFound = await (await fetch(base + '/api/nothing')).json();
   check('api 404', !notFound.ok);
 
-  // 一个面板管所有项目：同端口再 serve 一次，应认领已有面板而不是起第二个进程
-  const claim = cli(['serve', '--port', String(server.address().port), '--no-open', project2]);
+  // 一个面板管所有项目：同端口再 serve 一次，应认领已有面板而不是起第二个进程。
+  // 必须 cliAsync——服务器在本进程里，spawnSync 会冻住事件循环让 probe 永远超时。
+  const claim = await cliAsync(['serve', '--port', String(server.address().port), '--no-open', project2]);
   check('同端口 serve 认领已有面板', claim.status === 0 && claim.stdout.includes('已在运行的面板'), claim.stdout.slice(0, 140));
 
   await new Promise((r) => server.close(r));

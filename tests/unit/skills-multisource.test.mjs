@@ -46,6 +46,11 @@ try {
   const picked = await svc.selectSourceSkills({ names: ['only-hub1'] });
   check('点名非主源的 skill 不再 NOT_FOUND', picked.length === 1 && picked[0].source === hub1);
 
+  // 语义锁定：点名搜全部源，但 --all 全量只铺当前主源（主源 = hub2，里面 2 个）
+  const allPicked = await svc.selectSourceSkills({ all: true });
+  check('--all 只取当前主源', allPicked.length === 2 && allPicked.every((s) => s.source === hub2),
+    JSON.stringify(allPicked.map((s) => s.name + '@' + s.source)));
+
   // 非主源 skill 可直接迁移
   const project = join(tmp, 'proj');
   mkdirSync(project, { recursive: true });
