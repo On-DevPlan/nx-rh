@@ -7,6 +7,7 @@ export * as errors from './core/errors.js';
 export * as repos from './modules/repos/service.js';
 export * as skills from './modules/skills/service.js';
 export * as settings from './modules/settings/service.js';
+export * as system from './modules/system/service.js';
 export * as env from './modules/env/service.js';
 export * as bundled from './modules/bundled/service.js';
 

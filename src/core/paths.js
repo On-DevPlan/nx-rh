@@ -1,7 +1,8 @@
 // 路径与常量的唯一权威来源。
 import { homedir } from 'node:os';
-import { join } from 'node:path';
+import { join, resolve } from 'node:path';
 import { badInput } from './errors.js';
+import { currentScope } from './als.js';
 
 export const APP_NAME = 'nx-rh';
 export const APP_DIR = join(homedir(), '.nx-rh');
@@ -19,6 +20,38 @@ export function envSnapshotDir() {
 // 允许测试与多实例覆盖存储位置：NX_RH_STORE 环境变量优先
 export function storePathFromEnv() {
   return process.env.NX_RH_STORE || STORE_PATH;
+}
+
+// ─── 启动目录（项目根）注入 ────────────────────────────────────────
+// 运行 nx-rh 时所在的目录天然就是「当前项目」。CLI 的 --project 与面板的默认
+// 项目根都由这里给出，调用方不再各自猜 process.cwd()。
+//
+// 优先级：ALS 作用域（面板切换的项目）> 显式 setStartupDir（serve <dir>）
+//        > NX_RH_CWD 环境变量 > 进程 cwd。
+// 前三者语义相同（都是一个项目目录），合并成一条读取路径以免各处判断不一致。
+let startupDir = '';
+
+export function setStartupDir(dir) {
+  startupDir = dir ? resolve(String(dir)) : '';
+  return startupDir;
+}
+
+export function startupDirPath() {
+  return startupDir;
+}
+
+export function projectRoot() {
+  const sc = currentScope();
+  if (sc && sc.dir) return resolve(sc.dir);
+  return startupDir || process.env.NX_RH_CWD || process.cwd();
+}
+
+// 作用域键：路径的跨平台归一形式。Windows 大小写不敏感，必须折叠——
+// 否则同一个目录用 `D:/x` 和 `d:\X` 进来会被当成两个项目（recents 里出现两条）。
+// 刻意不返回真实路径：这里要的是**稳定的桶键**，而真实路径可能指向别处。
+export function cwdScope(dir) {
+  const abs = resolve(dir || projectRoot());
+  return process.platform === 'win32' ? abs.toLowerCase() : abs;
 }
 
 // 名称安全校验：拒绝路径穿越（保留中文等合法命名，与 fileops.go 语义一致）。

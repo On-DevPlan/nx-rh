@@ -39,7 +39,7 @@ test('快捷构造器带上对应 code', () => {
 });
 
 test('AppError 保留 message 原文（agent 靠子串分类失败）', () => {
-  // assets/repo-hub/references/agent-workflow.md 教 agent 用「用法:」「未设置」
+  // assets/nx-rh/references/agent-workflow.md 教 agent 用「用法:」「未设置」
   // 「不存在」三个子串判断失败类型，message 不得被包装或截断。
   const e = notFound('repo 不存在: abc');
   assert.equal(e.message, 'repo 不存在: abc');

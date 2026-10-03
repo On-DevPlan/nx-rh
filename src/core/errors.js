@@ -12,7 +12,7 @@
 // 历史教训：改造前同一层里并存 throw / {ok:false} / {status} / {available} 四种
 // 表达，上层只能靠字符串猜，无法程序化分支。
 //
-// 兼容约束：assets/repo-hub/references/agent-workflow.md 教 agent 用错误文本里的
+// 兼容约束：assets/nx-rh/references/agent-workflow.md 教 agent 用错误文本里的
 // 「用法:」「未设置」「不存在」三个子串分类失败。message 可以追加内容，但不得删除它们。
 
 export const CODES = {

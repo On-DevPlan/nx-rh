@@ -2,6 +2,156 @@
 
 本文件记录对外可见的变更。格式参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)。
 
+## [0.10.0] - 2026-10-03 Skill 域重写：订阅制（Skill Hub）
+
+### Added
+
+- **启动目录与作用域**（对齐脚手架 ref B03 的「项目化启动 + cwd 作用域」）：
+  - `nx-rh serve [dir]` 把启动目录注入为「当前项目」；CLI 不传 `--project` 时落点即它。
+  - **一个面板管所有项目**：`serve` 前探测同端口 `/api/health`，认出 `cwdScope` 字段即
+    认领现有面板——登记目录 + 打开浏览器后退出，不再起第二个进程。
+  - `recents`：全局跨项目的「最近目录」列表（`recents` / `recents add <目录>` /
+    `recents remove <目录>`），作为面板项目下拉的数据源；store 新增 `recents` 字段（最多 20 条）。
+  - `x-nx-rh-scope` 头 + `core/als.js`（`AsyncLocalStorage`）：面板切项目时整条请求链
+    自动落到激活目录，业务 action 零改动。
+  - `health` / `bootstrap` 新增 `cwdScope`、`projectRoot`、`recents`。
+- **零启动盘点与平台适配（CLI 侧）**——不启动面板就能判断「skill 能不能在 X 平台用、该放到哪」：
+  - `skill list --long` 打完整描述 + skill 目录；`--json` 每项补 `dir`，`cells[]` 补
+    `platformName` 与落点绝对路径（`dir`）。
+  - `skill show` 改为「完整描述 + 来源目录 + 平台 × 作用域落点矩阵 + 当前形态」。
+  - `skill adapters [--project]` 输出每平台的**项目级 / 用户级绝对落点**（此前只有相对目录）。
+  - 平台别名：`--platform claude` / `wb` / `cursor` / `gemini` / `universal` —— 唯一真相源仍是
+    `ADAPTERS` 表，别名只在输入侧归一。
+  - `--to` 新增 `global`（= `user`），与 `project` / `all` 并列，明确「全局 / 项目化」两端。
+  - `skill adapt` 作为 `skill migrate` 的别名（同一条 action，不会分叉）；`migrate` ⇄ `unmigrate` 完全对称，可逆。
+- **批量选择器**（`migrate` / `unmigrate` / `submit` 共用）——全量迁移不再手点：
+  - `<name...>` 多位置参数点名（其中一个不存在即报错，避免批量里静默漏掉）；
+  - `--all` 全量；`--include <模式>` 取子集；`--exclude <模式>` 排除个别（`*` 通配或子串，可逗号分隔）；
+  - `--match <关键词>` 按 **description** 过滤——agent 依业务需求挑 skill 的那条路径；
+  - `--dry-run` 只判定不落盘，输出「将创建 / 将替换 / 冲突」计划，批量前先预演；
+  - `unmigrate --all` 的候选改为**扫描目标目录**，因此也能清掉未入 Hub 的游离 skill。
+  - Web 面板：行首勾选 + 「→项目 / →用户 / 撤销勾选 / 提交未入 Hub」批量按钮（未勾选即全量，弹窗确认）。
+
+### Added（skill 结构预览：按前 3 级标题看大局）
+
+- 新增 `core/mdoutline.js`：`mdOutline`（抽 1..N 级 ATX 标题，**跳过代码围栏里的 #**，带行号）+
+  `mdStats`（行数 / 字节 / 节数）。纯函数，单测 6 条。
+- `skill show` 的人读输出与 `--json`（`skill.show` / `skill.cat` / `skill.get`）都带
+  `outline` + `stats`——agent 与面板都能先看结构再决定读不读全文。
+- 面板：详情弹窗加「结构」区块（缩进树 + 行号 + 规模），「查看全文」弹窗顶部也带大纲。
+
+### Added（面板内 skill 的完整 CRUD）
+
+- 服务层：`skill add`（新建，同名 → CONFLICT）/ `skill update`（改写 SKILL.md 全文，
+  校验 frontmatter 的 name 与目录名一致）/ `skill remove`（目标侧还有引用时 `blocked`，`--force` 继续）。
+  只动订阅源那份实文件——目标副本由迁移覆盖，与「目的仓库直接覆盖」的模型一致。
+- HTTP：`POST /api/skills`、`PATCH /api/skills/:name`、`DELETE /api/skills/:name`
+  （字面量路由优先，`DELETE /api/skills/sources` 不被遮蔽）；CLI 同名三条。
+- 面板：卡片头「＋ 新建」；详情弹窗里「编辑 / 删除」。编辑器含名称 / 描述 / 全文三个字段，
+  支持直传完整 SKILL.md（以 `---` 开头时校验 frontmatter）。
+
+### Changed（Skill 面板轻量化：行 = 浏览，弹窗 = 操作）
+
+- 行上不再排一排按钮（→项目 / →用户 / 上下文 / 提交到 Hub 全部撤掉）——一行只剩
+  勾选框 + 名称 + 描述 + 状态标签 + 平台状态（只读 pill）+ 一个「详情」；点击整行打开详情弹窗。
+- **详情弹窗**：完整描述、来源/目录、跨源冲突提示；每个「平台 × 作用域」落点一行
+  （路径可复制、形态标签、迁移 / 撤销按钮），以及「迁移 → 项目」「迁移 → 用户」「查看全文」。
+- **「未入 Hub」按平台目录分组**（用户级 / 项目级 / 不同平台各一组，组头带目录路径与数量）——
+  不再混在一行里；组内每条都能在弹窗里单独提交。
+- 平台状态 pill 从按钮改为只读标签：状态一眼可见，操作收敛到弹窗。
+
+### Changed（项目级启动：右上角「最近目录」）
+
+
+参考 `nx-rp` 的启动方式与 UI 形态，把「项目级启动」落到面板：
+
+- **右上角「最近目录」**：每次 `serve` 启动自动登记当前目录；也可「＋ 注册其他目录…」主动登记。
+  点击即切换激活目录（再点一次切回服务进程目录）——**项目级信息只针对激活的那个项目**，
+  不与全局混在一起。窗口重新聚焦时自动刷新（能看到别的终端刚登记的目录）。
+- 面板整体跟随激活目录：`x-nx-rh-scope` 请求头 + `scopeTick` 强制重挂载，切完即整页按新作用域拉数据。
+  Skill 页里原来的项目下拉移除，项目切换收敛到右上角一处。
+- **写操作 Origin 校验（脚手架 A01 §三.3）**：服务只绑 127.0.0.1，但浏览器里任意页面都能向它发请求；
+  现在浏览器的跨站写请求（POST/PATCH/PUT/DELETE 带非本机 Origin）会被拒（`BLOCKED`），
+  本机程序（curl / agent / 测试，不带 Origin）不受影响。单元测试钉住（含 IPv6 `[::1]` 形态）。
+
+### Changed（冲突检测收窄到订阅源之间）
+
+
+
+- **目的仓库不再做冲突检测，直接被订阅源覆盖**：目标只是落地副本，hub 里永远有一份，覆盖可恢复；
+  `migrate` 因此移除了 `conflict` 状态与 `--force`（删除 `unmigrate` 才保留 `--force`，因为删除不可逆）。
+- **来源侧扫描只认实文件**：源目录里的链接是别的真相源的落地副本（典型：把 `~/.claude/skills`
+  订阅为临时来源，里面大半是指向其它源的链接），不再被当成第二个来源，也不制造假冲突。
+- **新增 `skill hub check`**：订阅源健康诊断——目录缺失 / 空源（全是链接）/ 嵌套订阅 /
+  同一根重复订阅 / 跨源同名冲突（内容不同 = 真冲突，内容一致 = 重复订阅）。
+- **跨源冲突时迁移 `blocked`**：同名实文件在多个订阅源且内容不同，说明「用哪份内容覆盖」未定；
+  新增 `migrate --source <路径>` 显式指定。`skill list` / `skill show` 同步显示冲突标记。
+
+### Changed（规范对齐：脚手架 skill server-cli-web-scaffold）
+
+
+
+按 `server-cli-web-scaffold` 的 A00 / A03 / A04 / A07 逐条对账后修正：
+
+- **`skill get` 语义归位（A03 §一/§三）**：`skill get [name] [ref]` 现在是**内置手册**的三段导出——
+  `prefix`（引导语）→ `sentinel`（`# --- begin skill content ---`）→ 正文 → `install` 状态；
+  执行时顺手按 install 三态装到本机；`--json` 输出 `{skillName, ref, content, contentBytes, install}`
+  四元（不含 prefix 文本）；ref 支持**裸名**（`skill-hub` → `references/skill-hub.md`），拒绝 `..` 与绝对路径，
+  未知 ref 列出可用裸名。订阅源 skill 的全文导出改名为 **`skill cat`**（原 `skill get` 的语义）。
+- **内置 skill 目录名 = 包名（A03 §二）**：`assets/repo-hub/` → `assets/nx-rh/`，安装落点
+  `~/.claude/skills/nx-rh`；旧名 `repo-hub` 保留为 `--name` 别名。
+- **SKILL.md 触发词自检（A04）**：`description` 改为「当用户……时使用」开头并带 10 个触发词；
+  新增「不适用」一节（纯 git 操作 / 远程协作）。
+- **bootstrap 字段名（A03 SOP 6）**：`storePath` → `appStorePath`，与规范的五字段
+  `version / appStorePath / cwdScope / settings / commands` 对齐。
+- **health 返回明确错误码（A03 SOP 7）**：存储路径不可读 / 不是文件 / cwd 不可达时抛
+  `BLOCKED`，不再假装健康。
+- **`unmigrate` 的状态取值（A00 §八）**：`need-force` → **`blocked`**（四取值 ok / skipped / conflict / blocked 之一）。
+- **错误锚点**：未设置订阅源的报错改回含「未设置」（`未设置 Skill Hub 订阅源`），恢复 agent 的失败分类锚点。
+- **lint 分层覆盖（A00 闸 1 的实测反例）**：前端禁列的 `files` 补上 `src/modules/**/view.jsx`——
+  此前真正写视图的文件不受「禁止 import node:/runtime/core」约束；已做反向测试确认规则会红。
+  `ignores` 补 `assets/**`。
+- **`src/index.js` 导出补齐（A07 #6，无断言的静默点）**：补 `export * as system`。
+- ~~面板「Skill」页新增「内置手册」区块~~ → **已按用户裁定撤下**：面板不展示（噪音），
+  `skill install` / `skill get` 保留为 CLI 命令（agent 使用），不做 Web 等价。
+
+
+### Changed（破坏性）
+
+- **skill 模型从「中心仓库 ⇄ 项目」改为「订阅源 → 目标」的订阅制。**
+  唯一的可信源是订阅源（Skill Hub，你的 skill 仓库目录）；平台目录只是落地副本。
+  方向只有两条：订阅源 → 目标（`skill migrate`）、目标 → 订阅源（`skill submit`）。
+  **不再有「项目之间互迁」**。
+
+  | 移除的命令 | 替代 |
+  | --- | --- |
+  | `skill central …` | `skill hub list\|add\|remove\|<path>` |
+  | `skill list --side central\|project` | `skill list [--source <路径>] [--project <项目根>]` |
+  | `skill sync <name> --project P --adapter A` | `skill migrate <name> --to user\|project\|all [--platform P]` |
+  | `skill platform-set <name> --project P --adapter A [--off]` | 迁移 / 撤销（面板上的目标 pill，或 `migrate` / `unmigrate`） |
+  | `skill platform-status <name> --project P` | `skill show <name>` |
+  | `skill push <name> --project P` | `skill submit <name>` |
+  | `skill remove <name> --project P` | `skill unmigrate <name> --to …` |
+  | `skill conflict` / `skill apply --file F --side central\|project` | 冲突直接由 `migrate` / `submit` 返回文件清单，`--force` 覆盖 |
+
+- **新增命令**：`skill show`（详情）、`skill get`（输出全文给外部 agent）、
+  `skill migrate` / `skill unmigrate` / `skill submit` / `skill materialize`。
+- **订阅源可多个、允许重叠**：`skill hub add` 可订阅多个 skill 目录（如同时订阅 `sl` 与 `.claude`），
+  每个 skill 在列表里标注来源。
+- **平台**：新增 WorkBuddy 适配器（项目级 `.workbuddy/skills`、用户级 `~/.workbuddy/skills`），
+  默认聚焦 claude-code 与 workbuddy；其余平台保留、可按需启用。
+- **启动目录注入**：`nx-rh serve [dir]` 与 CLI 的当前目录即项目根，面板默认打开它；
+  `--project` 可覆盖。
+- **设置存储升级到 `version: 2`**：`skillCentralPath` / `skillCentralCandidates`
+  读取时自动平移为 `skillHubPath` / `skillHubSources`；移除未使用的 `skillGroups`。
+- Web 面板「Skill」页改为**源 → 迁移 单向流**：订阅源下拉、每个 skill 一行（来源徽标 +
+  用户/项目 × 平台 的目标 pill 可点即迁移/撤销）、「未入 Hub」区块一键提交。
+
+### Removed
+
+- `skill compare` / `skill conflict` / `skill apply` 三件套（逐文件选侧）——订阅制下
+  真相源唯一，冲突只需「覆盖与否」，由 `--force` 表达。
+
 ## [0.9.0] - 2026-09-26 移除 git 能力
 
 ### Removed

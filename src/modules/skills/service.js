@@ -1,18 +1,32 @@
-// Skill 管理 service：中心仓库 <-> 项目两侧的识别、软链接/复制同步、冲突分析。
-// 链接算法移植自 vercel-labs/skills 的 installer.ts（junction/权限降级/自指防护），
-// 业务语义（中心仓库 + 分组）延续 br_controller 的 fileops.go 设计。
-import { basename, dirname, isAbsolute, join, resolve } from 'node:path';
+// Skill service：以「订阅源（Skill Hub）」为唯一可信源，把 skill 迁移到各平台目录。
+//
+// 模型：
+//   source（订阅源）  被订阅的 skill 目录（目录下直接是各 skill；也兼容 <dir>/skills/）
+//   target（迁移目标） platform × scope 的组合目录，如 ~/.claude/skills、<proj>/.workbuddy/skills
+//
+// 方向只有两条：source → target（迁移 migrate）、target → source（提交 submit）。
+// 不做「项目之间互迁」——项目目录只是落地副本，真相永远在订阅源里。
+import { basename, dirname, isAbsolute, join, resolve, sep } from 'node:path';
 import fsp from 'node:fs/promises';
-import { unifiedDiff } from '../../core/diff.js';
 import { exists, pathExists, md5Of, diffTrees } from '../../core/fstree.js';
 import { parseFrontmatter } from '../../core/frontmatter.js';
-import { detectLinkType, createSkillLink, sameRealPath } from '../../core/link.js';
-import { assertSafeName, assertSafeRelPath } from '../../core/paths.js';
-import { badInput, notFound } from '../../core/errors.js';
-import { ADAPTERS } from './adapters.js';
-import { centralPath, getSettings } from '../settings/service.js';
+import { mdOutline, mdStats } from '../../core/mdoutline.js';
+import { detectLinkType, createSkillLink, sameRealPath, samePath } from '../../core/link.js';
+import { assertSafeName, assertSafeRelPath, projectRoot, cwdScope } from '../../core/paths.js';
+import { badInput, notFound, conflict } from '../../core/errors.js';
+import { ADAPTERS, SCOPES, adapterById, targetDirFor, platformNames } from './adapters.js';
+import {
+  getSettings,
+  hubPath,
+  requireHubPath,
+  setHubPath,
+  addCandidate,
+  removeCandidate,
+} from '../settings/service.js';
 
-// 平台适配器表见 ./adapters.js；设置读写见 ../settings/service.js（基础模块，单向只读依赖）。
+const SCOPE_IDS = SCOPES.map((s) => s.id);
+
+// ─── 单个 skill 目录读取 ────────────────────────────────────────────
 
 async function readSkill(dir) {
   const mdPath = join(dir, 'SKILL.md');
@@ -30,454 +44,875 @@ async function readSkill(dir) {
   };
 }
 
-// ─── 两侧扫描 ──────────────────────────────────────────────────────
-
-// 中心仓库布局：根目录下直接是 skill 目录；兼容早期的 {central}/skills/<name>（只读）
-async function centralSkillDir(central, name) {
-  const root = join(central, name);
-  if (await exists(join(root, 'SKILL.md'))) return root;
-  const legacy = join(central, 'skills', name);
-  if (await exists(join(legacy, 'SKILL.md'))) return legacy;
-  return null;
+// 订阅源目录里可能直接是 skill，也可能包一层 skills/。逐个探测：
+// 先看目录本身是否含 skill 子目录，否则退回 <dir>/skills。
+async function resolveSkillsRoot(sourcePath) {
+  const direct = await countSkillDirs(sourcePath);
+  if (direct > 0) return sourcePath;
+  const nested = join(sourcePath, 'skills');
+  if (await countSkillDirs(nested)) return nested;
+  return sourcePath; // 空源：仍返回自身，便于报「0 个 skill」
 }
 
-export async function listSkills(side = 'central', explicitPath) {
-  if (side === 'central') {
-    const central = explicitPath ? resolve(String(explicitPath)) : await centralPath();
-    // rel 为空 = 根目录直接是 skill；skills/ 子目录为旧布局兼容
-    return scanRoot(central, [
-      { id: 'central', rel: '' },
-      { id: 'central', rel: 'skills' },
-    ]);
+async function countSkillDirs(root) {
+  const entries = await fsp.readdir(root, { withFileTypes: true }).catch(() => []);
+  let n = 0;
+  for (const e of entries) {
+    if (!e.name || e.name.startsWith('.')) continue;
+    // 来源只认**实文件**：链接是别的真相源的落地副本，不算来源
+    const lst = await fsp.lstat(join(root, e.name)).catch(() => null);
+    if (!lst || lst.isSymbolicLink() || !lst.isDirectory()) continue;
+    if (await exists(join(root, e.name, 'SKILL.md'))) n++;
   }
-  if (side === 'project') {
-    if (!explicitPath) throw badInput('project 路径不能为空');
-    const root = resolve(String(explicitPath));
-    const list = await scanRoot(root, ADAPTERS.map((a) => ({ id: a.id, rel: a.dir })));
-    // 附带"该 skill 存在于哪些平台（适配器）"的信息，供平台小按钮渲染
-    for (const s of list) {
-      const platforms = [];
-      for (const a of ADAPTERS) {
-        const p = join(root, a.dir, s.name);
-        if (await pathExists(p)) platforms.push({ id: a.id, dir: a.dir, linkType: await detectLinkType(p) });
-      }
-      s.platforms = platforms;
-      if (platforms.length) s.adapter = platforms[0].id;
-    }
-    return list;
-  }
-  throw badInput('side 必须是 central 或 project');
+  return n;
 }
 
-async function scanRoot(root, locations) {
+// 扫描一个 skills 根目录下的一级子目录（每个即一个 skill）。
+//
+// realOnly（来源侧恒为 true）：只认实文件。源目录里的链接是**别的真相源**的落地副本
+// （典型：把 ~/.claude/skills 订阅为临时来源，里面大半是指向 sl 的链接）——
+// 把它们当来源会造成「同名 skill 出现在多个源」的假冲突，而且违背
+// 「唯一实文件 = 订阅源」：链接本来就不是实文件。
+// 目标侧（realOnly=false）则照常识别链接形态，那是迁移的结果。
+async function scanSkillsRoot(root, { source, realOnly } = {}) {
   const out = [];
-  const seen = new Set();
-  for (const loc of locations) {
-    const dir = loc.rel ? join(root, loc.rel) : root;
-    const entries = await fsp.readdir(dir, { withFileTypes: true }).catch(() => []);
-    for (const e of entries) {
-      if (!e.name || e.name.startsWith('.')) continue;
-      if (loc.rel === '' && ADAPTERS.some((a) => e.name === a.dir.split('/')[0])) continue;
-      if (loc.rel === '' && e.name === 'skills') continue;
-      const skillDir = join(dir, e.name);
-      // 用 lstat 判存在：悬空链接（目标已删）也要走进来，才能被识别与删除
-      const lst = await fsp.lstat(skillDir).catch(() => null);
-      if (!lst) continue;
-      if (!lst.isDirectory() && !lst.isSymbolicLink()) continue;
-      if (seen.has(e.name)) continue;
-      seen.add(e.name);
-      const info = await readSkill(skillDir);
-      if (!info) {
-        // SKILL.md 读不到但本身是链接：典型为悬空链接（中心侧已删）——仍列出，便于删除
-        const lt = lst.isSymbolicLink() ? 'symlink' : await detectLinkType(skillDir);
-        if (lt) {
-          out.push({
-            name: e.name,
-            description: '(链接目标缺失，可删除)',
-            dir: skillDir,
-            md5: '',
-            lastModified: '',
-            linkType: lt,
-            adapter: loc.id,
+  const entries = await fsp.readdir(root, { withFileTypes: true }).catch(() => []);
+  for (const e of entries) {
+    if (!e.name || e.name.startsWith('.')) continue;
+    const dir = join(root, e.name);
+    const lst = await fsp.lstat(dir).catch(() => null);
+    if (!lst) continue;
+    if (!lst.isDirectory() && !lst.isSymbolicLink()) continue;
+    const info = await readSkill(dir);
+    if (info) {
+      if (realOnly && info.linkType) continue;
+      if (source) info.source = source;
+      out.push(info);
+      continue;
+    }
+    if (realOnly) continue; // 悬空链接在来源侧是噪音，不是 skill
+    const lt = lst.isSymbolicLink() ? 'symlink' : await detectLinkType(dir);
+    if (lt) {
+      out.push({
+        name: e.name,
+        description: '(链接目标缺失，可清理)',
+        dir,
+        md5: '',
+        lastModified: '',
+        linkType: lt,
+        source,
+      });
+    }
+  }
+  return out;
+}
+
+// ─── 订阅源 ─────────────────────────────────────────────────────────
+
+// 订阅源清单，附带解析后的 skills 根、是否存在、skill 数、是否当前主源
+export async function listSources() {
+  const s = await getSettings();
+  const current = s.skillHubPath ? resolve(s.skillHubPath) : '';
+  const out = [];
+  for (const p of s.skillHubSources) {
+    const abs = resolve(p);
+    const root = await resolveSkillsRoot(abs);
+    const skills = await scanSkillsRoot(root, { realOnly: true });
+    out.push({
+      path: abs,
+      root,
+      exists: await pathExists(abs),
+      count: skills.length,
+      current: abs.toLowerCase() === current.toLowerCase(),
+    });
+  }
+  return { current, sources: out };
+}
+
+export async function addSource(path) {
+  if (!path) throw badInput('path 不能为空');
+  const abs = resolve(String(path));
+  if (!(await pathExists(abs))) throw notFound('订阅源目录不存在: ' + abs);
+  await addCandidate('hub', abs); // 新增即设为主源
+  return listSources();
+}
+
+export async function removeSource(path) {
+  await removeCandidate('hub', path);
+  return listSources();
+}
+
+export async function setSource(path) {
+  await setHubPath(path);
+  return listSources();
+}
+
+// 当前订阅源（主 Skill Hub）的基本信息：未订阅时返回 { path:'', root:'' }
+export async function hubInfo() {
+  const p = await hubPath();
+  if (!p) return { path: '', root: '', exists: false, count: 0 };
+  const root = await resolveSkillsRoot(p);
+  return { path: p, root, exists: await pathExists(p), count: (await scanSkillsRoot(root, { realOnly: true })).length };
+}
+
+// 当前订阅源的 skill 列表（主源为空时返回空数组，不报错——面板首屏要能渲染）
+export async function listHubSkills() {
+  const p = await hubPath();
+  if (!p) return [];
+  const root = await resolveSkillsRoot(p);
+  return scanSkillsRoot(root, { source: p, realOnly: true });
+}
+
+// 一个 skill 名在**实文件**层面出现在哪些订阅源（链接不算，见 scanSkillsRoot）。
+// 出现 ≥2 个且内容不同 = 真冲突：两个真相源打架，迁移前必须先解决或显式 --source。
+async function sourceEntriesFor(name) {
+  const { sources } = await listSources();
+  const ordered = [...sources].sort((a, b) => Number(b.current) - Number(a.current));
+  const out = [];
+  for (const s of ordered) {
+    if (!s.exists) continue;
+    const dir = join(s.root, name);
+    const lst = await fsp.lstat(dir).catch(() => null);
+    if (!lst || lst.isSymbolicLink() || !lst.isDirectory()) continue;
+    if (!(await exists(join(dir, 'SKILL.md')))) continue;
+    const info = await readSkill(dir);
+    info.source = s.path;
+    out.push(info);
+  }
+  return out;
+}
+
+// 在全部订阅源里找一个 skill，主源优先；返回首个命中，并附 alsoIn（可重叠的其他源）
+async function findSourceSkill(name) {
+  const entries = await sourceEntriesFor(name);
+  if (!entries.length) return null;
+  const [hit, ...rest] = entries;
+  if (rest.length) hit.alsoIn = rest.map((e) => e.source);
+  return hit;
+}
+
+// ─── 来源健康与冲突检测 ─────────────────────────────────────────────
+//
+// 订阅源是唯一可信源，因此**来源之间本不该有冲突**。出现同名实文件 =
+// 订阅配置有问题（嵌套订阅 / 同一仓库重复订阅 / 两个仓库各放了一份且内容不同）。
+// 目的仓库**不参与**冲突检测：它只是落地副本，直接被订阅源覆盖即可。
+
+export async function sourceAudit() {
+  const { current, sources } = await listSources();
+  const hubProblems = hubProblemsFor(sources);
+
+  const byName = new Map();
+  for (const src of sources) {
+    if (!src.exists) continue;
+    for (const sk of await scanSkillsRoot(src.root, { source: src.path, realOnly: true })) {
+      const arr = byName.get(sk.name) || [];
+      arr.push({ source: src.path, dir: sk.dir, md5: sk.md5, current: src.path === current });
+      byName.set(sk.name, arr);
+    }
+  }
+  const conflicts = [];
+  for (const [name, entries] of byName) {
+    if (entries.length < 2) continue;
+    const same = entries.every((e) => e.md5 === entries[0].md5);
+    conflicts.push({ name, kind: same ? 'duplicate' : 'conflict', same, entries });
+  }
+  conflicts.sort((a, b) => a.name.localeCompare(b.name));
+
+  return {
+    current,
+    sources,
+    hubProblems,
+    conflicts,
+    ok: hubProblems.length === 0 && conflicts.filter((c) => !c.same).length === 0,
+    summary: {
+      sources: sources.length,
+      hubProblems: hubProblems.length,
+      conflicts: conflicts.filter((c) => !c.same).length,
+      duplicates: conflicts.filter((c) => c.same).length,
+    },
+  };
+}
+
+// ─── 迁移目标 ───────────────────────────────────────────────────────
+
+// 把 to/platform 归一成目标列表 [{platform, platformName, scope, dir}]
+// to 接受 global（= user）/ project / all；platform 接受 id 或别名（claude / workbuddy / cursor…）
+async function resolveTargets({ to, platform, project } = {}) {
+  const s = await getSettings();
+  // 项目根缺省取「启动目录」（serve <dir> / cwd，或面板回传的 x-nx-rh-scope）
+  const projRoot = project || projectRoot();
+  const toId = to === 'global' ? 'user' : to;
+  const scopes = toId && toId !== 'all' ? [toId] : SCOPE_IDS;
+  for (const sc of scopes) {
+    if (!SCOPE_IDS.includes(sc)) {
+      throw badInput('to 只能是 user | global | project | all，收到: ' + to);
+    }
+  }
+  let platformIds;
+  if (platform && platform !== 'all') {
+    const a = adapterById(platform);
+    if (!a) throw badInput(`未知平台: ${platform}（可用: ${platformNames().join(' / ')}，或别名 claude / wb）`);
+    platformIds = [a.id];
+  } else {
+    platformIds = s.platforms.length ? s.platforms : ['claude-code'];
+  }
+  const list = [];
+  for (const sc of scopes) {
+    for (const pid of platformIds) {
+      const a = adapterById(pid);
+      if (!a) throw badInput('未知平台: ' + pid);
+      const dir = targetDirFor(a.id, sc, projRoot);
+      list.push({ platform: a.id, platformName: a.name, scope: sc, dir });
+    }
+  }
+  return list;
+}
+
+// 扫描目标目录，返回该目录下的所有 skill（含形态）
+async function scanTargetDir(dir, { platform, scope }) {
+  const skills = await scanSkillsRoot(dir);
+  for (const s of skills) {
+    s.platform = platform;
+    s.scope = scope;
+  }
+  return skills;
+}
+
+// ─── 批量选择（--all / --include / --exclude / --match） ─────────────
+//
+// 为什么值得一组：全量迁移时「手点 N 次」既慢又容易漏；而「全都要，除了某几个」
+// 才是真实需求。--exclude 因此是一等参数，不是边角料。
+
+// 名称模式：含 * 走通配（`gh-*`），否则按子串；都不区分大小写。
+export function matchName(name, pattern) {
+  const n = String(name).toLowerCase();
+  const p = String(pattern || '').toLowerCase().trim();
+  if (!p) return false;
+  if (p.includes('*')) {
+    const re = new RegExp(
+      '^' + p.split('*').map((s) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('.*') + '$'
+    );
+    return re.test(n);
+  }
+  return n.includes(p);
+}
+
+// 名称入参归一：CLI 的 rest 位置参数是数组，HTTP body / 面板传来的是单个字符串
+function nameList(v) {
+  if (!v) return [];
+  return (Array.isArray(v) ? v : [v]).map((x) => String(x).trim()).filter(Boolean);
+}
+
+function applyFilters(list, { include, exclude, match } = {}) {
+  let out = list;
+  if (include && include.length) out = out.filter((s) => include.some((p) => matchName(s.name, p)));
+  if (exclude && exclude.length) out = out.filter((s) => !exclude.some((p) => matchName(s.name, p)));
+  if (match) {
+    const q = String(match).toLowerCase();
+    out = out.filter((s) => String(s.description || '').toLowerCase().includes(q));
+  }
+  return out;
+}
+
+// 从订阅源（当前主源）里筛出要操作的 skill。
+// 显式点名 → 必须存在（少一个就报错，避免批量里静默漏迁移）。
+export async function selectSourceSkills({ names, all, include, exclude, match } = {}) {
+  const pool = await listHubSkills();
+  const byName = new Map(pool.map((s) => [s.name, s]));
+  const wanted = nameList(names);
+
+  let chosen;
+  if (wanted.length) {
+    const missing = wanted.filter((n) => !byName.has(n));
+    if (missing.length) throw notFound(`订阅源里没有这些 skill: ${missing.join(', ')}`);
+    chosen = wanted.map((n) => byName.get(n));
+  } else if (all || (include && include.length)) {
+    chosen = [...pool];
+  } else {
+    throw badInput('需要 <name...>、--all 或 --include <模式> 之一');
+  }
+
+  const out = applyFilters(chosen, { include, exclude, match });
+  if (!out.length) throw notFound('按当前筛选条件没有匹配的 skill（--exclude / --match 把候选排空了吗？）');
+  return out.sort((a, b) => a.name.localeCompare(b.name));
+}
+
+// 撤销/提交的候选池来自**目标目录的扫描**（含未入 Hub 的游离 skill）
+async function collectTargetSkills({ project }) {
+  const scan = await listAllSkills({ project });
+  const map = new Map();
+  for (const x of scan.skills) map.set(x.name, x.description || '');
+  for (const x of scan.orphans) map.set(x.name, x.description || '');
+  return [...map].map(([name, description]) => ({ name, description }));
+}
+
+// ─── 列表 / 详情 ────────────────────────────────────────────────────
+
+// 来源级问题：目录不存在 / 空源 / 嵌套订阅 / 同一根重复订阅。
+// 订阅源是唯一可信源，这些问题都属于**订阅配置**该修的，不是 skill 该修的。
+function hubProblemsFor(sources) {
+  const problems = [];
+  for (const src of sources) {
+    if (!src.exists) problems.push({ kind: 'missing', path: src.path, reason: '目录不存在' });
+    else if (!src.count) {
+      problems.push({
+        kind: 'empty',
+        path: src.path,
+        reason: '没有实文件 skill（空目录，或里面全是链接——链接是别处的落地副本，不算来源）',
+      });
+    }
+  }
+  const keys = sources.map((s) => ({ path: s.path, key: cwdScope(s.root) }));
+  for (let i = 0; i < keys.length; i++) {
+    for (let j = i + 1; j < keys.length; j++) {
+      const a = keys[i];
+      const b = keys[j];
+      if (a.key === b.key) {
+        problems.push({ kind: 'same-root', path: b.path, reason: `与 ${a.path} 解析到同一个 skills 根（重复订阅）` });
+      } else if (b.key.startsWith(a.key + sep)) {
+        problems.push({ kind: 'nested', path: b.path, reason: `位于 ${a.path} 之内（嵌套订阅，会重复计数）` });
+      } else if (a.key.startsWith(b.key + sep)) {
+        problems.push({ kind: 'nested', path: a.path, reason: `位于 ${b.path} 之内（嵌套订阅，会重复计数）` });
+      }
+    }
+  }
+  return problems;
+}
+
+// 每行 = 一个订阅源 skill（**只统计实文件**），带各目标迁移状态与跨源冲突。
+export async function listAllSkills({ project, source } = {}) {
+  const s = await getSettings();
+  const { current, sources } = await listSources();
+  const chosen = source ? sources.find((x) => resolve(x.path).toLowerCase() === resolve(source).toLowerCase()) : null;
+
+  const scanned = [];
+  for (const src of sources) {
+    if (chosen && src.path !== chosen.path) continue;
+    if (!src.exists) continue;
+    scanned.push(...(await scanSkillsRoot(src.root, { source: src.path, realOnly: true })));
+  }
+
+  // 跨源聚合：同名 = 冲突候选。内容一致是「重复订阅」（无害但建议清理），
+  // 内容不同才是真冲突——两个真相源打架，必须先解决再迁移。
+  const byName = new Map();
+  for (const sk of scanned) {
+    const e = byName.get(sk.name) || {
+      name: sk.name,
+      description: sk.description,
+      dir: sk.dir,
+      md5: sk.md5,
+      lastModified: sk.lastModified,
+      source: sk.source,
+      sources: [],
+    };
+    e.sources.push({ path: sk.source, dir: sk.dir, md5: sk.md5 });
+    if (sk.source === current) {
+      e.source = sk.source;
+      e.dir = sk.dir;
+      e.md5 = sk.md5;
+      e.description = sk.description;
+    }
+    byName.set(sk.name, e);
+  }
+  const conflicts = [];
+  for (const e of byName.values()) {
+    if (e.sources.length < 2) continue;
+    const same = e.sources.every((x) => x.md5 === e.sources[0].md5);
+    conflicts.push({ name: e.name, kind: same ? 'duplicate' : 'conflict', same, sources: e.sources });
+  }
+  conflicts.sort((a, b) => a.name.localeCompare(b.name));
+
+  const targets = await resolveTargets({ to: 'all', project });
+  const rows = [];
+  for (const sk of [...byName.values()].sort((a, b) => a.name.localeCompare(b.name))) {
+    const cells = [];
+    for (const t of targets) {
+      const p = join(t.dir, sk.name);
+      const on = await pathExists(p);
+      cells.push({
+        platform: t.platform,
+        platformName: t.platformName,
+        scope: t.scope,
+        dir: p,
+        on,
+        linkType: on ? await detectLinkType(p) : '',
+      });
+    }
+    const conflict = conflicts.find((c) => c.name === sk.name) || null;
+    rows.push({ ...sk, cells, current: sk.source === current, conflict });
+  }
+
+  // 目标目录里存在、但订阅源没有的 skill —— 待「提交到 Hub」
+  const sourceNames = new Set(rows.map((r) => r.name));
+  const orphanMap = new Map();
+  for (const t of targets) {
+    for (const sk of await scanTargetDir(t.dir, t)) {
+      if (sourceNames.has(sk.name)) continue;
+      const e = orphanMap.get(sk.name) || {
+        name: sk.name,
+        description: sk.description,
+        md5: sk.md5,
+        cells: [],
+      };
+      e.cells.push({
+        platform: t.platform,
+        platformName: t.platformName,
+        scope: t.scope,
+        dir: join(t.dir, sk.name),
+        on: true,
+        linkType: sk.linkType,
+      });
+      orphanMap.set(sk.name, e);
+    }
+  }
+
+  return {
+    hub: { path: current, ...(await hubInfo()) },
+    settings: { platforms: s.platforms, defaultPlatform: s.defaultPlatform, syncMode: s.skillSyncMode },
+    sources,
+    hubProblems: hubProblemsFor(sources),
+    conflicts,
+    skills: rows,
+    orphans: [...orphanMap.values()].sort((a, b) => a.name.localeCompare(b.name)),
+  };
+}
+
+// 单个 skill 的详情（来源 + 完整描述 + 各平台落点形态）
+export async function skillInfo({ name, project } = {}) {
+  name = assertSafeName(name);
+  const found = await findSourceSkill(name);
+  const targets = await resolveTargets({ to: 'all', project });
+  const cells = [];
+  for (const t of targets) {
+    const p = join(t.dir, name);
+    const on = await pathExists(p);
+    cells.push({
+      platform: t.platform,
+      platformName: t.platformName,
+      scope: t.scope,
+      dir: p,
+      on,
+      linkType: on ? await detectLinkType(p) : '',
+    });
+  }
+  // 源里没有、但目标里有的（可提交）
+  const inTargets = cells.filter((c) => c.on);
+  if (!found && !inTargets.length) throw notFound('未找到 skill: ' + name);
+  // 跨源冲突（只看订阅源之间；目的仓库直接被覆盖，不参与冲突检测）
+  const entries = await sourceEntriesFor(name);
+  const conflict = entries.length > 1
+    ? {
+        same: entries.every((e) => e.md5 === entries[0].md5),
+        sources: entries.map((e) => ({ path: e.source, dir: e.dir, md5: e.md5 })),
+      }
+    : null;
+  // 结构预览：SKILL.md 的前 3 级标题 + 规模（大纲一眼看清这个 skill 讲什么、有多大）
+  const raw = found ? await fsp.readFile(join(found.dir, 'SKILL.md'), 'utf8').catch(() => '') : '';
+  const outline = mdOutline(raw, 3);
+  return {
+    name,
+    description: found ? found.description : (await readSkill(inTargets[0].dir))?.description || '(无描述)',
+    source: found ? found.source : '',
+    dir: found ? found.dir : '',
+    alsoIn: found ? found.alsoIn || [] : [],
+    md5: found ? found.md5 : '',
+    conflict,
+    outline,
+    stats: mdStats(raw, outline),
+    cells,
+  };
+}
+
+// `skill get`：把 SKILL.md（或某个 reference）全文交给外部 agent，
+// 让它在自己环境里也能获得完整上下文。ref 为空时取 SKILL.md。
+export async function skillContent({ name, ref } = {}) {
+  name = assertSafeName(name);
+  const found = await findSourceSkill(name);
+  if (!found) throw notFound('订阅源里没有该 skill: ' + name);
+  const file = ref ? assertSafeRelPath(ref, { label: 'ref 路径' }) : 'SKILL.md';
+  const abs = join(found.dir, file);
+  const content = await fsp.readFile(abs, 'utf8').catch(() => null);
+  if (content === null) throw notFound(`skill ${name} 里没有文件: ${file}`);
+  const outline = mdOutline(content, 3);
+  return {
+    skillName: name,
+    source: found.source,
+    dir: found.dir,
+    ref: file,
+    content,
+    contentBytes: Buffer.byteLength(content, 'utf8'),
+    outline,
+    stats: mdStats(content, outline),
+  };
+}
+
+// ─── skill 实体的增改删（只动订阅源里那份实文件） ────────────────────
+//
+// 读（R）由 show / cat 承担；迁移覆盖目标副本，所以这里不需要「同步到目标」。
+// 刻意不声明 resource: 'skill'——`skill get` 这个 CLI 已被内置手册占用（bundled 模块），
+// CRUD 断言要求的 get 动词没法按 A00 命名；不改名就不硬凑。
+
+// 组装 SKILL.md：frontmatter（name/description）+ 正文
+function buildSkillMd(name, description, body) {
+  const desc = String(description || '').replace(/\r?\n/g, ' ').trim() || `${name} 的说明`;
+  const text = String(body || '').replace(/^\s*/, '');
+  return `---\nname: ${name}\ndescription: ${desc}\n---\n\n${text}${text.endsWith('\n') ? '' : '\n'}`;
+}
+
+// 新建：订阅源里已存在同名 → CONFLICT（A00：不要静默 upsert）。
+// content 可以是「只有正文」（自动补 frontmatter）或完整的 SKILL.md（--- 开头，校验 frontmatter）。
+export async function addSkill({ name, description, content } = {}) {
+  name = assertSafeName(name);
+  const hub = await requireHubPath();
+  const root = await resolveSkillsRoot(hub);
+  const dir = join(root, name);
+  if (await exists(dir)) throw conflict('订阅源里已存在同名 skill: ' + dir);
+  const raw = typeof content === 'string' ? content.trim() : '';
+  let md;
+  if (raw.startsWith('---')) {
+    const fm = parseFrontmatter(raw + (raw.endsWith('\n') ? '' : '\n'));
+    if (!fm.name || !fm.description) throw badInput('SKILL.md 需要含 name 与 description 的 frontmatter');
+    if (fm.name !== name) throw badInput(`frontmatter 的 name（${fm.name}）必须与目录名一致: ${name}`);
+    md = raw + '\n';
+  } else {
+    md = buildSkillMd(name, description, raw);
+  }
+  await fsp.mkdir(dir, { recursive: true });
+  await fsp.writeFile(join(dir, 'SKILL.md'), md, 'utf8');
+  return { status: 'ok', name, dir, path: join(dir, 'SKILL.md') };
+}
+
+// 改写：PATCH 语义——这里改的是 SKILL.md 全文；frontmatter 必须可解析且 name 与目录名一致
+export async function updateSkill({ name, content } = {}) {
+  name = assertSafeName(name);
+  const entries = await sourceEntriesFor(name);
+  const current = await hubPath();
+  const found = entries.find((e) => e.source === current) || entries[0];
+  if (!found) throw notFound('订阅源里没有该 skill: ' + name);
+  const text = String(content ?? '');
+  const fm = parseFrontmatter(text);
+  if (!fm.name || !fm.description) {
+    throw badInput('SKILL.md 需要含 name 与 description 的 frontmatter（保留开头三行）');
+  }
+  if (fm.name !== name) {
+    throw badInput(`frontmatter 的 name（${fm.name}）必须与目录名一致: ${name}`);
+  }
+  await fsp.writeFile(join(found.dir, 'SKILL.md'), text, 'utf8');
+  return { status: 'ok', name, dir: found.dir, source: found.source };
+}
+
+// 删除：目标侧还有副本/链接时先 blocked（删了会悬空），--force 才继续
+export async function removeSkill({ name, force, project } = {}) {
+  name = assertSafeName(name);
+  const entries = await sourceEntriesFor(name);
+  const current = await hubPath();
+  const found = entries.find((e) => e.source === current) || entries[0];
+  if (!found) throw notFound('订阅源里没有该 skill: ' + name);
+
+  const targets = await resolveTargets({ to: 'all', project });
+  const refs = [];
+  for (const t of targets) {
+    const p = join(t.dir, name);
+    if (await pathExists(p)) {
+      refs.push({
+        platform: t.platform,
+        platformName: t.platformName,
+        scope: t.scope,
+        path: p,
+        linkType: await detectLinkType(p),
+      });
+    }
+  }
+  if (refs.length && !force) {
+    return {
+      status: 'blocked',
+      name,
+      refs,
+      reason: `${refs.length} 个目标还引用着它，删除会让链接悬空`,
+    };
+  }
+  await fsp.rm(found.dir, { recursive: true, force: true });
+  return { status: 'ok', name, removed: found.dir, dangling: refs };
+}
+
+// ─── 迁移（source → target） ────────────────────────────────────────
+
+// 把 srcDir 落到一个目标：已指向同一实体则跳过；**其余一律直接覆盖**。
+// 目的仓库不参与冲突检测——它只是落地副本，订阅源里永远有一份，覆盖可恢复；
+// 真正需要冲突检测的是**订阅源之间**（见 sourceAudit）。
+// dryRun=true 时只判定不落盘——批量操作前先预演是刚需。
+async function placeAt(srcDir, name, target, mode, dryRun) {
+  const dst = join(target.dir, name);
+  const base = { ...target, path: dst };
+  const lt = await detectLinkType(dst);
+  if (lt) {
+    const t = await fsp.readlink(dst).catch(() => null);
+    if (t) {
+      const absT = isAbsolute(t) ? t : resolve(dirname(dst), t);
+      if (await sameRealPath(absT, srcDir)) {
+        return { ...base, status: 'ok', skipped: true, linkType: lt };
+      }
+    }
+  }
+  const existed = await exists(dst);
+  if (dryRun) {
+    return existed
+      ? { ...base, status: 'ok', mode, wouldReplace: true }
+      : { ...base, status: 'ok', mode, wouldCreate: true };
+  }
+
+  if (mode === 'symlink') {
+    const r = await createSkillLink(srcDir, dst);
+    if (r.ok) {
+      return { ...base, status: 'ok', mode: 'symlink', linkType: r.linkType, already: r.already };
+    }
+    // 链接失败 → 降级复制，迁移不因权限中断
+    if (await exists(dst)) await fsp.rm(dst, { recursive: true, force: true });
+    await fsp.cp(srcDir, dst, { recursive: true, dereference: true, force: true });
+    return { ...base, status: 'ok', mode: 'copy', degraded: true, degradedReason: r.error };
+  }
+  if (await exists(dst)) await fsp.rm(dst, { recursive: true, force: true });
+  await fsp.mkdir(dirname(dst), { recursive: true });
+  await fsp.cp(srcDir, dst, { recursive: true, dereference: true, force: true });
+  return { ...base, status: 'ok', mode: 'copy' };
+}
+
+// 迁移 skill 到目标集。选择方式：<name...> / --all / --include，再叠加 --exclude / --match。
+// 目的仓库不做冲突检测（直接覆盖）；跨**订阅源**的冲突会 blocked，可用 --source 指定用哪一份。
+export async function migrateSkill({
+  name, names, all, include, exclude, match,
+  to, platform, mode, project, source, dryRun,
+} = {}) {
+  const s = await getSettings();
+  const m = mode === 'copy' || mode === 'symlink' ? mode : s.skillSyncMode;
+  const targets = await resolveTargets({ to, platform, project });
+  const list = await selectSourceSkills({ names: names ?? name, all, include, exclude, match });
+
+  const results = [];
+  const blocked = [];
+  for (const sk of list) {
+    // 跨源冲突：同名实文件出现在多个订阅源且内容不同。
+    // 目的仓库可以直接覆盖，但**用哪份内容覆盖**必须先定——这是来源侧的冲突。
+    const entries = await sourceEntriesFor(sk.name);
+    let src = sk;
+    if (entries.length > 1 && entries.some((e) => e.md5 !== entries[0].md5)) {
+      const pick = source ? entries.find((e) => samePath(e.source, resolve(String(source)))) : null;
+      if (source && !pick) {
+        throw badInput(`--source 指定的订阅源里没有 ${sk.name}: ${source}`);
+      }
+      if (!pick) {
+        for (const t of targets) {
+          blocked.push({
+            name: sk.name,
+            platform: t.platform,
+            platformName: t.platformName,
+            scope: t.scope,
+            dir: join(t.dir, sk.name),
+            status: 'blocked',
+            reason: '同名 skill 在多个订阅源且内容不同',
+            sources: entries.map((e) => ({ source: e.source, md5: e.md5 })),
           });
         }
         continue;
       }
-      info.adapter = loc.id;
-      out.push(info);
+      src = pick;
+    }
+    for (const t of targets) {
+      results.push({ name: sk.name, ...(await placeAt(src.dir, sk.name, t, m, dryRun)) });
     }
   }
-  return out;
-}
-
-// 链接创建与类型识别见 core/link.js；目录树差异见 core/fstree.js。
-
-async function findProjectSkillDir(projRoot, name) {
-  for (const a of ADAPTERS) {
-    const p = join(projRoot, a.dir, name);
-    if (await exists(p)) return p;
-  }
-  return null;
-}
-
-// 项目内落点：--adapter 指定 > 第一个已存在的适配器目录 > .claude/skills
-async function pickAdapterDir(projRoot, adapterId) {
-  if (adapterId) {
-    const a = ADAPTERS.find((x) => x.id === adapterId);
-    if (!a) throw badInput('未知 adapter: ' + adapterId);
-    return a.dir;
-  }
-  for (const a of ADAPTERS) {
-    if (await exists(join(projRoot, a.dir))) return a.dir;
-  }
-  return '.claude/skills';
-}
-
-// ─── 同步操作 ──────────────────────────────────────────────────────
-
-// 中心 -> 项目
-export async function syncSkill({ name, project, mode, adapter, force }) {
-  name = assertSafeName(name);
-  const central = await centralPath();
-  const src = await centralSkillDir(central, name);
-  if (!src) throw notFound('中心仓库不存在该 skill: ' + name);
-  if (!project) throw badInput('project 不能为空');
-  const projRoot = resolve(String(project));
-
-  const settings = await getSettings();
-  const m = mode === 'copy' || mode === 'symlink' ? mode : settings.skillSyncMode;
-  // 未指定平台时用设置里的默认平台（defaultPlatform / platforms[0]）
-  const adapterId = adapter || settings.defaultPlatform || settings.platforms[0] || 'claude-code';
-  const dst = join(projRoot, await pickAdapterDir(projRoot, adapterId), name);
-
-  // 已是指向 src 的链接：天然一致，跳过
-  const lt = await detectLinkType(dst);
-  if (lt) {
-    const target = await fsp.readlink(dst).catch(() => null);
-    if (target) {
-      const absT = isAbsolute(target) ? target : resolve(dirname(dst), target);
-      if (await sameRealPath(absT, src)) return { status: 'ok', skipped: true, mode: m, linkType: lt, path: dst };
-    }
-  }
-
-  // 目标为实体且内容有差异：冲突（除非 force）
-  if (await exists(dst)) {
-    const files = await diffTrees(src, dst);
-    if (files.length && !force) {
-      return { status: 'conflict', mode: m, files, path: dst };
-    }
-  }
-
-  let linkResult = null;
-  if (m === 'symlink') {
-    linkResult = await createSkillLink(src, dst);
-    if (linkResult.ok) {
-      return { status: 'ok', mode: 'symlink', linkType: linkResult.linkType, path: dst };
-    }
-    // 链接失败 -> 降级复制，安装不因权限中断
-  }
-
-  if (await exists(dst)) {
-    await fsp.rm(dst, { recursive: true, force: true });
-  }
-  await fsp.cp(src, dst, { recursive: true, dereference: true, force: true });
   return {
-    status: 'ok',
-    mode: 'copy',
-    path: dst,
-    degraded: m === 'symlink',
-    degradedReason: linkResult && !linkResult.ok ? linkResult.error : undefined,
+    status: blocked.length ? 'blocked' : 'ok',
+    dryRun: !!dryRun,
+    mode: m,
+    selected: list.map((x) => x.name),
+    count: results.length,
+    migrated: results.filter((r) => r.status === 'ok' && !r.skipped && !dryRun).length,
+    wouldChange: results.filter((r) => r.status === 'ok' && !r.skipped).length,
+    skipped: results.filter((r) => r.skipped).length,
+    blocked,
+    results,
   };
 }
 
-// 项目 -> 中心
-export async function pushSkill({ name, project, force }) {
-  name = assertSafeName(name);
-  if (!project) throw badInput('project 不能为空');
-  const central = await centralPath();
-  const src = await findProjectSkillDir(resolve(String(project)), name);
-  if (!src) throw notFound('项目中未找到 skill: ' + name);
+// 撤销迁移（target 侧移除）。候选来自目标扫描，因此**也能清掉未入 Hub 的游离 skill**。
+export async function unmigrateSkill({
+  name, names, all, include, exclude, match,
+  to, platform, project, force, dryRun,
+} = {}) {
+  const targets = await resolveTargets({ to, platform, project });
+  const wanted = nameList(names ?? name);
 
-  const lt = await detectLinkType(src);
-  if (lt) {
-    return { status: 'ok', skipped: true, linkType: lt, reason: '项目侧为链接，与中心实时一致' };
+  let base;
+  if (wanted.length) {
+    base = wanted.map((n) => ({ name: n, description: '' }));
+  } else if (all || (include && include.length)) {
+    base = await collectTargetSkills({ project });
+  } else {
+    throw badInput('需要 <name...>、--all 或 --include <模式> 之一');
   }
+  const list = applyFilters(base, { include, exclude, match });
+  if (!list.length) throw notFound('按当前筛选条件没有匹配的 skill');
 
-  const dst = join(central, name); // 中心根目录直接是 skill
-  if (await exists(dst)) {
-    const files = await diffTrees(dst, src);
-    if (files.length && !force) {
-      return { status: 'conflict', files, path: dst };
-    }
-    await fsp.rm(dst, { recursive: true, force: true });
-  }
-  await fsp.mkdir(dirname(dst), { recursive: true });
-  await fsp.cp(src, dst, { recursive: true, dereference: true, force: true });
-  return { status: 'ok', mode: 'copy', path: dst };
-}
-
-// 链接 -> 实体目录（物化）
-export async function materializeSkill({ name, project }) {
-  name = assertSafeName(name);
-  if (!project) throw badInput('project 不能为空');
-  const dst = await findProjectSkillDir(resolve(String(project)), name);
-  if (!dst) throw notFound('项目中未找到 skill: ' + name);
-
-  const lt = await detectLinkType(dst);
-  if (!lt) return { converted: false, message: '已是实体文件' };
-
-  const target = await fsp.readlink(dst);
-  const absT = isAbsolute(target) ? target : resolve(dirname(dst), target);
-  await fsp.rm(dst, { force: true });
-  await fsp.cp(absT, dst, { recursive: true, dereference: true, force: true });
-  return { converted: true, source: absT };
-}
-
-// 冲突详情：逐文件 md5 + 文本 diff
-export async function skillConflict({ name, project }) {
-  name = assertSafeName(name);
-  if (!project) throw badInput('project 不能为空');
-  const central = await centralPath();
-  const src = await centralSkillDir(central, name);
-  if (!src) throw notFound('中心仓库不存在该 skill: ' + name);
-  const dst = await findProjectSkillDir(resolve(String(project)), name);
-  if (!dst) throw notFound('项目中未找到 skill: ' + name);
-
-  const files = await diffTrees(src, dst);
-  for (const f of files) {
-    if (f.side === 'only-central') continue;
-    if (f.side === 'both-differ') {
-      const aAbs = join(src, f.file);
-      const bAbs = join(dst, f.file);
-      const [aText, bText] = await Promise.all([
-        fsp.readFile(aAbs, 'utf8').catch(() => ''),
-        fsp.readFile(bAbs, 'utf8').catch(() => ''),
-      ]);
-      if (aText.length + bText.length < 512 * 1024) {
-        f.diff = unifiedDiff(aText, bText, 'central/' + f.file, 'project/' + f.file);
+  const removed = [];
+  const needForce = [];
+  const plan = [];
+  for (const { name: n } of list) {
+    for (const t of targets) {
+      const dst = join(t.dir, n);
+      if (!(await pathExists(dst))) continue;
+      const lt = await detectLinkType(dst);
+      const entry = { name: n, platform: t.platform, platformName: t.platformName, scope: t.scope, path: dst, linkType: lt };
+      if (dryRun) {
+        plan.push(entry);
+        continue;
       }
-    }
-  }
-  return { name, centralDir: src, projectDir: dst, files };
-}
-
-// 冲突解决：按文件选侧（central 覆盖项目 / project 覆盖中心）
-export async function applySkillSide({ name, project, file, side }) {
-  name = assertSafeName(name);
-  // skill 目录下只允许单层文件，但必须允许 .gitignore 这类前导点文件
-  file = assertSafeRelPath(file, { label: '文件路径', allowSubdir: false });
-  if (!project) throw badInput('project 不能为空');
-  const central = await centralPath();
-  const srcDir = (await centralSkillDir(central, name)) || join(central, name);
-  const dst = await findProjectSkillDir(resolve(String(project)), name);
-  if (!dst) throw notFound('项目中未找到 skill: ' + name);
-
-  if (side === 'central') {
-    await fsp.cp(join(srcDir, file), join(dst, file), { force: true });
-    return { ok: true, side, file };
-  }
-  if (side === 'project') {
-    await fsp.cp(join(dst, file), join(srcDir, file), { force: true });
-    return { ok: true, side, file };
-  }
-  throw badInput('side 必须是 central 或 project');
-}
-
-// ─── 平台开关（项目侧：把 skill 提供给/撤销于某个平台） ──────────────
-
-// 查询某个 skill 在各平台（适配器）下的存在形态
-export async function platformStatus({ name, project } = {}) {
-  name = assertSafeName(name);
-  if (!project) throw badInput('project 不能为空');
-  const projRoot = resolve(String(project));
-  const out = [];
-  for (const a of ADAPTERS) {
-    const p = join(projRoot, a.dir, name);
-    const on = await pathExists(p);
-    out.push({ id: a.id, name: a.name, dir: a.dir, on, linkType: on ? await detectLinkType(p) : '' });
-  }
-  return { name, project: projRoot, platforms: out };
-}
-
-// 打开/关闭某个平台：打开=同步到该适配器目录；关闭=仅移除该适配器下的副本/链接
-export async function setPlatform({ name, project, adapter, enabled, mode, force } = {}) {
-  name = assertSafeName(name);
-  if (!project) throw badInput('project 不能为空');
-  const a = ADAPTERS.find((x) => x.id === adapter);
-  if (!a) throw badInput('未知平台: ' + adapter);
-  const projRoot = resolve(String(project));
-  const dst = join(projRoot, a.dir, name);
-
-  if (enabled) {
-    // 优先走中心；中心没有该 skill（或未设置中心）时，从项目内旁支本地创建，不再强依赖中心
-    const central = await centralPath().catch(() => '');
-    const centralDir = central ? await centralSkillDir(central, name) : null;
-    if (centralDir) {
-      const r = await syncSkill({ name, project: projRoot, adapter: a.id, mode, force });
-      return { ...r, platform: a.id };
-    }
-    const src = await findProjectSkillDir(projRoot, name);
-    if (!src) throw notFound(`中心与项目中都不存在该 skill: ${name}`);
-    if (await sameRealPath(src, dst)) return { status: 'ok', skipped: true, platform: a.id };
-
-    if (await pathExists(dst)) {
-      const ltDst = await detectLinkType(dst);
-      if (ltDst) {
-        const t = await fsp.readlink(dst).catch(() => null);
-        const absT = t ? (isAbsolute(t) ? t : resolve(dirname(dst), t)) : '';
-        if (await sameRealPath(absT, src)) return { status: 'ok', skipped: true, platform: a.id, linkType: ltDst };
-      } else {
-        const files = await diffTrees(dst, src);
-        if (files.length && !force) return { status: 'conflict', platform: a.id, files, path: dst };
+      if (!lt && !force) {
+        needForce.push(entry);
+        continue;
       }
       await fsp.rm(dst, { recursive: true, force: true });
-    }
-    await fsp.mkdir(dirname(dst), { recursive: true });
-    // 链接指向旁支的最终实体（realpath），避免 junction 套 junction
-    const realSrc = await fsp.realpath(src).catch(() => src);
-    if ((mode === 'copy' ? 'copy' : 'symlink') === 'symlink') {
-      const r = await createSkillLink(realSrc, dst);
-      if (r.ok) return { status: 'ok', mode: 'symlink', linkType: r.linkType, platform: a.id, from: 'sibling' };
-    }
-    await fsp.cp(realSrc, dst, { recursive: true, dereference: true, force: true });
-    return { status: 'ok', mode: 'copy', platform: a.id, from: 'sibling' };
-  }
-  if (!(await pathExists(dst))) {
-    return { status: 'ok', skipped: true, platform: a.id, reason: '该平台本就没有此 skill' };
-  }
-  // 实体平台：若移除后项目将没有任何实体、且没有可物化的软链接，则阻止（保证至少一个实体）
-  const ltOff = await detectLinkType(dst);
-  if (!ltOff) {
-    const rest = await scanProjectSkillsWithShape(projRoot);
-    const restReal = rest.filter((x) => !x.linkType && x.path !== dst);
-    const restLinks = rest.filter((x) => x.linkType && x.path !== dst);
-    if (!restReal.length && !restLinks.length) {
-      return {
-        status: 'blocked',
-        platform: a.id,
-        reason: '项目内已无其他实体 skill，也没有可转换的软链接；删除将导致没有任何实体，已阻止（请从中心同步或推送到中心后再操作）',
-      };
+      removed.push(entry);
     }
   }
-  await fsp.rm(dst, { recursive: true, force: true });
-  const anchor = ltOff ? null : await ensureRealAnchor(projRoot, name);
-  return { status: 'ok', removed: true, platform: a.id, path: dst, anchor };
+  if (dryRun) {
+    return { status: 'ok', dryRun: true, selected: list.map((x) => x.name), removed: [], plan, needForce: [], missing: [] };
+  }
+  // 四个取值（A00 §八）：ok / skipped / conflict / blocked。
+  // 「实体副本要 --force」属于 blocked——操作合法，但被规则挡住，先满足前置条件。
+  if (needForce.length && !removed.length) {
+    return {
+      status: 'blocked',
+      dryRun: false,
+      selected: list.map((x) => x.name),
+      removed,
+      needForce,
+      reason: `${needForce.length} 处是实体副本（可能含本地改动），删除不可逆，加 --force 确认`,
+      missing: [],
+    };
+  }
+  return { status: 'ok', dryRun: false, selected: list.map((x) => x.name), removed, needForce, missing: [] };
 }
 
-// ─── 多选比较（中心 vs 项目） ────────────────────────────────────────
+// 链接 → 实体（物化），使该目标不再随订阅源实时变化
+export async function materializeSkill({ name, to, platform, project } = {}) {
+  name = assertSafeName(name);
+  const targets = await resolveTargets({ to, platform, project });
+  const done = [];
+  for (const t of targets) {
+    const dst = join(t.dir, name);
+    if (!(await pathExists(dst))) continue;
+    const lt = await detectLinkType(dst);
+    if (!lt) continue;
+    const target = await fsp.readlink(dst);
+    const absT = isAbsolute(target) ? target : resolve(dirname(dst), target);
+    await fsp.rm(dst, { force: true });
+    await fsp.cp(absT, dst, { recursive: true, dereference: true, force: true });
+    done.push({ platform: t.platform, scope: t.scope, path: dst, source: absT });
+  }
+  return { converted: done.length > 0, results: done };
+}
 
-export async function compareSkills({ central, project, names } = {}) {
-  if (!project) throw badInput('project 不能为空');
-  const centralRoot = central ? resolve(String(central)) : await centralPath();
-  const projRoot = resolve(String(project));
+// ─── 提交（target → source） ────────────────────────────────────────
+// 把平台目录里的实体 skill 收进当前订阅源，然后**删除目标的实文件**、
+// 改回指向订阅源的链接 —— 收敛「唯一实文件 = 订阅源」这条规范。
 
-  const cs = await listSkills('central', centralRoot);
-  const ps = await listSkills('project', projRoot);
-  const filter = names && names.length ? new Set(names) : null;
+async function submitOne(name, { targets, hubRoot, force, keepTarget, dryRun }) {
+  name = assertSafeName(name);
 
-  const merged = new Map();
-  for (const s of cs) merged.set(s.name, { name: s.name, central: s });
-  for (const s of ps) {
-    const e = merged.get(s.name) || { name: s.name };
-    e.project = s;
-    merged.set(s.name, e);
+  // 优先挑「实体」形态的来源（链接没什么可提交的）
+  let picked = null;
+  for (const t of targets) {
+    const dst = join(t.dir, name);
+    if (!(await pathExists(dst))) continue;
+    const lt = await detectLinkType(dst);
+    if (!picked || (!lt && picked.linkType)) picked = { ...t, path: dst, linkType: lt };
+  }
+  if (!picked) return { status: 'missing', name, reason: '目标目录里没有该 skill' };
+  if (picked.linkType) {
+    return { status: 'skipped', name, reason: '目标已是链接（本就指向某个源），无需提交', target: picked.path };
   }
 
-  const rows = [];
-  for (const e of [...merged.values()].sort((x, y) => x.name.localeCompare(y.name))) {
-    if (filter && !filter.has(e.name)) continue;
-    let state;
-    if (e.central && e.project) {
-      const linked = (e.project.platforms || []).some((p) => p.linkType);
-      state = linked ? 'linked' : e.central.md5 === e.project.md5 ? 'same' : 'differ';
-    } else if (e.central) state = 'only-central';
-    else state = 'only-project';
-    rows.push({
-      name: e.name,
-      state,
-      description: (e.central || e.project).description,
-      centralMd5: e.central ? e.central.md5 : '',
-      projectMd5: e.project ? e.project.md5 : '',
-      platforms: e.project ? e.project.platforms || [] : [],
-    });
+  const dst = join(hubRoot, name);
+  if (await exists(dst)) {
+    const files = await diffTrees(picked.path, dst);
+    if (files.length && !force) {
+      return { status: 'conflict', name, files, path: dst, target: picked.path };
+    }
+  }
+  if (dryRun) {
+    return { status: 'ok', name, dryRun: true, sourceDir: dst, target: picked.path, wouldRelink: !keepTarget };
   }
 
-  const count = (s) => rows.filter((r) => r.state === s).length;
+  if (await exists(dst)) await fsp.rm(dst, { recursive: true, force: true });
+  await fsp.mkdir(dirname(dst), { recursive: true });
+  await fsp.cp(picked.path, dst, { recursive: true, dereference: true, force: true });
+
+  // 删除目标实文件；默认改回软链接，保持项目可用（keepTarget=true 则只删不建链）
+  let relinked = null;
+  if (!keepTarget) {
+    await fsp.rm(picked.path, { recursive: true, force: true });
+    const r = await createSkillLink(dst, picked.path);
+    relinked = r.ok ? r.linkType || 'symlink' : null;
+    if (!r.ok) {
+      // 建链失败时至少恢复一份副本，不能让项目凭空丢 skill
+      await fsp.cp(dst, picked.path, { recursive: true, dereference: true, force: true });
+    }
+  }
+  return { status: 'ok', name, sourceDir: dst, target: picked.path, relinked, keepTarget: !!keepTarget };
+}
+
+// 提交：<name...> 点名；或 --all / --include 取「未入 Hub」那一批（--exclude 排掉个别）
+export async function submitSkill({
+  name, names, all, include, exclude, match,
+  to, platform, project, force, keepTarget, dryRun,
+} = {}) {
+  const hub = await requireHubPath();
+  const targets = await resolveTargets({ to, platform, project });
+  const hubRoot = await resolveSkillsRoot(hub);
+  const wanted = nameList(names ?? name);
+
+  let list;
+  if (wanted.length) {
+    list = wanted.map((n) => ({ name: n, description: '' }));
+  } else if (all || (include && include.length)) {
+    const scan = await listAllSkills({ project });
+    list = scan.orphans.map((o) => ({ name: o.name, description: o.description || '' }));
+  } else {
+    throw badInput('需要 <name...>、--all 或 --include <模式> 之一');
+  }
+  const chosen = applyFilters(list, { include, exclude, match });
+  if (!chosen.length) throw notFound('按当前筛选条件没有可提交的 skill（都已入 Hub？）');
+
+  const results = [];
+  for (const { name: n } of chosen) {
+    results.push(await submitOne(n, { targets, hubRoot, force, keepTarget, dryRun }));
+  }
+  const conflicts = results.filter((r) => r.status === 'conflict');
   return {
-    central: centralRoot,
-    project: projRoot,
-    summary: {
-      total: rows.length,
-      same: count('same'),
-      linked: count('linked'),
-      differ: count('differ'),
-      onlyCentral: count('only-central'),
-      onlyProject: count('only-project'),
-    },
-    rows,
+    status: conflicts.length ? 'conflict' : 'ok',
+    dryRun: !!dryRun,
+    selected: chosen.map((x) => x.name),
+    count: results.length,
+    submitted: results.filter((r) => r.status === 'ok' && !r.dryRun).length,
+    wouldSubmit: results.filter((r) => r.status === 'ok').length,
+    skipped: results.filter((r) => r.status === 'skipped').length,
+    missing: results.filter((r) => r.status === 'missing').length,
+    conflicts,
+    results,
   };
 }
 
-// ─── 实体锚点兜底：项目内至少保留一个实体（非链接）skill ─────────────
-// 扫描项目里所有 skill 目录（含形态）；realCount = 实体个数
-async function scanProjectSkillsWithShape(projRoot) {
-  const out = [];
-  for (const a of ADAPTERS) {
-    const dir = join(projRoot, a.dir);
-    const entries = await fsp.readdir(dir, { withFileTypes: true }).catch(() => []);
-    for (const e of entries) {
-      if (e.name.startsWith('.')) continue;
-      const p = join(dir, e.name);
-      // 注意：junction 在 readdir 的 dirent 上 isDirectory 可能为 false，必须用 stat（跟随链接）
-      const st = await fsp.stat(p).catch(() => null);
-      if (!st || !st.isDirectory()) continue;
-      if (!(await exists(join(p, 'SKILL.md')))) continue;
-      out.push({ name: e.name, platform: a.id, path: p, linkType: await detectLinkType(p) });
-    }
-  }
-  return out;
-}
-
-// 若项目里已无实体 skill，则自动物化一个软链接 skill 作为新的实体锚点。
-// preferOtherOf：尽量物化"其他 skill"的链接，而非指定 skill 自己的。
-async function ensureRealAnchor(projRoot, preferOtherOf = '') {
-  const all = await scanProjectSkillsWithShape(projRoot);
-  const real = all.filter((s) => !s.linkType);
-  if (real.length) return { converted: null, realCount: real.length };
-
-  const links = all.filter((s) => s.linkType);
-  if (!links.length) return { converted: null, realCount: 0 };
-
-  links.sort((a, b) => Number(a.name === preferOtherOf) - Number(b.name === preferOtherOf));
-  const candidate = links[0];
-  const target = await fsp.readlink(candidate.path);
-  const absT = isAbsolute(target) ? target : resolve(dirname(candidate.path), target);
-  await fsp.rm(candidate.path, { force: true });
-  await fsp.cp(absT, candidate.path, { recursive: true, dereference: true, force: true });
-  return { converted: { name: candidate.name, platform: candidate.platform, source: absT }, realCount: 1 };
-}
-
-// 从项目里删除一个 skill（移除所有平台目录下的副本与链接）；
-// 若删掉的是最后一个实体，会先自动物化其他软链接兜底，保证项目内至少一个实体。
-export async function removeProjectSkill({ name, project } = {}) {
-  name = assertSafeName(name);
-  if (!project) throw badInput('project 不能为空');
-  const projRoot = resolve(String(project));
-  const removed = [];
-  for (const a of ADAPTERS) {
-    const p = join(projRoot, a.dir, name);
-    if (await pathExists(p)) {
-      const lt = await detectLinkType(p);
-      removed.push({ platform: a.id, path: p, linkType: lt });
-    }
-  }
-  if (!removed.length) return { status: 'ok', removed: [], anchor: null, reason: '项目中没有该 skill' };
-
-  // 先删，再检查：若删掉的是实体且项目里已无实体，自动物化其他软链接兜底
-  const removedReal = removed.some((r) => !r.linkType);
-  for (const r of removed) {
-    await fsp.rm(r.path, { recursive: true, force: true });
-  }
-  const anchor = removedReal ? await ensureRealAnchor(projRoot, name) : null;
-  return { status: 'ok', removed, anchor };
+// 适配器总表：带上**解析后的绝对落点**，这样「把一个 skill 变成 .claude / .workbuddy / .cursor」
+// 在 CLI 上就是可读、可抄的——不必先起面板再猜目录。
+export async function adaptersInfo({ project } = {}) {
+  const s = await getSettings();
+  const projRoot = project || projectRoot();
+  return ADAPTERS.map((a) => ({
+    ...a,
+    enabled: s.platforms.includes(a.id),
+    isDefault: s.defaultPlatform === a.id,
+    userDir: targetDirFor(a.id, 'user'),
+    projectDir: targetDirFor(a.id, 'project', projRoot),
+  }));
 }

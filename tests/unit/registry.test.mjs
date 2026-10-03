@@ -358,7 +358,7 @@ test('help 用法串能由声明完整生成（含参数与 flag）', () => {
   assert.match(usage, /^nx-rh repo add <path>/);
   assert.match(usage, /\[--tags <tags>\]/);
 
-  // agent 失败分类依赖 help 里出现这条命令名（也见于 assets/repo-hub 的用法文档）
+  // agent 失败分类依赖 help 里出现这条命令名（也见于 assets/nx-rh 的用法文档）
   const allUsage = ACTIONS.map(usageOf).join('\n');
   assert.ok(allUsage.includes('nx-rh repo add'), 'help 必须包含 repo add');
 });

@@ -8,20 +8,22 @@ import { dirname } from 'node:path';
 import { storePathFromEnv } from './paths.js';
 
 // settings 里按数组维护的键（写入时统一归一化）
-const ARRAY_SETTINGS = ['platforms', 'skillCentralCandidates', 'skillProjectCandidates'];
+const ARRAY_SETTINGS = ['platforms', 'skillHubSources', 'skillProjectCandidates'];
 
 const EMPTY = () => ({
-  version: 1,
+  version: 2,
   settings: {
-    skillCentralPath: '',
-    skillSyncMode: 'symlink', // 'symlink' | 'copy'
-    platforms: ['claude-code'], // 项目侧默认要支持哪些平台（适配器）
-    defaultPlatform: 'claude-code', // 同步/推送时未指定平台则用它
-    skillCentralCandidates: [], // 中心仓库候选目录（下拉多选项）
+    skillHubPath: '', // 当前主订阅源（Skill Hub 仓库根）
+    skillSyncMode: 'symlink', // 'symlink' | 'copy'（迁移默认形态）
+    platforms: ['claude-code', 'workbuddy'], // 默认聚焦的平台（适配器）
+    defaultPlatform: 'claude-code', // 迁移时未指定平台则用它
+    skillHubSources: [], // 订阅源目录（可多个、可重叠）
     skillProjectCandidates: [], // 项目目录候选（下拉多选项）
   },
-  repos: [], // 仓库登记（repos 模块的所有数据；git 能力已移除，登记保留）
-  skillGroups: [{ id: 'ungrouped', name: '未分组', skills: [] }],
+  repos: [], // 仓库登记（repos 模块的所有数据）
+  // 「最近项目」：全局跨作用域的一份列表（最多 20 条，最近在前）。
+  // 与按 cwd 隔离的桶并存——切项目的入口数据源就是它。
+  recents: [],
 });
 
 let cache = null;
@@ -81,14 +83,25 @@ function toArray(v) {
 function normalize(data) {
   const base = EMPTY();
   if (!data || typeof data !== 'object') return base;
-  base.version = data.version ?? 1;
-  base.settings = { ...base.settings, ...(data.settings || {}) };
+  base.version = data.version ?? 2;
+  const s = { ...base.settings, ...(data.settings || {}) };
+
+  // 旧键回填：0.9.x 及更早用 skillCentralPath / skillCentralCandidates 表达「唯一中心仓库」。
+  // 新模型是「订阅源列表」，语义可直接平移，迁移后旧键不再保留，避免两套并存。
+  if (!s.skillHubPath && data.settings?.skillCentralPath) s.skillHubPath = data.settings.skillCentralPath;
+  if (!Array.isArray(s.skillHubSources) || !s.skillHubSources.length) {
+    const legacy = data.settings?.skillCentralCandidates;
+    if (Array.isArray(legacy) && legacy.length) s.skillHubSources = legacy;
+  }
+  delete s.skillCentralPath;
+  delete s.skillCentralCandidates;
+
+  base.settings = s;
   for (const key of ARRAY_SETTINGS) {
     base.settings[key] = toArray(base.settings[key]);
   }
   base.repos = Array.isArray(data.repos) ? data.repos : [];
-  base.skillGroups =
-    Array.isArray(data.skillGroups) && data.skillGroups.length ? data.skillGroups : base.skillGroups;
+  base.recents = Array.isArray(data.recents) ? data.recents : [];
   return base;
 }
 

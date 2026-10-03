@@ -66,7 +66,7 @@ function coerceOne(name, spec, raw) {
 
 // 参数缺失/非法时的统一报错。
 //
-// 「用法:」前缀是**对外契约**：assets/repo-hub/references/agent-workflow.md 明确
+// 「用法:」前缀是**对外契约**：assets/nx-rh/references/agent-workflow.md 明确
 // 教 agent 用错误文本里的「用法:」判定为参数错误，并据此决定「停下来问人」。
 // 所以这里不能只写「缺少参数 X」，必须带上完整用法串。
 function inputError(action, detail) {

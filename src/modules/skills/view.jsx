@@ -1,403 +1,608 @@
-// Skill 页：中心 <-> 项目两侧列表、多选勾选（持久化）、平台 pill、比较、冲突选侧。
-import { useCallback, useEffect, useMemo, useState } from 'react';
+// Skill 页：以「订阅源（Skill Hub）」为唯一可信源，把 skill 迁移到各平台目录。
+//
+// 单向流：订阅源 → 目标（迁移）；目标 → 订阅源（提交）。
+// 不做「项目之间互迁」——项目目录只是落地副本。
+import { Fragment, useCallback, useEffect, useMemo, useState } from 'react';
 import { api } from '../../web/frontend/api/client.js';
 import { useStore } from '../../web/frontend/store.jsx';
-import { useToast, useGuard, useDialog, Modal, DiffPre, Copyable } from '../../web/frontend/components/ui.jsx';
+import { useToast, useGuard, useDialog, Modal, Copyable } from '../../web/frontend/components/ui.jsx';
 import { CliHints } from '../../web/frontend/components/CliHints.jsx';
+
+const SCOPE_SHORT = { user: '用户', project: '项目' };
 
 function shortLabel(adapterId, adapters) {
   const a = adapters.find((x) => x.id === adapterId);
   return (a ? a.name : adapterId).replace(/\s*\(.*\)$/, '').split(/[\s-]/)[0].toLowerCase();
 }
 
-// 项目内 pill 范围 = 设置范围 ∪ 旁系 skill 在用的平台 ∪ 自身平台（支持项目内平台迁移）
-function pillScope(skill, projectSkills, settings, adapters) {
-  const known = new Set(adapters.map((a) => a.id));
-  const scope = new Set((settings?.platforms || []).filter((id) => known.has(id)));
-  for (const x of projectSkills) for (const p of x.platforms || []) scope.add(p.id);
-  for (const p of skill.platforms || []) scope.add(p.id);
-  return [...scope];
-}
+// ---- skill 编辑器：新建 / 编辑共用（面板里的 C 与 U） ----
+function SkillEditor({ mode, skill = {}, close, reload }) {
+  const { toast } = useToast();
+  const isEdit = mode === 'edit';
+  const [name, setName] = useState(skill.name || '');
+  const [description, setDescription] = useState(skill.description || '');
+  const [content, setContent] = useState(skill.content || '');
+  const [err, setErr] = useState('');
+  const [busy, setBusy] = useState(false);
 
-export default function SkillsView() {
-  const { boot, bundled, ui, patchUi, toggleSel, refreshBoot } = useStore();
-  const toast = useToast();
-  const guard = useGuard();
-  const { dialog, node: dialogNode } = useDialog();
-  const [centralSkills, setCentralSkills] = useState([]);
-  const [projectSkills, setProjectSkills] = useState([]);
-  const [compare, setCompare] = useState(null);
-  const [modal, setModal] = useState(null);
-
-  const settings = boot?.settings || {};
-  const adapters = boot?.adapters || [];
-
-  // 勾选集合：持久化在 ui.selCentral/selProject；数据刷新后过滤掉已不存在的名字
-  const selCentral = useMemo(() => new Set(ui.selCentral), [ui.selCentral]);
-  const selProject = useMemo(() => new Set(ui.selProject), [ui.selProject]);
-
-  // 数据加载与勾选对账。关键点：对账必须等两侧数据真的到手（cs/ps 为当前选择的路径的结果），
-  // 否则首次挂载时先到的一次空响应会把 localStorage 里持久化的勾选清掉。
-  const loadSkills = useCallback(async () => {
-    const centralPath = ui.central;
-    const projectPath = ui.project;
-    const [cs, ps] = await Promise.all([
-      centralPath ? api(`/api/skills?side=central&path=${encodeURIComponent(centralPath)}`).catch(() => null) : [],
-      projectPath ? api(`/api/skills?side=project&path=${encodeURIComponent(projectPath)}`).catch(() => null) : [],
-    ]);
-    if (centralPath) setCentralSkills(cs || []);
-    if (projectPath) setProjectSkills(ps || []);
-    // 勾选对账：请求成功（非 null）才允许修剪；闭包里的 sel 值可能与最新 state 有延迟，
-    // 所以修剪条件是「勾选的名字已不在列表里」，写回用函数式 patch
-    const cNames = new Set((cs || []).map((x) => x.name));
-    const pNames = new Set((ps || []).map((x) => x.name));
-    const staleC = ui.selCentral.filter((n) => !cNames.has(n));
-    const staleP = ui.selProject.filter((n) => !pNames.has(n));
-    if ((cs !== null && staleC.length) || (ps !== null && staleP.length)) {
-      patchUi((u) => ({
-        selCentral: cs !== null ? u.selCentral.filter((n) => cNames.has(n)) : u.selCentral,
-        selProject: ps !== null ? u.selProject.filter((n) => pNames.has(n)) : u.selProject,
-      }));
+  const save = async () => {
+    if (busy) return;
+    setErr('');
+    if (!isEdit && !name.trim()) { setErr('需要一个 skill 名（小写连字符）'); return; }
+    setBusy(true);
+    try {
+      if (isEdit) {
+        await api('/api/skills/' + encodeURIComponent(skill.name), { method: 'PATCH', body: { content } });
+      } else {
+        await api('/api/skills', { method: 'POST', body: { name: name.trim(), description, content } });
+      }
+      toast(isEdit ? '已保存' : '已创建');
+      close();
+      await reload();
+    } catch (e) {
+      setErr(String((e && e.message) || e));
+    } finally {
+      setBusy(false);
     }
-  }, [ui.central, ui.project, ui.selCentral, ui.selProject, patchUi]);
-
-  useEffect(() => { loadSkills(); }, [loadSkills]);
-
-  const centralCandidates = settings.skillCentralCandidates || [];
-  // 项目候选只有设置里维护的那一份——「已登记仓库自动进下拉」随
-  // 仓库 git 能力一起撤掉了：候选来源多一份，用户就多一处要同步的心智负担。
-  const projectCandidates = useMemo(
-    () => (settings.skillProjectCandidates || []).map((p) => ({
-      path: p,
-      label: p.replace(/^.*[\\/]/, '') + '  ·  ' + p,
-    })),
-    [settings.skillProjectCandidates]
-  );
-
-  // 默认平台下拉选项（设置范围；范围空则兜底 claude-code）
-  const platformOpts = useMemo(() => {
-    const scope = (settings.platforms || []).filter((id) => adapters.some((a) => a.id === id));
-    return scope.length ? scope : ['claude-code'];
-  }, [settings.platforms, adapters]);
-
-  const addCandidate = (kind) => guard(async () => {
-    const p = await dialog({
-      title: kind === 'central' ? '中心仓库绝对路径（根目录下直接是 skill 目录）' : '项目根目录绝对路径（加入后会出现在下拉候选里）',
-      input: true,
-    });
-    if (!p) return;
-    const list = await api(`/api/skills/${kind}`, { method: 'POST', body: { path: p } });
-    const newBoot = await api('/api/bootstrap');
-    patchUi(kind === 'central'
-      ? { central: list[list.length - 1] || '' }
-      : { project: list[list.length - 1] || '' });
-    // central add 同步设置当前中心路径（与 CLI skill central add 行为一致）
-    if (kind === 'central' && list.length) {
-      await api('/api/settings', { method: 'POST', body: { skillCentralPath: list[list.length - 1] } });
-    }
-    await refreshBoot();
-    // refreshBoot 后 settings 更新，但 boot 未用于 central 候选展示——直接复用返回值
-    void newBoot;
-  });
-
-  const removeCandidate = (kind) => guard(async () => {
-    const cur = kind === 'central' ? ui.central : ui.project;
-    if (!cur) return;
-    const ok = await dialog({ message: `从候选移除${kind === 'central' ? '中心仓库' : '项目目录'}？\n${cur}\n（仅移出列表，不动磁盘）`, danger: true });
-    if (!ok) return;
-    const list = await api(`/api/skills/${kind}`, { method: 'DELETE', body: { path: cur } });
-    if (kind === 'central') {
-      patchUi({ central: list[0] || '' });
-      await api('/api/settings', { method: 'POST', body: { skillCentralPath: list[0] || '' } });
-    } else {
-      patchUi({ project: list[list.length - 1] || '' });
-    }
-    await refreshBoot();
-  });
-
-  const onCentralChange = (path) => guard(async () => {
-    patchUi({ central: path });
-    await api('/api/settings', { method: 'POST', body: { skillCentralPath: path } });
-  });
-
-  const togglePlatform = (btn) => guard(async () => {
-    const { name, adapter, on } = btn;
-    if (!ui.project) { toast('请先选择项目目录'); return; }
-    const body = { name, project: ui.project, adapter, enabled: on !== '1', force: false, mode: settings.skillSyncMode };
-    let r = await api('/api/skills/platform', { method: 'POST', body });
-    if (r.status === 'conflict') {
-      const okc = await dialog({ message: `「${name}」在该平台已存在且内容不同（${r.files.length} 个文件）。\n用中心版本覆盖？` });
-      if (!okc) return;
-      r = await api('/api/skills/platform', { method: 'POST', body: { ...body, force: true } });
-    }
-    if (r.status === 'conflict') { toast('仍有冲突，未覆盖'); return; }
-    if (r.status === 'blocked') { toast(r.reason); return; }
-    const anchorNote = r.anchor?.converted ? `\n已自动物化「${r.anchor.converted.name}」作为实体锚点` : '';
-    if (r.removed) toast(`${r.platform}：已关闭${anchorNote}`);
-    else if (r.skipped) toast(`${r.platform}：已是最新`);
-    else toast(`${r.platform}：已开启（${r.mode === 'symlink' ? '软链接 ' + (r.linkType || '') : '复制'}）`);
-    await loadSkills();
-  });
-
-  const syncSkill = (name) => guard(async () => {
-    if (!ui.project) { toast('请先选择项目目录'); return; }
-    const adapter = settings.defaultPlatform || platformOpts[0];
-    const r = await api('/api/skills/sync', {
-      method: 'POST',
-      body: { name, project: ui.project, adapter, mode: settings.skillSyncMode, force: false },
-    });
-    if (r.status === 'conflict') return openConflict(name);
-    toast(r.skipped ? `已是最新（${r.linkType || '链接'}），跳过` : `已同步到 ${adapter}（${r.mode === 'symlink' ? '软链接 ' + (r.linkType || '') : '复制'}）`);
-    await loadSkills();
-  });
-
-  const pushSkill = (name) => guard(async () => {
-    if (!ui.project) { toast('请先选择项目目录'); return; }
-    const r = await api('/api/skills/push', { method: 'POST', body: { name, project: ui.project, force: false } });
-    if (r.status === 'conflict') return openConflict(name);
-    toast(r.skipped ? r.reason : '已推送到中心');
-    await loadSkills();
-  });
-
-  const openConflict = async (name) => {
-    const detail = await api(`/api/skills/conflict?name=${encodeURIComponent(name)}&project=${encodeURIComponent(ui.project)}`);
-    setModal({ title: `冲突详情 · ${name}`, node: (
-      <ConflictDetail name={name} project={ui.project} data={detail} onDone={loadSkills} />
-    ) });
-  };
-
-  const materialize = (name) => guard(async () => {
-    const ok = await dialog({ message: `将「${name}」从链接转换为实体文件？转换后不再与中心实时同步。` });
-    if (!ok) return;
-    const r = await api('/api/skills/materialize', { method: 'POST', body: { name, project: ui.project } });
-    toast(r.converted ? '已转换为实体文件' : r.message);
-    await loadSkills();
-  });
-
-  const removeSkill = (name) => guard(async () => {
-    const ok = await dialog({
-      message: `从项目中删除 skill「${name}」？\n将移除它在所有平台目录下的副本与链接（中心仓库不受影响）。`,
-      danger: true,
-    });
-    if (!ok) return;
-    const r = await api('/api/skills/remove', { method: 'POST', body: { name, project: ui.project } });
-    const anchorNote = r.anchor?.converted ? `\n已自动物化「${r.anchor.converted.name}」作为实体锚点` : '';
-    toast(r.removed.length ? `已删除（${r.removed.map((x) => x.platform).join(', ')}）${anchorNote}` : r.reason);
-    await loadSkills();
-  });
-
-  const doCompare = () => guard(async () => {
-    if (!ui.project) { toast('请先选择项目目录'); return; }
-    const names = [...new Set([...ui.selCentral, ...ui.selProject])];
-    setCompare(await api('/api/skills/compare', {
-      method: 'POST',
-      body: { central: ui.central || undefined, project: ui.project, names },
-    }));
-  });
-
-  const installBundled = () => guard(async () => {
-    const skill = bundled?.skills.find((s) => s.name === 'repo-hub') || bundled?.skills[0];
-    if (!skill) { toast('包内没有内置 skill'); return; }
-    const r = await api('/api/bundled/install', { method: 'POST', body: { name: skill.name, force: false } });
-    if (r.status === 'conflict') {
-      const ok = await dialog({ message: `目标已存在且内容不同（${r.count} 个文件）:\n${r.path}\n\n覆盖为包内版本？` });
-      if (!ok) return;
-      const forced = await api('/api/bundled/install', { method: 'POST', body: { name: skill.name, force: true } });
-      toast(`${forced.replaced ? '已更新' : '已安装'} → ${forced.path}`);
-    } else if (r.skipped) {
-      toast(`已是最新，无需安装\n${r.path}`);
-    } else {
-      toast(`${r.replaced ? '已更新' : '已安装'}（${r.files} 个文件）\n${r.path}`);
-    }
-  });
-
-  const projectStateTag = (s) => {
-    const c = centralSkills.find((x) => x.name === s.name);
-    if (!c) return <span className="tag">本地</span>;
-    if ((s.platforms || []).some((p) => p.linkType)) return <span className="tag strong">链接</span>;
-    return c.md5 === s.md5 ? <span className="tag strong">一致</span> : <span className="tag bad">冲突</span>;
-  };
-
-  const relationTag = (c) => {
-    const proj = projectSkills.find((s) => s.name === c.name);
-    if (!proj) return <span className="tag">仅中心</span>;
-    if ((proj.platforms || []).some((p) => p.linkType)) return <span className="tag strong">链接</span>;
-    return proj.md5 === c.md5 ? <span className="tag strong">一致</span> : <span className="tag bad">冲突</span>;
   };
 
   return (
     <>
+      {err ? <div className="tag bad" style={{ marginBottom: 8, whiteSpace: 'pre-wrap' }}>{err}</div> : null}
+      {!isEdit ? (
+        <div style={{ display: 'flex', gap: 8, marginBottom: 8 }}>
+          <input
+            style={{ flex: 1 }}
+            placeholder="skill 名（小写连字符，如 my-skill）"
+            value={name}
+            spellCheck="false"
+            onChange={(e) => setName(e.target.value)}
+          />
+          <input
+            style={{ flex: 2 }}
+            placeholder="一句话描述（写入 frontmatter）"
+            value={description}
+            onChange={(e) => setDescription(e.target.value)}
+          />
+        </div>
+      ) : null}
+      <textarea
+        style={{
+          width: '100%', minHeight: 320, padding: 8,
+          fontFamily: 'ui-monospace, Consolas, monospace', fontSize: 12, lineHeight: 1.5,
+          border: '1px solid var(--soft-2)', borderRadius: 4, background: 'var(--paper)', color: 'var(--ink)',
+        }}
+        spellCheck="false"
+        placeholder={
+          isEdit
+            ? ''
+            : '正文（留空则自动生成 frontmatter 与标题）。\n也可以直接给完整 SKILL.md（以 --- 开头，name 须与上面一致）。'
+        }
+        value={content}
+        onChange={(e) => setContent(e.target.value)}
+      />
+      <div style={{ display: 'flex', gap: 8, marginTop: 10, justifyContent: 'flex-end' }}>
+        <button className="btn ghost" onClick={close}>取消</button>
+        <button className="btn" disabled={busy} onClick={save}>{busy ? '保存中…' : '保存'}</button>
+      </div>
+    </>
+  );
+}
+
+export default function SkillsView() {
+  const { boot, ui, patchUi, refreshBoot } = useStore();
+  const toast = useToast();
+  const guard = useGuard();
+  const { dialog, node: dialogNode } = useDialog();
+
+  const [data, setData] = useState(null);
+  const [modal, setModal] = useState(null);
+
+  const settings = boot?.settings || {};
+  const adapters = boot?.adapters || [];
+  const source = ui.source || '';
+
+  const load = useCallback(async () => {
+    const qs = new URLSearchParams();
+    if (project) qs.set('project', project);
+    if (source) qs.set('source', source);
+    const d = await api('/api/skills?' + qs.toString()).catch(() => null);
+    setData(d);
+  }, [project, source]);
+
+  useEffect(() => { load(); }, [load]);
+
+  // 项目 = 右上角激活的目录（无则服务进程目录）。项目级信息只针对它。
+  const project = ui.activeScope?.path || boot?.projectRoot || '';
+
+  const sources = data?.sources || boot?.sources || [];
+  const platformOpts = useMemo(
+    () => (settings.platforms || []).filter((id) => adapters.some((a) => a.id === id)),
+    [settings.platforms, adapters]
+  );
+
+  // 勾选集合（持久化）。只在「当前列表里还存在的名字」上生效，避免旧勾选残留。
+  const selSkills = useMemo(() => new Set(ui.selSkills), [ui.selSkills]);
+  const hubNames = useMemo(() => (data?.skills || []).map((s) => s.name), [data]);
+  const orphanNames = useMemo(() => (data?.orphans || []).map((s) => s.name), [data]);
+  const selectedNames = useMemo(
+    () => ui.selSkills.filter((n) => hubNames.includes(n) || orphanNames.includes(n)),
+    [ui.selSkills, hubNames, orphanNames]
+  );
+  const selectedHub = useMemo(() => selectedNames.filter((n) => hubNames.includes(n)), [selectedNames, hubNames]);
+  const selectedOrphans = useMemo(() => selectedNames.filter((n) => orphanNames.includes(n)), [selectedNames, orphanNames]);
+  const allSelected = hubNames.length > 0 && hubNames.every((n) => selSkills.has(n));
+  const toggleAll = () => patchUi({ selSkills: allSelected ? [] : hubNames });
+
+  // 批量迁移：有勾选就只迁勾选的，没勾选就全量（--all）。
+  // 全量前必须确认——「避免手点」不等于「允许误点」。
+  const bulkMigrate = (to) => guard(async () => {
+    const names = selectedHub;
+    const total = names.length || hubNames.length;
+    if (!total) { toast('没有可迁移的 skill'); return; }
+    const ok = await dialog({
+      message: `将${names.length ? `勾选的 ${names.length} 个` : `全部 ${total} 个`} skill 迁移到${SCOPE_SHORT[to]}？\n平台: ${platformOpts.join(', ')} · 形态: ${settings.skillSyncMode === 'copy' ? '复制' : '软链接'}`,
+    });
+    if (!ok) return;
+    const body = names.length
+      ? { name: names, to, platform: 'all', project, mode: settings.skillSyncMode }
+      : { all: true, to, platform: 'all', project, mode: settings.skillSyncMode };
+    const r = await api('/api/skills/migrate', { method: 'POST', body });
+    if (r.status === 'blocked') {
+      toast(`${r.blocked.length} 处被阻止：同名 skill 在多个订阅源且内容不同（先解决订阅）`);
+    } else {
+      toast(`已迁移 ${r.migrated} 处（跳过 ${r.skipped}）`);
+    }
+    await load();
+  });
+
+  // 撤销只对勾选生效：全量撤销会把用户级目录里所有链接一并清掉，风险不对等
+  const bulkUnmigrate = () => guard(async () => {
+    if (!selectedNames.length) { toast('请先勾选要撤销的 skill'); return; }
+    const ok = await dialog({
+      message: `撤销勾选的 ${selectedNames.length} 个 skill 的迁移？\n链接直接删除；实体副本会被跳过（需逐个确认）。`,
+      danger: true,
+    });
+    if (!ok) return;
+    const r = await api('/api/skills/unmigrate', { method: 'POST', body: { name: selectedNames, to: 'all', platform: 'all', project } });
+    toast(r.status === 'blocked' ? `${r.needForce.length} 处是实体副本，已跳过` : `已撤销 ${r.removed.length} 处`);
+    await load();
+  });
+
+  // 批量提交：优先勾选的「未入 Hub」；没勾选就是全部游离 skill
+  const bulkSubmit = () => guard(async () => {
+    if (!source && !data?.hub?.path) { toast('请先订阅一个 skill 目录'); return; }
+    const body = selectedOrphans.length
+      ? { name: selectedOrphans, to: 'project', platform: 'all', project }
+      : { all: true, to: 'project', platform: 'all', project };
+    const n = selectedOrphans.length || orphanNames.length;
+    if (!n) { toast('没有未入 Hub 的 skill'); return; }
+    const ok = await dialog({
+      message: `把${selectedOrphans.length ? `勾选的 ${n} 个` : `全部 ${n} 个「未入 Hub」的`} skill 提交到订阅源？\n提交后会删除目标实文件并改回链接。`,
+    });
+    if (!ok) return;
+    const r = await api('/api/skills/submit', { method: 'POST', body });
+    toast(`已提交 ${r.submitted} 个（跳过 ${r.skipped}）`);
+    await load();
+    await refreshBoot();
+  });
+
+  // ---- 订阅源操作 ----
+  const addSource = () => guard(async () => {
+    const p = await dialog({ title: '订阅一个 skill 目录（目录下直接是各 skill）', input: true });
+    if (!p) return;
+    await api('/api/skills/sources', { method: 'POST', body: { path: p } });
+    patchUi({ source: '' });
+    await refreshBoot();
+    await load();
+  });
+
+  const removeSource = () => guard(async () => {
+    const cur = source || data?.hub?.path;
+    if (!cur) return;
+    const ok = await dialog({ message: `取消订阅该目录？（不动磁盘）\n${cur}`, danger: true });
+    if (!ok) return;
+    await api('/api/skills/sources', { method: 'DELETE', body: { path: cur } });
+    patchUi({ source: '' });
+    await refreshBoot();
+    await load();
+  });
+
+  const setSetting = (patch) => guard(async () => {
+    await api('/api/settings', { method: 'POST', body: patch });
+    await refreshBoot();
+    await load();
+  });
+
+  // ---- 迁移 / 撤销 ----
+  const toggleCell = (name, cell) => guard(async () => {
+    const base = { name, to: cell.scope, platform: cell.platform, project };
+    if (cell.on) {
+      let r = await api('/api/skills/unmigrate', { method: 'POST', body: base });
+      if (r.status === 'blocked') {
+        const ok = await dialog({
+          message: `「${name}」在 ${SCOPE_SHORT[cell.scope]}·${cell.platform} 是实体副本（可能含本地改动）。\n删除不可逆，确认？`,
+          danger: true,
+        });
+        if (!ok) return;
+        r = await api('/api/skills/unmigrate', { method: 'POST', body: { ...base, force: true } });
+      }
+      toast(r.removed?.length ? `已撤销 ${SCOPE_SHORT[cell.scope]}·${cell.platform}` : '该目标本就没有');
+    } else {
+      // 目的仓库不做冲突检测：订阅源是唯一真相源，直接覆盖（hub 里永远有一份，可恢复）。
+      // 真正要检测的是订阅源之间——那个用 skill hub check。
+      const r = await api('/api/skills/migrate', {
+        method: 'POST',
+        body: { ...base, mode: settings.skillSyncMode },
+      });
+      if (r.status === 'blocked') {
+        toast(`${name} 在多个订阅源且内容不同，先解决订阅（skill hub check）`);
+        await load();
+        return;
+      }
+      toast(`已迁移到 ${SCOPE_SHORT[cell.scope]}·${cell.platform}`);
+    }
+    await load();
+  });
+
+  const migrateScope = (name, to) => guard(async () => {
+    const r = await api('/api/skills/migrate', {
+      method: 'POST',
+      body: { name, to, platform: 'all', project, mode: settings.skillSyncMode },
+    });
+    toast(r.status === 'blocked' ? '同名 skill 在多个订阅源且内容不同，先解决订阅' : `已迁移到${SCOPE_SHORT[to]}`);
+    await load();
+  });
+
+  const submit = (name) => guard(async () => {
+    const cur = source || data?.hub?.path;
+    if (!cur) { toast('请先订阅一个 skill 目录'); return; }
+    const r = await api('/api/skills/submit', { method: 'POST', body: { name, to: 'project', platform: 'all', project } });
+    if (r.status === 'conflict') {
+      const ok = await dialog({ message: `订阅源已有同名 skill 且内容不同（${r.files.length} 个文件）。\n用这份副本覆盖订阅源？` });
+      if (!ok) return;
+      await api('/api/skills/submit', { method: 'POST', body: { name, to: 'project', platform: 'all', project, force: true } });
+    }
+    toast(`已提交到订阅源，目标实文件已删除`);
+    await load();
+    await refreshBoot();
+  });
+
+  const showContext = (name) => guard(async () => {
+    const d = await api('/api/skills/content?name=' + encodeURIComponent(name));
+    setModal({
+      title: `skill 上下文 · ${name}`,
+      node: (
+        <>
+          <div className="muted" style={{ marginBottom: 8 }}>
+            来源: {d.source} · {d.contentBytes} 字节
+            <button className="btn small" style={{ marginLeft: 12 }} onClick={() => {
+              navigator.clipboard?.writeText(d.content);
+              toast('已复制 SKILL.md');
+            }}>复制全文</button>
+          </div>
+          {(d.outline?.length) ? (
+            <div className="muted" style={{ marginBottom: 8, maxHeight: 120, overflow: 'auto' }}>
+              {d.outline.map((h, i) => (
+                <div key={i} style={{ paddingLeft: (h.level - 1) * 14 }}>
+                  {'#'.repeat(h.level)} {h.text}
+                </div>
+              ))}
+            </div>
+          ) : null}
+          <pre>{d.content}</pre>
+        </>
+      ),
+    });
+  });
+
+  const hubPath = data?.hub?.path || boot?.hub?.path || '';
+
+  // 「未入 Hub」按平台目录分组：用户级 / 项目级 / 不同平台不再混在一行里
+  const orphanGroups = useMemo(() => {
+    const groups = new Map();
+    for (const o of data?.orphans || []) {
+      for (const c of o.cells || []) {
+        if (!platformOpts.includes(c.platform)) continue;
+        const key = c.scope + ':' + c.platform;
+        const g = groups.get(key) || {
+          key,
+          scope: c.scope,
+          platform: c.platform,
+          dir: String(c.dir || '').replace(/[\\/][^\\/]+$/, ''),
+          items: [],
+        };
+        g.items.push(o);
+        groups.set(key, g);
+      }
+    }
+    return [...groups.values()].sort((a, b) => a.key.localeCompare(b.key));
+  }, [data, platformOpts]);
+
+  // ---- 详情弹窗：查看 + 操作都收进来，行上只留一个入口（轻量） ----
+  const closeModal = () => setModal(null);
+  const reloadAll = useCallback(async () => { await load(); await refreshBoot(); }, [load, refreshBoot]);
+
+  // 新建（C）：写入当前订阅源
+  const openCreate = () => {
+    setModal({
+      title: '新建 skill（写入当前订阅源）',
+      node: <SkillEditor mode="create" close={closeModal} reload={reloadAll} />,
+    });
+  };
+
+  // 编辑（U）：载入 SKILL.md 全文，改完 PATCH 回去
+  const openEditor = (s) => guard(async () => {
+    const d = await api('/api/skills/content?name=' + encodeURIComponent(s.name));
+    setModal({
+      title: `编辑 skill · ${s.name}`,
+      node: (
+        <SkillEditor
+          mode="edit"
+          skill={{ name: s.name, description: s.description, content: d.content }}
+          close={closeModal}
+          reload={reloadAll}
+        />
+      ),
+    });
+  });
+
+  // 删除（D）：目标侧还有引用时先 blocked，确认后才删
+  const doDelete = (s) => guard(async () => {
+    const ok = await dialog({ message: `从订阅源删除「${s.name}」？`, danger: true });
+    if (!ok) return;
+    const r = await api('/api/skills/' + encodeURIComponent(s.name), { method: 'DELETE', body: {} });
+    if (r.status === 'blocked') {
+      const ok2 = await dialog({
+        message: `${r.reason}：\n${r.refs.map((x) => `${SCOPE_SHORT[x.scope]}·${x.platform} ${x.path}`).join('\n')}\n仍要删除？（目标侧会悬空，之后可用迁移重建）`,
+        danger: true,
+      });
+      if (!ok2) return;
+      await api('/api/skills/' + encodeURIComponent(s.name), { method: 'DELETE', body: { force: true } });
+    }
+    closeModal();
+    await reloadAll();
+    toast('已删除');
+  });
+
+  const openDetail = (s, { orphan } = {}) => {
+    const cells = (s.cells || []).filter((c) => platformOpts.includes(c.platform));
+    const node = (
+      <>
+        <div className="muted" style={{ marginBottom: 10 }}>{s.description}</div>
+        {!orphan && s.source ? (
+          <div className="muted" style={{ marginBottom: 6 }}>
+            来源: <Copyable text={s.source}>{s.source}</Copyable>
+            {s.dir ? <> · 目录: <Copyable text={s.dir}>{s.dir}</Copyable></> : null}
+          </div>
+        ) : null}
+        {s.conflict && !s.conflict.same ? (
+          <div style={{ marginBottom: 10 }}>
+            <span
+              className="tag bad"
+              title={s.conflict.sources.map((x) => x.path).join('\n')}
+            >
+              跨源冲突：同名实文件在多个订阅源且内容不同，迁移会被阻止（skill hub check）
+            </span>
+          </div>
+        ) : null}
+
+        {(s.outline?.length) ? (
+          <>
+            <div className="colhead">
+              <h3>结构</h3>
+              <span className="muted">{s.stats?.sections ?? s.outline.length} 节 · {s.stats?.lines ?? '?'} 行 · {s.stats?.bytes ?? '?'} 字节</span>
+            </div>
+            <div className="list" style={{ maxHeight: 180, overflow: 'auto', marginBottom: 12 }}>
+              {s.outline.map((h, i) => (
+                <div key={i} className="row" style={{ paddingLeft: 12 + (h.level - 1) * 16 }}>
+                  <span className="name" style={{ fontWeight: h.level === 1 ? 700 : 500 }}>
+                    <span className="muted" style={{ marginRight: 6 }}>{'#'.repeat(h.level)}</span>
+                    {h.text}
+                  </span>
+                  <span className="acts muted">L{h.line}</span>
+                </div>
+              ))}
+            </div>
+          </>
+        ) : null}
+
+        <div className="colhead"><h3>平台落点与操作</h3></div>
+        <div className="list">
+          {cells.length ? cells.map((c) => (
+            <div key={c.scope + c.platform} className="row">
+              <span className="name">{SCOPE_SHORT[c.scope]}·{shortLabel(c.platform, adapters)}</span>
+              <Copyable className="desc" text={c.dir} title="点击复制落点路径">{c.dir}</Copyable>
+              <span
+                className={'tag' + (c.on ? (c.linkType ? '' : ' strong') : ' bad')}
+                title={c.on ? (c.linkType ? '软链接，随订阅源实时同步' : '实体副本') : '尚未迁移'}
+              >
+                {c.on ? (c.linkType ? '链接' : '实体') : '未迁移'}
+              </span>
+              <span className="acts">
+                {c.on ? (
+                  <button className="btn small ghost" onClick={() => { closeModal(); toggleCell(s.name, c); }}>撤销</button>
+                ) : (
+                  <button className="btn small" onClick={() => { closeModal(); toggleCell(s.name, c); }}>迁移</button>
+                )}
+              </span>
+            </div>
+          )) : <div className="row muted">（当前启用的平台没有落点）</div>}
+        </div>
+
+        <div style={{ display: 'flex', gap: 8, marginTop: 12, flexWrap: 'wrap' }}>
+          {orphan ? (
+            <button className="btn" onClick={() => { closeModal(); submit(s.name); }}>提交到 Hub</button>
+          ) : (
+            <>
+              <button className="btn" onClick={() => { closeModal(); migrateScope(s.name, 'project'); }}>迁移 → 项目</button>
+              <button className="btn" onClick={() => { closeModal(); migrateScope(s.name, 'user'); }}>迁移 → 用户</button>
+              <button className="btn ghost" onClick={() => openEditor(s)}>编辑</button>
+              <button className="btn danger" onClick={() => doDelete(s)}>删除</button>
+            </>
+          )}
+          <button className="btn ghost" onClick={() => showContext(s.name)}>查看全文</button>
+        </div>
+      </>
+    );
+    setModal({ title: `skill · ${s.name}`, node });
+  };
+
+  const renderRow = (s, { orphan } = {}) => (
+    <div
+      key={s.name}
+      className="row"
+      style={{ cursor: 'pointer' }}
+      title="点击查看详情与操作"
+      onClick={() => openDetail(s, { orphan })}
+    >
+      <input
+        type="checkbox"
+        checked={selSkills.has(s.name)}
+        title="勾选后可用于批量操作"
+        onClick={(e) => e.stopPropagation()}
+        onChange={() => toggleSel('selSkills', s.name)}
+      />
+      <span className="name">{s.name}</span>
+      <span className="desc">{s.description}</span>
+      {orphan ? (
+        <span className="tag bad" title="不在订阅源里，实文件散落在平台目录">未入 Hub</span>
+      ) : s.conflict && !s.conflict.same ? (
+        <span
+          className="tag bad"
+          title={`同名 skill 在多个订阅源且内容不同：${s.conflict.sources.map((x) => x.path).join('\n')}\n迁移会被阻止，先解决订阅或用 --source 指定`}
+        >
+          跨源冲突
+        </span>
+      ) : s.conflict ? (
+        <span className="tag" title={`同名实文件在多个订阅源（内容一致）:\n${s.conflict.sources.map((x) => x.path).join('\n')}`}>
+          重复订阅
+        </span>
+      ) : (
+        <span className="tag" title={s.alsoIn?.length ? '同时存在于: ' + s.alsoIn.join(', ') : '来源目录'}>
+          {(s.source || '').replace(/^.*[\\/]/, '')}
+        </span>
+      )}
+      {/* 状态标签：只读。操作全部在详情弹窗里，行上不留一排按钮 */}
+      <span className="plats">
+        {(s.cells || []).filter((c) => platformOpts.includes(c.platform)).map((c) => (
+          <span
+            key={c.scope + c.platform}
+            className={'pill' + (c.on ? (c.linkType ? ' on lnk' : ' on real') : '')}
+            title={`${SCOPE_SHORT[c.scope]}·${c.platform}${c.on ? '（已迁移 · ' + (c.linkType ? c.linkType + ' 链接' : '实体副本') + '）' : '（未迁移）'}`}
+          >
+            {SCOPE_SHORT[c.scope] === '用户' ? '用' : '项'}·{shortLabel(c.platform, adapters)}
+          </span>
+        ))}
+      </span>
+      <span className="acts">
+        <button
+          className="btn small ghost"
+          onClick={(e) => { e.stopPropagation(); openDetail(s, { orphan }); }}
+        >
+          详情
+        </button>
+      </span>
+    </div>
+  );
+
+  return (
+    <>
       <div className="toolbar">
-        <label>中心</label>
-        <select className="grow" value={ui.central} onChange={(e) => onCentralChange(e.target.value)}>
-          {centralCandidates.length
-            ? centralCandidates.map((p) => <option key={p} value={p}>{p.replace(/^.*[\\/]/, '')}  ·  {p}</option>)
-            : <option value="">（请先添加中心仓库）</option>}
+        <label>订阅源</label>
+        <select className="grow" value={source} onChange={(e) => patchUi({ source: e.target.value })}>
+          <option value="">（当前主源）{hubPath ? '  ·  ' + hubPath : ''}</option>
+          {sources.map((s) => (
+            <option key={s.path} value={s.path}>{s.path.replace(/^.*[\\/]/, '')}  ·  {s.path}  ({s.count})</option>
+          ))}
         </select>
-        <button className="btn ghost" title="添加中心仓库目录" onClick={() => addCandidate('central')}>＋</button>
-        <button className="btn ghost" title="从候选移除" onClick={() => removeCandidate('central')}>－</button>
-        <span className="sep"></span>
-        <label>项目</label>
-        <select className="grow" value={ui.project} onChange={(e) => patchUi({ project: e.target.value })}>
-          {projectCandidates.length
-            ? projectCandidates.map((o) => <option key={o.path} value={o.path}>{o.label}</option>)
-            : <option value="">（请先登记仓库或添加项目目录）</option>}
-        </select>
-        <button className="btn ghost" title="添加项目目录" onClick={() => addCandidate('project')}>＋</button>
-        <button className="btn ghost" title="从候选移除" onClick={() => removeCandidate('project')}>－</button>
+        <button className="btn ghost" title="订阅 skill 目录" onClick={addSource}>＋</button>
+        <button className="btn ghost" title="取消订阅" onClick={removeSource}>－</button>
+        <span className="muted">
+          项目在右上角「最近目录」切换：项目级信息只针对激活的那个目录
+        </span>
       </div>
       <div className="toolbar">
         <label>默认平台</label>
         <select value={settings.defaultPlatform || platformOpts[0]}
-          onChange={(e) => guard(async () => {
-            const id = e.target.value;
-            await api('/api/settings', {
-              method: 'POST',
-              body: { defaultPlatform: id, platforms: [id, ...(settings.platforms || []).filter((x) => x !== id)] },
-            });
-            await refreshBoot();
-          })}>
+          onChange={(e) => setSetting({ defaultPlatform: e.target.value })}>
           {platformOpts.map((id) => (
             <option key={id} value={id}>{(adapters.find((a) => a.id === id) || {}).name || id}</option>
           ))}
         </select>
         <span className="sep"></span>
-        <label>同步模式</label>
+        <label>迁移形态</label>
         <select value={settings.skillSyncMode === 'copy' ? 'copy' : 'symlink'}
-          onChange={(e) => guard(async () => {
-            await api('/api/settings', { method: 'POST', body: { skillSyncMode: e.target.value } });
-            await refreshBoot();
-          })}>
+          onChange={(e) => setSetting({ skillSyncMode: e.target.value })}>
           <option value="symlink">软链接</option>
           <option value="copy">复制</option>
         </select>
         <span className="sep"></span>
-        <button className="btn" onClick={doCompare}>比较选中</button>
-        <button className="btn ghost" onClick={() => guard(loadSkills)}>刷新</button>
-        <button className="btn ghost" onClick={installBundled}>安装 repo-hub skill</button>
-        {bundled ? <span className="muted">{bundled.skills.map((x) => `${x.name}(${x.files})`).join(' ')} → {bundled.defaultDir}</span> : null}
+        <button className="btn ghost" onClick={() => guard(load)}>刷新</button>
+        {data?.hub && !data.hub.path ? <span className="muted">尚未订阅 Skill Hub</span> : null}
+      </div>
+      <div className="toolbar">
+        <label>批量</label>
+        <button className="btn" onClick={() => bulkMigrate('project')}>→项目</button>
+        <button className="btn" onClick={() => bulkMigrate('user')}>→用户</button>
+        <button className="btn ghost" onClick={bulkUnmigrate}>撤销勾选</button>
+        <button className="btn ghost" onClick={bulkSubmit}>提交未入 Hub</button>
+        <span className="muted">
+          已勾选 {selectedNames.length} 个{selectedNames.length ? '' : '（不勾选则「→项目/→用户」为全量）'}
+        </span>
       </div>
 
-      <div className="cols">
-        <div className="col">
-          <div className="colhead">
-            <h3>中心仓库</h3>
-            <span className="muted">{centralSkills.length ? `${centralSkills.length} 个` : ''}</span>
-          </div>
-          <div className="card list">
-            {centralSkills.length ? centralSkills.map((c) => (
-              <div key={c.name} className="row">
-                <input type="checkbox" checked={selCentral.has(c.name)} onChange={() => toggleSel('selCentral', c.name)} />
-                <Copyable className="name" text={c.name} title="点击复制 skill 名">{c.name}</Copyable>
-                <span className="desc">{c.description}</span>
-                {relationTag(c)}
-                <span className="acts">
-                  <button className="btn small ghost" onClick={() => syncSkill(c.name)}>同步到项目</button>
-                </span>
-              </div>
-            )) : <div className="row muted">（中心仓库暂无 skill；中心根目录下直接放 skill 目录即可）</div>}
-          </div>
+      <div className="card">
+        <div className="colhead">
+          <h3>订阅源 Skill</h3>
+          <span className="muted">
+            <input type="checkbox" checked={allSelected} title="全选 / 全不选" onChange={toggleAll} />
+            {' '}
+            {hubPath ? `${hubPath} · ` : ''}{data?.skills?.length ?? 0} 个
+            {hubPath ? (
+              <button className="btn small" style={{ marginLeft: 10 }} title="在当前订阅源新建一个 skill" onClick={openCreate}>
+                ＋ 新建
+              </button>
+            ) : null}
+          </span>
         </div>
-        <div className="col">
-          <div className="colhead">
-            <h3>项目 skill</h3>
-            <span className="muted">{projectSkills.length ? `${projectSkills.length} 个 · 默认平台 ${settings.defaultPlatform || 'claude-code'}` : ''}</span>
-          </div>
-          <div className="card list">
-            {projectSkills.length ? projectSkills.map((s) => {
-              const scope = pillScope(s, projectSkills, settings, adapters);
-              const isLink = (s.platforms || []).some((p) => p.linkType);
-              return (
-                <div key={s.name} className="row">
-                  <input type="checkbox" checked={selProject.has(s.name)} onChange={() => toggleSel('selProject', s.name)} />
-                  <Copyable className="name" text={s.name} title="点击复制 skill 名">{s.name}</Copyable>
-                  {projectStateTag(s)}
-                  <span className="plats">
-                    {scope.map((id) => {
-                      const p = (s.platforms || []).find((x) => x.id === id);
-                      const isOn = !!p;
-                      const cls = 'pill' + (isOn ? (p.linkType ? ' on lnk' : ' on real') : '');
-                      return (
-                        <button key={id} className={cls}
-                          title={`${(adapters.find((a) => a.id === id) || {}).name || id}${isOn ? '（已提供 · ' + (p.linkType ? p.linkType + ' 链接' : '实体') + '）' : '（未提供）'}`}
-                          onClick={() => togglePlatform({ name: s.name, adapter: id, on: isOn ? '1' : '0' })}>
-                          {shortLabel(id, adapters)}
-                        </button>
-                      );
-                    })}
-                  </span>
-                  <span className="acts">
-                    <button className="btn small ghost" onClick={() => pushSkill(s.name)}>推送到中心</button>
-                    {isLink ? <button className="btn small ghost" onClick={() => materialize(s.name)}>转实体</button> : null}
-                    <button className="btn small ghost danger" onClick={() => removeSkill(s.name)}>删除</button>
-                  </span>
-                </div>
-              );
-            }) : <div className="row muted">（项目侧暂无 skill；从中心同步，或勾选平台小按钮）</div>}
-          </div>
+        <div className="list">
+          {data?.skills?.length
+            ? data.skills.map((s) => renderRow(s))
+            : <div className="row muted">（订阅源里暂无 skill；点上方＋订阅一个 skill 目录）</div>}
         </div>
       </div>
 
-      {compare ? (
-        <div className="card">
-          <div className="colhead"><h3>比较结果</h3><span className="muted">
-            共 {compare.summary.total} · 一致 {compare.summary.same} · 链接 {compare.summary.linked} · 冲突 {compare.summary.differ} · 仅中心 {compare.summary.onlyCentral} · 仅项目 {compare.summary.onlyProject}
-          </span></div>
-          <div className="list">
-            {compare.rows.length ? compare.rows.map((r) => {
-              const mark = { same: '一致', linked: '链接', differ: '冲突', 'only-central': '仅中心', 'only-project': '仅项目' }[r.state];
-              return (
-                <div key={r.name} className="row">
-                  <Copyable className="name" text={r.name} title="点击复制 skill 名">{r.name}</Copyable>
-                  <span className="desc">{r.description}</span>
-                  {r.platforms.length ? (
-                    <span className="plats">{r.platforms.map((p) => <span key={p.id} className="pill on">{shortLabel(p.id, adapters)}</span>)}</span>
-                  ) : null}
-                  <span className="acts">
-                    <span className={'tag' + (r.state === 'differ' ? ' bad' : r.state === 'same' || r.state === 'linked' ? ' strong' : '')}>{mark}</span>
-                    {r.state === 'differ' ? <button className="btn small ghost" onClick={() => guard(() => openConflict(r.name))}>差异</button> : null}
-                  </span>
-                </div>
-              );
-            }) : <div className="row muted">（没有可比较的 skill）</div>}
-          </div>
+      <div className="card">
+        <div className="colhead">
+          <h3>未入 Hub</h3>
+          <span className="muted">按平台目录分组 —— 提交后收敛为「唯一实文件 = 订阅源」</span>
         </div>
-      ) : null}
+        <div className="list">
+          {orphanGroups.length ? (
+            orphanGroups.map((g) => (
+              <Fragment key={g.key}>
+                <div className="colhead" style={{ padding: '0 12px' }}>
+                  <h3 style={{ fontSize: 12, fontWeight: 600 }}>
+                    {SCOPE_SHORT[g.scope]}·{shortLabel(g.platform, adapters)}
+                    <span className="muted" style={{ fontWeight: 400 }}>  {g.items.length} 个</span>
+                  </h3>
+                  <Copyable className="muted" text={g.dir} title="点击复制该平台目录路径">{g.dir}</Copyable>
+                </div>
+                {g.items.map((o) => renderRow(o, { orphan: true }))}
+              </Fragment>
+            ))
+          ) : (
+            <div className="row muted">（没有游离的 skill）</div>
+          )}
+        </div>
+      </div>
+
 
       <CliHints module="skills" />
 
       {modal ? <Modal title={modal.title} onClose={() => setModal(null)}>{modal.node}</Modal> : null}
       {dialogNode}
-    </>
-  );
-}
-
-// 冲突详情（按文件选侧），作为弹窗内容组件
-function ConflictDetail({ name, project, data, onDone }) {
-  const guard = useGuard();
-  if (!data.files.length) return <div>两侧一致，无差异</div>;
-  return (
-    <>
-      {data.files.map((f) => (
-        <div key={f.file} className="conflict-file">
-          <div className="cf-head">
-            <span>{f.file} ({f.side})</span>
-            {f.side === 'both-differ' ? (
-              <span>
-                <button className="btn small" onClick={() => guard(async () => {
-                  await api('/api/skills/apply', { method: 'POST', body: { name, project, file: f.file, side: 'central' } });
-                  await onDone();
-                })}>用中心版</button>
-                <button className="btn small ghost" style={{ marginLeft: 6 }} onClick={() => guard(async () => {
-                  await api('/api/skills/apply', { method: 'POST', body: { name, project, file: f.file, side: 'project' } });
-                  await onDone();
-                })}>用项目版</button>
-              </span>
-            ) : null}
-          </div>
-          {f.diff ? <DiffPre text={f.diff} /> : null}
-        </div>
-      ))}
     </>
   );
 }

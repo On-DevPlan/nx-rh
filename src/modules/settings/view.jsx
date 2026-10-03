@@ -1,4 +1,4 @@
-// 设置页：中心/项目候选管理、平台范围、同步模式、适配器总表。
+// 设置页：订阅源 / 项目目录候选管理、平台范围、迁移形态、适配器总表。
 import { useState } from 'react';
 import { api } from '../../web/frontend/api/client.js';
 import { useStore } from '../../web/frontend/store.jsx';
@@ -10,38 +10,36 @@ function shortLabel(adapterId, adapters) {
   return (a ? a.name : adapterId).replace(/\s*\(.*\)$/, '').split(/[\s-]/)[0].toLowerCase();
 }
 
+// kind → API 路径：订阅源与项目目录用的是两套端点
+const ENDPOINT = { hub: '/api/skills/sources', project: '/api/skills/project' };
+
 export default function SettingsView() {
-  const { boot, ui, patchUi, refreshBoot } = useStore();
+  const { boot, patchUi, refreshBoot } = useStore();
   const toast = useToast();
   const guard = useGuard();
   const { dialog, node: dialogNode } = useDialog();
-  const [centralInput, setCentralInput] = useState('');
+  const [hubInput, setHubInput] = useState('');
   const [projectInput, setProjectInput] = useState('');
 
   const settings = boot?.settings || {};
   const adapters = boot?.adapters || [];
 
   const addCandidate = (kind) => guard(async () => {
-    const p = (kind === 'central' ? centralInput : projectInput).trim();
-    if (!p) { toast(kind === 'central' ? '请输入中心仓库路径' : '请输入项目根目录'); return; }
-    const list = await api(`/api/skills/${kind}`, { method: 'POST', body: { path: p } });
-    if (kind === 'central') {
-      setCentralInput('');
-      await api('/api/settings', { method: 'POST', body: { skillCentralPath: list[list.length - 1] } });
-      patchUi({ central: list[list.length - 1] || ui.central });
-    } else {
-      setProjectInput('');
-    }
+    const p = (kind === 'hub' ? hubInput : projectInput).trim();
+    if (!p) { toast(kind === 'hub' ? '请输入订阅源目录' : '请输入项目根目录'); return; }
+    await api(ENDPOINT[kind], { method: 'POST', body: { path: p } });
+    if (kind === 'hub') { setHubInput(''); patchUi({ source: '' }); }
+    else setProjectInput('');
     await refreshBoot();
   });
 
   const removeCandidate = (kind, path) => guard(async () => {
     const ok = await dialog({ message: `移除候选？\n${path}`, danger: true });
     if (!ok) return;
-    const list = await api(`/api/skills/${kind}`, { method: 'DELETE', body: { path } });
-    if (kind === 'central' && settings.skillCentralPath === path) {
-      await api('/api/settings', { method: 'POST', body: { skillCentralPath: list[0] || '' } });
-      patchUi({ central: list[0] || '' });
+    const list = await api(ENDPOINT[kind], { method: 'DELETE', body: { path } });
+    if (kind === 'hub' && settings.skillHubPath === path) {
+      patchUi({ source: '' });
+      void list;
     }
     await refreshBoot();
   });
@@ -76,29 +74,30 @@ export default function SettingsView() {
   const candidateRows = (list, kind) => list.length ? list.map((p) => (
     <div key={p} className="row">
       <Copyable className="mono" text={p}>{p}</Copyable>
+      {kind === 'hub' && settings.skillHubPath === p ? <span className="tag strong">当前主源</span> : null}
       <span className="acts">
         <button className="btn small ghost" onClick={() => removeCandidate(kind, p)}>移除</button>
       </span>
     </div>
-  )) : <div className="row muted">（暂无；已登记的仓库会自动作为项目候选）</div>;
+  )) : <div className="row muted">（暂无）</div>;
 
   return (
     <>
       <div className="cols">
         <div className="col">
           <div className="card">
-            <div className="colhead"><h3>中心仓库候选</h3><span className="muted">根目录下直接是 skill</span></div>
-            <div className="list">{candidateRows(settings.skillCentralCandidates || [], 'central')}</div>
+            <div className="colhead"><h3>订阅源（Skill Hub）</h3><span className="muted">目录下直接是各 skill；唯一可信源</span></div>
+            <div className="list">{candidateRows(settings.skillHubSources || [], 'hub')}</div>
             <div className="row-inline">
-              <input placeholder="中心仓库路径" spellCheck="false" value={centralInput}
-                onChange={(e) => setCentralInput(e.target.value)} />
-              <button className="btn" onClick={() => addCandidate('central')}>添加</button>
+              <input placeholder="skill 目录绝对路径" spellCheck="false" value={hubInput}
+                onChange={(e) => setHubInput(e.target.value)} />
+              <button className="btn" onClick={() => addCandidate('hub')}>订阅</button>
             </div>
           </div>
         </div>
         <div className="col">
           <div className="card">
-            <div className="colhead"><h3>项目目录候选</h3><span className="muted">按平台（适配器）识别</span></div>
+            <div className="colhead"><h3>项目目录候选</h3><span className="muted">迁移目标所在的仓库根</span></div>
             <div className="list">{candidateRows(settings.skillProjectCandidates || [], 'project')}</div>
             <div className="row-inline">
               <input placeholder="项目根目录" spellCheck="false" value={projectInput}
@@ -110,8 +109,9 @@ export default function SettingsView() {
       </div>
 
       <div className="card">
-        <div className="colhead"><h3>平台与同步</h3></div>
+        <div className="colhead"><h3>平台与迁移</h3></div>
         <div className="settings">
+          <dt>启动目录</dt><dd className="mono"><Copyable text={boot?.projectRoot}>{boot?.projectRoot}</Copyable></dd>
           <dt>默认平台</dt>
           <dd>
             <select value={settings.defaultPlatform || 'claude-code'} onChange={(e) => setDefaultPlatform(e.target.value)}>
@@ -130,7 +130,7 @@ export default function SettingsView() {
               ))}
             </span>
           </dd>
-          <dt>同步模式</dt>
+          <dt>迁移形态</dt>
           <dd>
             <select value={settings.skillSyncMode === 'copy' ? 'copy' : 'symlink'} onChange={(e) => setSyncMode(e.target.value)}>
               <option value="symlink">软链接</option>
@@ -138,7 +138,7 @@ export default function SettingsView() {
             </select>
           </dd>
           <dt>适配器总表</dt><dd className="mono">{adapters.map((a) => <Copyable key={a.id} className="adapter-dir" text={a.dir} title={`点击复制 ${a.id} 目录`}>{a.id} = {a.dir}</Copyable>)}</dd>
-          <dt>存储文件</dt><dd className="mono"><Copyable text={boot?.storePath}>{boot?.storePath}</Copyable></dd>
+          <dt>存储文件</dt><dd className="mono"><Copyable text={boot?.appStorePath}>{boot?.appStorePath}</Copyable></dd>
           <dt>面板端口</dt><dd>默认 7800（<code>nx-rh serve --port</code> 可改，仅绑定 127.0.0.1）</dd>
         </div>
       </div>

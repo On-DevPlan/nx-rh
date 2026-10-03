@@ -16,7 +16,7 @@ const BASE_RULES = {
 
 export default defineConfig([
   {
-    ignores: ['src/web/public/**', 'node_modules/**', '.tool/**', '.claude/**'],
+    ignores: ['src/web/public/**', 'node_modules/**', '.tool/**', '.claude/**', 'assets/**'],
   },
   {
     files: ['**/*.{js,mjs,jsx}'],
@@ -76,7 +76,10 @@ export default defineConfig([
   {
     // 前端：这条规则的价值最高——把 Node 侧代码 import 进视图，
     // Vite 会把 node: 内置模块一起打进浏览器包，构建期报错或运行期炸掉。
-    files: ['src/web/frontend/**/*.{js,jsx}'],
+    //
+    // files 必须同时覆盖 src/modules/**/view.jsx：真正写视图的文件就在那里，
+    // 只列 web/frontend/** 会让它反过来不受约束（A00 闸 1 的实测反例）。
+    files: ['src/web/frontend/**/*.{js,jsx}', 'src/modules/**/view.jsx'],
     rules: {
       'no-restricted-imports': [
         'error',
@@ -89,7 +92,7 @@ export default defineConfig([
             {
               group: ['**/modules/*/index.js', '**/modules/*/service.js', '**/runtime/**', '**/core/**'],
               message:
-                '前端只能 import 模块的 view.jsx。index.js/service.js/runtime/core 是 Node 侧代码，拖进浏览器包会把 node: 内置模块一起带进来。',
+                '前端只能 import 模块的 view.jsx，以及 web/frontend 下的组件与 api 客户端。index.js/service.js/runtime/core 是 Node 侧代码，拖进浏览器包会把 node: 内置模块一起带进来。',
             },
           ],
         },

@@ -5,6 +5,7 @@
 import { ACTIONS } from './registry.js';
 import { compileRoute, applySpec } from './spec.js';
 import { toErrorPayload, httpStatusOf, CODES } from '../core/errors.js';
+import { scopeStorage } from '../core/als.js';
 
 // 逐段比较两条模式，决定谁该先匹配：**字面量段优先于参数段**，段数多的优先。
 //
@@ -64,36 +65,55 @@ async function readBody(req) {
   return JSON.parse(Buffer.concat(chunks).toString('utf8'));
 }
 
-// 跨站防护。服务虽然只绑 127.0.0.1，但用户浏览器里的任意页面都能向它发起请求——
-// 少了这道校验，一个恶意网页就能 POST /api/repos/scan 或 DELETE /api/repos/:id。
-// 浏览器发跨域请求必带 Origin，非浏览器客户端（curl / agent / 测试）不带，故放行。
-function originAllowed(req) {
+// ─── 写操作 Origin 校验（A01 §三.3） ────────────────────────────────
+// 服务只绑 127.0.0.1，但用户浏览器里打开的任意页面都能向它发请求（CSRF / DNS rebinding）。
+// 浏览器的跨域写请求必带 Origin；非浏览器客户端（curl / agent / 测试）不带，故放行——
+// 这正好把「真用户」与「本机程序」区分开。
+const WRITE_METHODS = new Set(['POST', 'PATCH', 'PUT', 'DELETE']);
+// WHATWG URL 对 IPv6 hostname 保留方括号（[::1]），两种形式都收
+const LOCAL_HOSTS = new Set(['127.0.0.1', 'localhost', '::1', '[::1]']);
+
+export function originAllowed(req) {
+  if (!WRITE_METHODS.has((req.method || 'GET').toUpperCase())) return true;
   const origin = req.headers.origin;
-  if (!origin) return true;
+  if (!origin) return true; // 非浏览器客户端
   try {
-    const h = new URL(origin).hostname;
-    return h === '127.0.0.1' || h === 'localhost' || h === '::1';
+    return LOCAL_HOSTS.has(new URL(origin).hostname);
   } catch {
-    return false;
+    return false; // Origin 头畸形 → 拒绝
   }
 }
 
+// 入口：先按 x-nx-rh-scope 头激活作用域，再分发。
+//
+// 面板切项目时只需带上这个头，**业务 action 一行不改**就能读到新的项目目录——
+// 这是 cwd 作用域方案能做到「零侵入」的原因（见脚手架 ref B03 第四节）。
+// 头缺失即按进程启动目录（serve <dir> / cwd）处理。
 export async function handleApi(req, res, url) {
+  // 写操作先过 Origin（A01 §三.3）：浏览器跨站请求会被拒，本机程序（无 Origin）放行
+  if (!originAllowed(req)) {
+    sendJson(res, httpStatusOf(CODES.BLOCKED), {
+      ok: false,
+      error: '拒绝跨源写请求（Origin 不是本机地址）',
+      code: CODES.BLOCKED,
+    });
+    return;
+  }
+  const raw = req.headers['x-nx-rh-scope'];
+  const dir = typeof raw === 'string' ? raw.trim() : '';
+  if (dir) {
+    return scopeStorage.run({ scope: dir, dir }, () => dispatch(req, res, url));
+  }
+  return dispatch(req, res, url);
+}
+
+async function dispatch(req, res, url) {
   const method = (req.method || 'GET').toUpperCase();
 
   for (const { action, route } of ROUTES) {
     if (route.method !== method) continue;
     const m = route.regex.exec(url.pathname);
     if (!m) continue;
-
-    if (method !== 'GET' && method !== 'HEAD' && !originAllowed(req)) {
-      sendJson(res, 403, {
-        ok: false,
-        error: '跨站请求被拒绝（面板仅接受本机来源）',
-        code: CODES.BLOCKED,
-      });
-      return;
-    }
 
     try {
       const raw = {};

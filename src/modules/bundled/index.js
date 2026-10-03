@@ -33,11 +33,11 @@ export default {
       id: 'bundled.install',
       cli: ['skill', 'install'],
       http: ['POST', '/api/bundled/install'],
-      summary: '安装内置 skill 到 skills 目录（默认 repo-hub → ~/.claude/skills）',
+      summary: '安装内置 skill 到 skills 目录（默认 nx-rh → ~/.claude/skills；旧名 repo-hub 仍可用）',
       args: [{ name: 'name', required: false }],
       flags: { to: { type: 'string' }, force: { type: 'boolean' } },
       run: (ctx) =>
-        service.installBundledSkill({ name: ctx.name || 'repo-hub', to: ctx.to, force: ctx.force }),
+        service.installBundledSkill({ name: ctx.name || service.DEFAULT_SKILL_NAME, to: ctx.to, force: ctx.force }),
       render: (d) => {
         if (d.status === 'conflict') {
           const files = d.files.map((f) => `  ${f.file}  ${f.side}`).join('\n');
@@ -45,6 +45,41 @@ export default {
         }
         if (d.skipped) return `已是最新，无需安装: ${d.path}`;
         return `${d.replaced ? '已更新' : '已安装'} ${d.name}（${d.files} 个文件）-> ${d.path}`;
+      },
+    },
+    {
+      // A03 §一/§三：get 与 install 是互补能力——install 让本机 agent 学得会用，
+      // get 让**不读 ~/.claude/skills 的外部 agent**一键拿全上下文。缺一即单边能力打折。
+      id: 'bundled.get',
+      cli: ['skill', 'get'],
+      http: ['GET', '/api/bundled/content'],
+      summary: '输出内置 skill 全文（prefix + sentinel + 正文 + install 状态），并顺手装到本机',
+      args: [{ name: 'name', required: false }, { name: 'ref', required: false }],
+      flags: { to: { type: 'string' } },
+      run: (ctx) => service.bundledSkillContent({ name: ctx.name, ref: ctx.ref, to: ctx.to }),
+      // 三段拼接（顺序固定）：prefix 在最前告诉 agent 文件位置与「复制到自己可访问路径」；
+      // sentinel 让 agent 知道正文从哪行开始，不把引导语一起带进下游上下文。
+      // --json 不走这里（机器协议，不含 prefix）。
+      render: (d) => {
+        const i = d.install;
+        const inst = i.status === 'conflict'
+          ? `冲突: ${i.path}（${i.count} 个文件不同）—— 需要覆盖时用 nx-rh skill install --force`
+          : i.skipped
+            ? `已是最新: ${i.path}（无差异）`
+            : i.replaced
+              ? `已替换: ${i.path}`
+              : `已安装: ${i.path}`;
+        return [
+          `# === ${d.skillName} skill context ===`,
+          `# 以下内容来自 nx-rh skill \`${d.skillName}\` 的 ${d.ref}。`,
+          `# 建议：把 sentinel 之后的正文完整复制到你自己可访问的路径，再按其内容操作。`,
+          '# --- begin skill content (do not modify this line) ---',
+          '',
+          d.content.replace(/\s*$/, ''),
+          '',
+          '-- install 状态 --',
+          inst,
+        ].join('\n');
       },
     },
   ],

@@ -1,4 +1,4 @@
-// 文档漂移防护：assets/repo-hub/ 里出现的每条 `nx-rh <子命令>` 都必须真实存在。
+// 文档漂移防护：assets/nx-rh/ 里出现的每条 `nx-rh <子命令>` 都必须真实存在。
 //
 // 为什么值得一条测试：这份文档会随 npm 包装到用户机器上，直接指导 agent 敲命令。
 // 命令改名或删除后文档没跟上，agent 就会照着敲一条不存在的命令——
@@ -11,7 +11,7 @@ import { fileURLToPath, pathToFileURL } from 'node:url';
 import { resolveCommand } from '../../src/runtime/cli.js';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..', '..');
-const DOC_DIR = join(ROOT, 'assets', 'repo-hub');
+const DOC_DIR = join(ROOT, 'assets', 'nx-rh');
 
 function docFiles() {
   const out = [];
@@ -37,12 +37,14 @@ function extractCommands(text) {
   return [...found];
 }
 
-test('repo-hub 文档里的每条命令都能被解析', () => {
+test('nx-rh 文档里的每条命令都能被解析', () => {
   const problems = [];
   let checked = 0;
 
   for (const file of docFiles()) {
-    const text = readFileSync(file, 'utf8');
+    // frontmatter 不是正文：name/description 里会出现「nx-rh」这类词，
+    // 直接抽取会把 `name: nx-rh` + 下一行拼成一条不存在的命令。
+    const text = readFileSync(file, 'utf8').replace(/^---\r?\n[\s\S]*?\r?\n---\r?\n/, '');
     for (const raw of extractCommands(text)) {
       const tokens = raw.split(' ');
       let hit = null;

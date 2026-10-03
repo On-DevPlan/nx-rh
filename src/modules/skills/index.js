@@ -1,227 +1,508 @@
-// Skill 模块：中心仓库 <-> 项目两侧的识别、同步、冲突、平台开关、多选比较。
+// Skill 模块：订阅源（Skill Hub）→ 平台目录的迁移、回迁、提交、上下文导出。
+//
+// 一条 action 同时声明 cli 与 http，命令表/路由表/help 全部由此派生。
 import * as service from './service.js';
-import { listAdapters } from './adapters.js';
 import { merge3 } from '../../core/diff.js';
+import { projectRoot } from '../../core/paths.js';
+import { badInput } from '../../core/errors.js';
 
-// 默认 central：历史 HTTP 行为是 `side || 'central'`（CLI 则要求显式给出）。
-// 统一成有默认值，两边都不会因为漏传而失败，也不会一方 200 一方 400。
-const SIDE = { type: 'string', enum: ['central', 'project'], default: 'central' };
+// `--to`：user（用户级 ~/）· global（= user，口头语）· project（项目级，缺省）· all（两者）
+const TO = { type: 'string', enum: ['user', 'global', 'project', 'all'], default: 'project' };
+// 项目根统一取「启动目录 / 面板回传的作用域」，显式 --project 覆盖
+const projectOf = (ctx) => ctx.project || projectRoot();
+
+// 批量选择的公共参数（migrate / unmigrate / submit 共用）。
+// 全量迁移的真需求是「全都要，除了某几个」——所以 --exclude 是一等参数。
+const SELECT = {
+  all: { type: 'boolean' },
+  include: { type: 'array', hint: '模式' },
+  exclude: { type: 'array', hint: '模式' },
+  match: { type: 'string', hint: '描述关键词' },
+  'dry-run': { type: 'boolean' },
+};
+
+// 至少要给出一种选择方式：点名 / --all / --include
+function hasSelection(ctx) {
+  const names = Array.isArray(ctx.name) ? ctx.name : ctx.name ? [ctx.name] : [];
+  return names.length > 0 || ctx.all === true || (Array.isArray(ctx.include) ? ctx.include.length > 0 : !!ctx.include);
+}
+
+const SELECT_USAGE = '<name...> | --all | --include <模式>（可叠加 --exclude <模式> / --match <描述关键词>）';
 
 // ---- CLI 人读渲染 ----
 
-function renderSkillList(list, ctx) {
-  if (!list.length) return `（${ctx.side} 侧暂无 skill）`;
-  const lines = [`${ctx.side} 侧 ${list.length} 个 skill`];
-  for (const s of list) {
-    const link = s.linkType ? `链接=${s.linkType}` : '实体';
-    const adapter = s.adapter ? `adapter=${s.adapter}` : '';
-    lines.push(`${s.name.padEnd(20)} ${s.description.slice(0, 40)}  ${link}  ${adapter}`.trimEnd());
+const SCOPE_MARK = { user: '用户', project: '项目' };
+
+function cellText(cells) {
+  if (!cells?.length) return '';
+  const on = cells.filter((c) => c.on);
+  if (!on.length) return '未迁移';
+  return on
+    .map((c) => `${SCOPE_MARK[c.scope] || c.scope}·${c.platform}${c.linkType ? '(链接)' : '(副本)'}`)
+    .join(' ');
+}
+
+// 来源目录的短名：取末两段（`D:\a_other\md\sl\skills` → `sl/skills`）。
+// 单源时表头已经写了订阅源，行里再重复一遍纯属噪音——只在多源时用它消歧。
+function shortSource(p) {
+  const parts = String(p || '').replace(/\\/g, '/').split('/').filter(Boolean);
+  return parts.slice(-2).join('/');
+}
+
+function renderSkillList(d, ctx) {
+  const lines = [`订阅源: ${d.hub.path || '（未订阅）'}`];
+  for (const s of d.sources || []) {
+    lines.push(`  ${s.current ? '*' : ' '} ${s.path}  (${s.count} 个)`);
+  }
+  lines.push('');
+  // 来源侧只认实文件；这里列出**订阅配置**的问题与跨源冲突（与目的仓库无关）
+  for (const p of d.hubProblems || []) {
+    lines.push(`! ${p.reason}  —— ${p.path}`);
+  }
+  for (const c of (d.conflicts || []).filter((x) => !x.same)) {
+    lines.push(`! 同名 skill 在多个订阅源且内容不同: ${c.name}  —— ${c.sources.map((s) => shortSource(s.path)).join(' / ')}`);
+  }
+  for (const c of (d.conflicts || []).filter((x) => x.same)) {
+    lines.push(`· 重复订阅（内容一致）: ${c.name}  —— ${c.sources.map((s) => shortSource(s.path)).join(' / ')}`);
+  }
+  if ((d.hubProblems || []).length || (d.conflicts || []).length) lines.push('');
+  const multi = new Set(d.skills.map((s) => s.source)).size > 1;
+  if (!d.skills.length) lines.push('（订阅源里暂无 skill）');
+  for (const s of d.skills) {
+    if (ctx && ctx.long) {
+      // 详细态：完整描述 + 目录 + 迁移现状，一个 skill 一块
+      lines.push(s.name);
+      lines.push(`  目录: ${s.dir}`);
+      lines.push(`  来源: ${s.source}`);
+      if (s.alsoIn?.length) lines.push(`  同时存在于: ${s.alsoIn.join(', ')}`);
+      lines.push(`  描述: ${s.description}`);
+      lines.push(`  迁移: ${cellText(s.cells) || '未迁移'}`);
+      lines.push('');
+      continue;
+    }
+    const tag = multi ? `  [${shortSource(s.source)}]` : '';
+    lines.push(`${s.name.padEnd(28)} ${(s.description || '').slice(0, 48)}${tag}`.trimEnd());
+  }
+  if (d.orphans?.length) {
+    lines.push('');
+    lines.push(`未入 Hub（${d.orphans.length} 个，可 skill submit 提交）:`);
+    for (const o of d.orphans) lines.push(`  ${o.name.padEnd(26)} ${cellText(o.cells)}`);
+  }
+  if (!ctx || !ctx.long) {
+    lines.push('');
+    lines.push('（--long 看完整描述与目录；skill show <name> 看各平台落点）');
   }
   return lines.join('\n');
 }
 
-function renderSyncResult(r) {
-  if (r.status === 'conflict') {
-    const files = (r.files || []).map((f) => `  ${f.file}  ${f.side}`).join('\n');
-    return `冲突: ${r.files.length} 个文件不一致\n${files}\n用 --force 覆盖，或 skill apply 按文件选侧`;
-  }
-  if (r.skipped) return `已是链接，跳过: ${r.path}`;
-  let msg = `已同步 -> ${r.path}（${r.mode === 'symlink' ? '软链接 ' + (r.linkType || '') : '复制'}）`;
-  if (r.degraded) msg += `\n注意: 链接创建失败已降级复制（${r.degradedReason || '权限'}）`;
-  return msg;
+function renderSources(d) {
+  if (!d.sources.length) return '（暂无订阅源，用 nx-rh skill hub add <path> 添加）';
+  return d.sources.map((s) => `${s.current ? '*' : ' '} ${s.path}  (${s.count} 个)${s.exists ? '' : '  [目录不存在]'}`).join('\n');
 }
 
-function renderConflict(d) {
-  if (!d.files.length) return '两侧一致，无差异';
-  const lines = [`${d.name}: ${d.files.length} 个文件差异`];
-  for (const f of d.files) {
-    lines.push(`\n== ${f.file} (${f.side}) ==`);
-    if (f.diff) lines.push(f.diff);
+function renderMigrate(d) {
+  if (!d.dryRun && d.status === 'blocked') {
+    const lines = [`已阻止: ${d.blocked.length} 处无法迁移 —— 同名 skill 在多个订阅源且内容不同（来源冲突）`];
+    const seen = new Set();
+    for (const b of d.blocked) {
+      if (seen.has(b.name)) continue;
+      seen.add(b.name);
+      lines.push(`  ${b.name.padEnd(28)} ${b.sources.map((s) => `${shortSource(s.source)}(${s.md5.slice(0, 6)})`).join('  ')}`);
+    }
+    lines.push('先解决订阅（删掉多余来源），或用 --source <路径> 指定用哪一份。');
+    return lines.join('\n');
+  }
+  const mark = (r) => {
+    const where = `${SCOPE_MARK[r.scope] || r.scope}·${r.platform}`;
+    if (r.skipped) return `${where} 已是最新`;
+    if (d.dryRun) return `${where} ${r.wouldCreate ? '将创建' : '将覆盖'}`;
+    const how = r.mode === 'symlink' ? `软链接 ${r.linkType || ''}`.trim() : '复制';
+    return `${where} ${how}${r.degraded ? '（链接失败已降级复制）' : ''}`;
+  };
+  const multi = (d.selected || []).length > 1;
+  const head = d.dryRun
+    ? `预演（--dry-run，未改动磁盘）: 选中 ${d.selected.length} 个 · 将变更 ${d.wouldChange} 处 · 已是最新 ${d.skipped} 处`
+    : `已迁移 ${d.migrated} 处（跳过 ${d.skipped}）· 选中 ${d.selected.length} 个`;
+  const lines = [head];
+  for (const r of d.results) lines.push(multi ? `  ${String(r.name || '').padEnd(28)} ${mark(r)}` : `  ${mark(r)}`);
+  return lines.join('\n');
+}
+
+function renderUnmigrate(d) {
+  if (d.dryRun) {
+    const lines = [`预演（--dry-run，未改动磁盘）: 选中 ${d.selected.length} 个 · 将移除 ${d.plan.length} 处`];
+    for (const x of d.plan) lines.push(`  ${String(x.name).padEnd(28)} ${SCOPE_MARK[x.scope]}·${x.platform} ${x.linkType ? '链接' : '实体副本'}`);
+    if (!d.plan.length) lines.push('  （这些目标本就没有该 skill）');
+    return lines.join('\n');
+  }
+  if (d.status === 'blocked') {
+    const list = d.needForce.map((x) => `  ${SCOPE_MARK[x.scope]}·${x.platform} ${x.path}`).join('\n');
+    return `已阻止: ${d.reason}\n${list}`;
+  }
+  if (!d.removed.length) return '（这些目标本就没有该 skill）';
+  const multi = (d.selected || []).length > 1;
+  return `已撤销 ${d.removed.length} 处（选中 ${d.selected.length} 个）:\n${d.removed
+    .map((x) => (multi
+      ? `  ${String(x.name).padEnd(28)} ${SCOPE_MARK[x.scope]}·${x.platform} ${x.linkType ? '链接' : '副本'}`
+      : `  ${SCOPE_MARK[x.scope]}·${x.platform} ${x.linkType ? '链接' : '副本'}`))
+    .join('\n')}`;
+}
+
+function renderSubmit(d) {
+  if (!d.dryRun && d.status === 'conflict') {
+    const c = d.conflicts[0];
+    return `订阅源里已存在同名 skill 且内容不同（${c.files.length} 个文件）: ${c.path}\n用 --force 覆盖`;
+  }
+  // 批量形状（count 字段是新增的；单个提交走旧形状）
+  if (d.count !== undefined) {
+    if (d.dryRun) {
+      const lines = [`预演（--dry-run，未改动磁盘）: 选中 ${d.selected.length} 个 · 将提交 ${d.wouldSubmit} 个`];
+      for (const r of d.results) {
+        lines.push(`  ${String(r.name).padEnd(28)} ${r.status === 'ok' ? '将收进订阅源并改回链接' : r.reason || r.status}`);
+      }
+      return lines.join('\n');
+    }
+    const lines = [`已提交 ${d.submitted} 个到订阅源（跳过 ${d.skipped} · 目标缺失 ${d.missing}）`];
+    for (const r of d.results) {
+      lines.push(`  ${String(r.name).padEnd(28)} ${r.status === 'ok' ? `→ ${r.sourceDir}` : r.reason || r.status}`);
+    }
+    return lines.join('\n');
+  }
+  if (d.skipped) return d.reason;
+  return `已提交到订阅源: ${d.sourceDir}\n目标实文件已删除${d.relinked ? `，改回链接（${d.relinked}）` : '（未重建链接）'}`;
+}
+
+function renderShow(d) {
+  const lines = [d.name];
+  lines.push(`  来源: ${d.source || '（不在订阅源，可 skill submit）'}`);
+  if (d.dir) lines.push(`  目录: ${d.dir}`);
+  if (d.alsoIn?.length) lines.push(`  同时存在于: ${d.alsoIn.join(', ')}`);
+  lines.push(`  描述: ${d.description}`);
+  if (d.outline?.length) {
+    lines.push(`  结构（${d.stats?.sections ?? d.outline.length} 节 · ${d.stats?.lines ?? '?'} 行）:`);
+    for (const h of d.outline) lines.push(`    ${'  '.repeat(h.level - 1)}${'#'.repeat(h.level)} ${h.text}`);
+  }
+  if (d.conflict && !d.conflict.same) {
+    lines.push(`  ! 跨源冲突: 同名 skill 在多个订阅源且内容不同（${d.conflict.sources.map((s) => shortSource(s.path)).join(' / ')}）`);
+    lines.push('    迁移会 blocked，先解决订阅或用 --source <路径> 指定用哪一份。');
+  } else if (d.conflict) {
+    lines.push(`  · 重复订阅（内容一致）: ${d.conflict.sources.map((s) => shortSource(s.path)).join(' / ')}`);
+  }
+  lines.push('  平台落点（skill migrate <name> --platform <id> --to user|global|project）：');
+  for (const c of d.cells) {
+    const head = `${SCOPE_MARK[c.scope] || c.scope}·${c.platformName || c.platform}`;
+    lines.push(`    ${head.padEnd(22)} ${c.on ? c.linkType || '实体副本' : '未迁移'}  ${c.dir}`);
+  }
+  if (d.alsoIn?.length) {
+    lines.push('');
+    lines.push('  提示：同名 skill 出现在多个订阅源里，迁移以「当前主源」为准。');
   }
   return lines.join('\n');
 }
 
-const STATE_MARK = {
-  same: '一致',
-  linked: '链接',
-  differ: '冲突',
-  'only-central': '仅中心',
-  'only-project': '仅项目',
-};
-
-function renderCompare(d) {
-  const s = d.summary;
-  const lines = [
-    `比较: ${d.central}  <->  ${d.project}`,
-    `共 ${s.total} 项 · 一致 ${s.same} · 链接 ${s.linked} · 冲突 ${s.differ} · 仅中心 ${s.onlyCentral} · 仅项目 ${s.onlyProject}`,
-  ];
-  for (const r of d.rows) {
-    const plat = r.platforms.length ? `  [${r.platforms.map((p) => p.id).join(',')}]` : '';
-    lines.push(`  ${r.name.padEnd(28)} ${STATE_MARK[r.state]}${plat}`);
-  }
-  return lines.join('\n');
+// 适配器总表：每个平台的两个落点都打绝对路径——「把 skill 变成 .claude / .workbuddy / .cursor」
+// 在终端里直接可抄，不需要先起面板。
+function renderAdapters(list) {
+  const w = Math.max(...list.map((a) => a.id.length));
+  return list
+    .map((a) => {
+      const tag = (a.enabled ? '[启用]' : '[   ]') + (a.isDefault ? ' [默认]' : '');
+      return [
+        `${a.id.padEnd(w)}  ${tag}  ${a.name}`,
+        `  ${' '.repeat(w)}  项目  ${a.projectDir}`,
+        `  ${' '.repeat(w)}  用户  ${a.userDir}`,
+      ].join('\n');
+    })
+    .join('\n');
 }
 
 export default {
   id: 'skills',
-  title: 'Skill 同步（= Web「Skill」页）',
+  title: 'Skill（= Web「Skill」页）',
   order: 20,
   view: () => import('./view.jsx'),
 
   actions: [
+    // ---- 平台适配器 ----
     {
       id: 'skill.adapters',
       cli: ['skill', 'adapters'],
       http: ['GET', '/api/skills/adapters'],
-      summary: '适配器（平台目录）清单',
-      run: () => listAdapters(),
-      render: (list) =>
-        list.map((a) => `${a.id.padEnd(12)} ${a.dir}  ${a.universal ? '(universal)' : ''}`).join('\n'),
+      summary: '平台适配器清单（每平台的项目级 / 用户级绝对落点）',
+      flags: { project: { type: 'string' } },
+      run: (ctx) => service.adaptersInfo({ project: projectOf(ctx) }),
+      render: renderAdapters,
     },
+
+    // ---- 订阅源（Skill Hub）----
+    {
+      id: 'skill.sources',
+      cli: [['skill', 'hub', 'list'], ['skill', 'sources']],
+      http: ['GET', '/api/skills/sources'],
+      summary: '订阅源清单（* 为当前主源）',
+      run: () => service.listSources(),
+      render: renderSources,
+    },
+    {
+      id: 'skill.hub.add',
+      cli: ['skill', 'hub', 'add'],
+      http: ['POST', '/api/skills/sources'],
+      summary: '订阅一个 skill 目录（并设为主源）',
+      args: ['path'],
+      run: async (ctx) => {
+        const d = await service.addSource(ctx.path);
+        return { path: ctx.path, ...d };
+      },
+      render: (d) => `已订阅: ${d.path}`,
+    },
+    {
+      id: 'skill.hub.remove',
+      cli: ['skill', 'hub', 'remove'],
+      http: ['DELETE', '/api/skills/sources'],
+      summary: '取消订阅（不动磁盘）',
+      args: ['path'],
+      run: (ctx) => service.removeSource(ctx.path),
+      render: (d) => `已取消订阅，剩余 ${d.sources.length} 个`,
+    },
+    {
+      id: 'skill.hub',
+      cli: ['skill', 'hub'],
+      http: null,
+      summary: '查看 / 设置当前主订阅源',
+      args: [{ name: 'path', required: false }],
+      run: async (ctx) => {
+        if (ctx.path) return service.setSource(ctx.path);
+        const info = await service.hubInfo();
+        return info.path || '（未订阅）';
+      },
+      render: (d, ctx) => (ctx.path ? `当前主源: ${d.current || ctx.path}` : String(d)),
+    },
+    {
+      // 订阅源是唯一可信源，所以来源之间本不该有冲突——这是「订阅配置」的诊断，
+      // 不是 skill 内容的诊断。目的仓库直接被覆盖，不参与冲突检测。
+      id: 'skill.hub.check',
+      cli: ['skill', 'hub', 'check'],
+      http: ['GET', '/api/skills/hub-check'],
+      summary: '订阅源健康检查：目录缺失 / 空源 / 嵌套订阅 / 重复根 / 跨源同名冲突',
+      run: () => service.sourceAudit(),
+      render: (d) => {
+        if (d.ok) return `订阅源健康：${d.summary.sources} 个来源，无冲突、无重复`;
+        const lines = [`订阅源有问题（${d.summary.sources} 个来源）:`];
+        for (const p of d.hubProblems) lines.push(`  ! ${p.reason}  —— ${p.path}`);
+        for (const c of d.conflicts.filter((x) => !x.same)) {
+          lines.push(`  ! 跨源冲突: ${c.name}`);
+          for (const e of c.entries) lines.push(`      ${shortSource(e.source)}  ${e.md5.slice(0, 8)}  ${e.dir}`);
+        }
+        for (const c of d.conflicts.filter((x) => x.same)) {
+          lines.push(`  · 重复订阅（内容一致）: ${c.name} —— ${c.entries.map((e) => shortSource(e.source)).join(' / ')}`);
+        }
+        lines.push('');
+        lines.push('处理：取消订阅多余来源（skill hub remove）；真冲突保留一份实文件后再迁移。');
+        return lines.join('\n');
+      },
+    },
+
+    // ---- 列表 / 详情 / 上下文 ----
     {
       id: 'skill.list',
       // `skill scan` 是历史别名，与 `skill list` 同义
       cli: [['skill', 'list'], ['skill', 'scan']],
       http: ['GET', '/api/skills'],
-      summary: '识别某一侧的 skill（--side central|project）',
-      flags: { side: SIDE, path: { type: 'string' } },
-      run: (ctx) => service.listSkills(ctx.side, ctx.path),
+      summary: '列出订阅源 skill（名称 / 来源目录 / 描述 + 各目标迁移状态）',
+      flags: { project: { type: 'string' }, source: { type: 'string' }, long: { type: 'boolean' } },
+      run: (ctx) => service.listAllSkills({ project: projectOf(ctx), source: ctx.source }),
       render: renderSkillList,
     },
     {
-      id: 'skill.sync',
-      cli: ['skill', 'sync'],
-      http: ['POST', '/api/skills/sync'],
-      summary: '中心 -> 项目同步（软链接或复制）',
+      id: 'skill.show',
+      cli: [['skill', 'show'], ['skill', 'describe']],
+      http: ['GET', '/api/skills/detail'],
+      summary: '查看单个 skill：完整描述 + 来源目录 + 各平台落点与当前形态',
       args: ['name'],
+      flags: { project: { type: 'string' } },
+      run: (ctx) => service.skillInfo({ name: ctx.name, project: projectOf(ctx) }),
+      render: renderShow,
+    },
+    {
+      // 订阅源 skill 的全文导出。注意与 bundled 的 `skill get` 分工：
+      // get = 内置手册（repo-hub 之外的「本工具说明书」，三段拼接 + 顺手安装）；
+      // cat = 订阅源里任意 skill 的全文（给外部 agent 当业务上下文）。
+      id: 'skill.cat',
+      cli: ['skill', 'cat'],
+      http: ['GET', '/api/skills/content'],
+      summary: '输出订阅源 skill 全文（SKILL.md 或某个 ref），供外部 agent 获取上下文',
+      args: ['name'],
+      flags: { ref: { type: 'string' } },
+      run: (ctx) => service.skillContent({ name: ctx.name, ref: ctx.ref }),
+      // 三段拼接：引导语 → 正文 → 后续动作提示。--json 走纯数据，不打这些。
+      render: (d) => {
+        const bar = '─'.repeat(60);
+        return [
+          `# skill: ${d.skillName}   来源: ${d.source}`,
+          bar,
+          d.content.replace(/\s*$/, ''),
+          bar,
+          `# 需要迁移到本机？nx-rh skill migrate ${d.skillName} --to user`,
+        ].join('\n');
+      },
+    },
+
+    // ---- skill 实体的增改删（只动订阅源那份实文件） ----
+    {
+      id: 'skill.add',
+      cli: ['skill', 'add'],
+      http: ['POST', '/api/skills'],
+      summary: '在订阅源新建一个 skill（已存在同名则报冲突）',
+      args: [{ name: 'name', required: true }],
+      flags: { description: { type: 'string' }, content: { type: 'string' } },
+      run: (ctx) => service.addSkill(ctx),
+      render: (d) => `已创建: ${d.path}`,
+    },
+    {
+      id: 'skill.update',
+      cli: ['skill', 'update'],
+      http: ['PATCH', '/api/skills/:name'],
+      summary: '改写订阅源 skill 的 SKILL.md 全文（须含 name/description frontmatter）',
+      args: ['name'],
+      flags: { content: { type: 'string', required: true } },
+      run: (ctx) => service.updateSkill({ name: ctx.name, content: ctx.content }),
+      render: (d) => `已保存: ${d.dir}\\SKILL.md`,
+    },
+    {
+      id: 'skill.remove',
+      cli: ['skill', 'remove'],
+      http: ['DELETE', '/api/skills/:name'],
+      summary: '从订阅源删除 skill（目标侧还有引用时返回 blocked，--force 继续）',
+      args: ['name'],
+      flags: { force: { type: 'boolean' }, project: { type: 'string' } },
+      run: (ctx) => service.removeSkill({ name: ctx.name, force: ctx.force, project: projectOf(ctx) }),
+      render: (d) => {
+        if (d.status === 'blocked') {
+          return `已阻止: ${d.reason}\n${d.refs.map((x) => `  ${SCOPE_MARK[x.scope]}·${x.platform} ${x.path}`).join('\n')}\n确认 dangling 再加 --force`;
+        }
+        return `已删除: ${d.removed}${d.dangling.length ? `（${d.dangling.length} 个目标现为悬空，可用迁移重建）` : ''}`;
+      },
+    },
+
+    // ---- 迁移 / 撤销 / 提交 / 物化 ----
+    {
+      id: 'skill.migrate',
+      // `skill adapt` 是同一动作的口语别名：把 skill 适配成某平台形态（落到它的目录）
+      cli: [['skill', 'migrate'], ['skill', 'adapt']],
+      http: ['POST', '/api/skills/migrate'],
+      summary: '订阅源 → 平台目录（<name...> | --all | --include；--exclude/--match 精筛；--dry-run 预演）',
+      args: [{ name: 'name', rest: true, required: false }],
       flags: {
-        project: { type: 'string', required: true },
+        to: TO,
+        platform: { type: 'string' },
         mode: { type: 'string', enum: ['symlink', 'copy'] },
-        adapter: { type: 'string' },
-        force: { type: 'boolean' },
+        project: { type: 'string' },
+        // 只在「同名 skill 出现在多个订阅源且内容不同」时用：指定采用哪一份
+        source: { type: 'string' },
+        ...SELECT,
       },
-      run: (ctx) => service.syncSkill(ctx),
-      render: renderSyncResult,
+      run: (ctx) => {
+        if (!hasSelection(ctx)) throw badInput(`用法: nx-rh skill migrate ${SELECT_USAGE}`);
+        // CLI flag 名是 --dry-run（连字符），service 参数是 dryRun（驼峰）——在这一处映射
+        return service.migrateSkill({ ...ctx, dryRun: ctx['dry-run'] === true, project: projectOf(ctx) });
+      },
+      render: renderMigrate,
     },
     {
-      id: 'skill.push',
-      cli: ['skill', 'push'],
-      http: ['POST', '/api/skills/push'],
-      summary: '项目 -> 中心推送',
-      args: ['name'],
-      flags: { project: { type: 'string', required: true }, force: { type: 'boolean' } },
-      run: (ctx) => service.pushSkill(ctx),
-      render: (d) =>
-        d.status === 'ok'
-          ? d.skipped
-            ? d.reason
-            : `已推送到中心: ${d.path}`
-          : `冲突: ${d.files.length} 个文件\n用 --force 覆盖，或 skill apply 选侧`,
-    },
-    {
-      id: 'skill.conflict',
-      cli: ['skill', 'conflict'],
-      http: ['GET', '/api/skills/conflict'],
-      summary: '逐文件差异（含 diff 文本）',
-      args: ['name'],
-      flags: { project: { type: 'string', required: true } },
-      run: (ctx) => service.skillConflict(ctx),
-      render: renderConflict,
-    },
-    {
-      id: 'skill.apply',
-      cli: ['skill', 'apply'],
-      http: ['POST', '/api/skills/apply'],
-      summary: '按文件选侧落地（central | project）',
-      args: ['name'],
+      id: 'skill.unmigrate',
+      cli: ['skill', 'unmigrate'],
+      http: ['POST', '/api/skills/unmigrate'],
+      summary: '撤销迁移（<name...> | --all | --include；--exclude/--match 精筛；--dry-run 预演）',
+      args: [{ name: 'name', rest: true, required: false }],
       flags: {
-        project: { type: 'string', required: true },
-        file: { type: 'string', required: true },
-        side: { type: 'string', required: true, enum: ['central', 'project'] },
+        to: TO,
+        platform: { type: 'string' },
+        project: { type: 'string' },
+        force: { type: 'boolean' },
+        ...SELECT,
       },
-      run: (ctx) => service.applySkillSide(ctx),
-      render: (d) => `已按 ${d.side} 侧落地: ${d.file}`,
+      run: (ctx) => {
+        if (!hasSelection(ctx)) throw badInput(`用法: nx-rh skill unmigrate ${SELECT_USAGE}`);
+        return service.unmigrateSkill({ ...ctx, dryRun: ctx['dry-run'] === true, project: projectOf(ctx) });
+      },
+      render: renderUnmigrate,
+    },
+    {
+      id: 'skill.submit',
+      cli: ['skill', 'submit'],
+      http: ['POST', '/api/skills/submit'],
+      summary: '平台副本 → 订阅源（<name...> | --all 取「未入 Hub」那批；提交后删除目标实文件）',
+      args: [{ name: 'name', rest: true, required: false }],
+      flags: {
+        to: TO,
+        platform: { type: 'string' },
+        project: { type: 'string' },
+        force: { type: 'boolean' },
+        keepTarget: { type: 'boolean' },
+        ...SELECT,
+      },
+      run: (ctx) => {
+        if (!hasSelection(ctx)) throw badInput(`用法: nx-rh skill submit ${SELECT_USAGE}`);
+        return service.submitSkill({ ...ctx, dryRun: ctx['dry-run'] === true, project: projectOf(ctx) });
+      },
+      render: renderSubmit,
     },
     {
       id: 'skill.materialize',
       cli: ['skill', 'materialize'],
       http: ['POST', '/api/skills/materialize'],
-      summary: '把链接转换为实体目录',
+      summary: '把目标侧的链接转换为实体副本',
       args: ['name'],
-      flags: { project: { type: 'string', required: true } },
-      run: (ctx) => service.materializeSkill(ctx),
-      render: (d) => (d.converted ? `已转换为实体文件（源: ${d.source}）` : d.message),
+      flags: { to: TO, platform: { type: 'string' }, project: { type: 'string' } },
+      run: (ctx) => service.materializeSkill({ ...ctx, project: projectOf(ctx) }),
+      render: (d) => (d.converted ? `已转换为实体: ${d.results.map((r) => `${r.scope}·${r.platform}`).join(', ')}` : '（目标侧本就没有链接）'),
+    },
+
+    // ---- 设置：平台范围 / 项目目录 ----
+    {
+      id: 'setting.platforms',
+      cli: ['skill', 'platform'],
+      http: null,
+      summary: '查看 / 设置启用的平台（首个为默认平台）',
+      args: [{ name: 'platforms', rest: true, required: false }],
+      run: async (ctx) => {
+        const settings = await import('../settings/service.js');
+        if (ctx.platforms.length) {
+          return settings.updateSettings({ platforms: ctx.platforms, defaultPlatform: ctx.platforms[0] });
+        }
+        const s = await settings.getSettings();
+        return { platforms: s.platforms, defaultPlatform: s.defaultPlatform };
+      },
+      render: (d) => `平台: ${d.platforms.join(', ')}\n默认: ${d.defaultPlatform}`,
     },
     {
-      id: 'skill.remove',
-      cli: ['skill', 'remove'],
-      http: ['POST', '/api/skills/remove'],
-      summary: '从项目删除 skill（所有平台目录）',
-      args: ['name'],
-      flags: { project: { type: 'string', required: true } },
-      run: (ctx) => service.removeProjectSkill(ctx),
-      render: (d, ctx) => {
-        if (!d.removed.length) return d.reason;
-        const anchorNote = d.anchor?.converted
-          ? `\n已自动物化「${d.anchor.converted.name}」作为实体锚点`
-          : '';
-        return `已从项目删除 ${ctx.name}（${d.removed.map((x) => x.platform).join(', ')}）${anchorNote}`;
-      },
+      id: 'skill.project.list',
+      cli: [['skill', 'project', 'list'], ['skill', 'project']],
+      http: null,
+      summary: '项目目录候选清单',
+      run: async () => (await import('../settings/service.js')).listCandidates('project'),
+      render: (l) => (l.length ? l.join('\n') : '（暂无项目目录候选，用 skill project add <path> 添加）'),
     },
     {
-      id: 'skill.platformStatus',
-      cli: ['skill', 'platform-status'],
-      http: ['GET', '/api/skills/platform'],
-      summary: '查询某 skill 在各平台下的存在形态',
-      args: ['name'],
-      flags: { project: { type: 'string', required: true } },
-      run: (ctx) => service.platformStatus(ctx),
-      render: (d) =>
-        d.platforms
-          .map((p) => `${p.on ? '开' : '关'}  ${p.id.padEnd(12)} ${p.linkType || (p.on ? '实体' : '')}`)
-          .join('\n'),
+      id: 'skill.project.add',
+      cli: ['skill', 'project', 'add'],
+      http: ['POST', '/api/skills/project'],
+      summary: '添加项目目录候选',
+      args: ['path'],
+      run: async (ctx) => (await import('../settings/service.js')).addCandidate('project', ctx.path),
+      render: (l, ctx) => `已添加项目目录（共 ${l.length} 个）: ${l[l.length - 1] ?? ctx.path}`,
     },
     {
-      id: 'skill.platformSet',
-      cli: ['skill', 'platform-set'],
-      http: ['POST', '/api/skills/platform'],
-      summary: '开启 / 关闭某个平台（--off 关闭）',
-      args: ['name'],
-      flags: {
-        project: { type: 'string', required: true },
-        adapter: { type: 'string', required: true },
-        mode: { type: 'string', enum: ['symlink', 'copy'] },
-        force: { type: 'boolean' },
-        off: { type: 'boolean' },
-      },
-      // CLI 用 --off 表达关闭，面板直接给 enabled。二者只应有一个出现，
-      // 缺省的一方**绝不能覆盖**另一方——曾经写成 `enabled: !ctx.off`，
-      // 面板传来的 false 被 !undefined 顶成 true，于是「关闭平台」永远关不掉。
-      run: (ctx) => {
-        const enabled = ctx.off === true ? false : ctx.enabled !== undefined ? ctx.enabled : true;
-        return service.setPlatform({ ...ctx, enabled });
-      },
-      render: (d) => {
-        if (d.status === 'blocked') return `已阻止: ${d.reason}`;
-        if (d.removed) return `已关闭平台 ${d.platform}: ${d.path}`;
-        if (d.status === 'conflict') return `冲突（${d.platform}）: ${d.files.length} 个文件不同，加 --force 覆盖`;
-        if (d.skipped) return `已是该平台的最新链接，跳过（${d.platform}）`;
-        return `已开启平台 ${d.platform}（${d.mode === 'symlink' ? '软链接 ' + (d.linkType || '') : '复制'}）`;
-      },
+      id: 'skill.project.remove',
+      cli: ['skill', 'project', 'remove'],
+      http: ['DELETE', '/api/skills/project'],
+      summary: '从候选移除项目目录（不动磁盘）',
+      args: ['path'],
+      run: async (ctx) => (await import('../settings/service.js')).removeCandidate('project', ctx.path),
+      render: (l) => `已移除，剩余 ${l.length} 个`,
     },
-    {
-      id: 'skill.compare',
-      cli: ['skill', 'compare'],
-      http: ['POST', '/api/skills/compare'],
-      summary: '多选比较中心与项目两侧',
-      flags: {
-        project: { type: 'string', required: true },
-        central: { type: 'string' },
-        names: { type: 'array' },
-      },
-      run: (ctx) => service.compareSkills(ctx),
-      render: renderCompare,
-    },
+
+    // ---- 通用：三方合并（保留的 diff 原语）----
     {
       id: 'skill.merge',
       cli: ['skill', 'merge'],
@@ -234,14 +515,9 @@ export default {
         labelA: { type: 'string' },
         labelB: { type: 'string' },
       },
-      // 两端入参形态本质不同：CLI 面向文件（agent 手上有路径），
-      // HTTP 面向文本（调用方已在内存里有内容）。这里显式分支，不做勉强的统一。
       run: async (ctx, meta) => {
         if (meta.transport === 'http') {
-          return merge3(ctx.base, ctx.a, ctx.b, {
-            a: ctx.labelA || 'ours',
-            b: ctx.labelB || 'theirs',
-          });
+          return merge3(ctx.base, ctx.a, ctx.b, { a: ctx.labelA || 'ours', b: ctx.labelB || 'theirs' });
         }
         const fsp = await import('node:fs/promises');
         const [base, a, b] = await Promise.all([

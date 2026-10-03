@@ -2,17 +2,19 @@
 // 关键约定：凡是「刷新后不该丢」的用户选择（当前视图、中心/项目路径、多选勾选）
 // 一律走 persist 读写 localStorage——UI 状态持久化是模板的硬标准，不是可选项。
 import { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react';
-import { api } from './api/client.js';
+import { api, setActiveScope } from './api/client.js';
 
 const LS_KEY = 'nx-rh-ui';
 
 // 只持久化「选择」，不持久化「数据」——数据永远从 /api 拉，避免陈旧缓存。
+//
+// activeScope：null = 跟随服务进程目录（serve <dir> / cwd）；否则为 recents 条目
+// { scope, path, lastUsedAt }。项目级信息只针对激活的那个项目——右上角「最近目录」切换。
 const DEFAULT_UI = {
-  view: 'repos',        // 当前 tab
-  central: '',          // Skill 页选中的中心仓库路径
-  project: '',          // Skill 页选中的项目目录路径
-  selCentral: [],       // 中心侧多选勾选（skill 名）
-  selProject: [],       // 项目侧多选勾选
+  view: 'repos',      // 当前 tab
+  source: '',         // Skill 页选中的订阅源（留空 = 当前主源）
+  activeScope: null,  // 激活的项目目录（右上角切换）
+  selSkills: [],      // Skill 页多选勾选（skill 名）
 };
 
 function loadUi() {
@@ -49,6 +51,31 @@ export function StoreProvider({ children }) {
 
   useEffect(() => { refreshBoot(); refreshBundled(); }, [refreshBoot, refreshBundled]);
 
+  // 作用域跟随「激活的项目」= 右上角选中的最近目录，否则服务进程目录。
+  // 写进 api client 后，后续所有请求都带 x-nx-rh-scope，服务端据此切作用域。
+  useEffect(() => { setActiveScope(ui.activeScope?.path || null); }, [ui.activeScope]);
+
+  // 切换激活 scope：写 fetch 层 → touch recents（服务端置顶 + 登记）→ 重拉 bootstrap。
+  // scopeTick 自增让视图重挂载重新拉数据（视图的 useEffect 只在挂载时请求）。
+  const [scopeTick, setScopeTick] = useState(0);
+  const switchScope = useCallback(async (entry) => {
+    const next = entry || null;
+    setActiveScope(next ? next.path : null);
+    patchUi({ activeScope: next });
+    if (next) await api('/api/recents', { method: 'POST', body: { path: next.path } }).catch(() => {});
+    await refreshBoot().catch(() => {});
+    setScopeTick((t) => t + 1);
+  }, [patchUi, refreshBoot]);
+
+  // 主动登记一个目录（右上角「＋ 注册其他目录」）：登记后立即切过去
+  const registerDir = useCallback(async (path) => {
+    if (!path) return null;
+    const recents = await api('/api/recents', { method: 'POST', body: { dir: path } }).catch(() => null);
+    await refreshBoot().catch(() => {});
+    const entry = (recents || []).find((r) => r.path === path) || { scope: path, path };
+    return entry;
+  }, [refreshBoot]);
+
   // 支持对象 patch 与函数式 patch（函数式用于「基于最新 state 修剪」场景，避免闭包旧值覆盖）
   const patchUi = useCallback((patch) => {
     setUi((u) => (typeof patch === 'function' ? { ...u, ...patch(u) } : { ...u, ...patch }));
@@ -62,8 +89,8 @@ export function StoreProvider({ children }) {
   }, []);
 
   const value = useMemo(
-    () => ({ boot, bundled, ui, patchUi, toggleSel, refreshBoot, refreshBundled }),
-    [boot, bundled, ui, patchUi, toggleSel, refreshBoot, refreshBundled]
+    () => ({ boot, bundled, ui, patchUi, toggleSel, refreshBoot, refreshBundled, switchScope, registerDir, scopeTick }),
+    [boot, bundled, ui, patchUi, toggleSel, refreshBoot, refreshBundled, switchScope, registerDir, scopeTick]
   );
   return <StoreCtx.Provider value={value}>{children}</StoreCtx.Provider>;
 }

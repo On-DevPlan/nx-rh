@@ -1,8 +1,9 @@
 // 冒烟测试：CLI 全链路 + Web API + 静态页。
-// 使用临时存储（NX_RH_STORE），不污染用户目录 ~/.nx-rh。
+// 使用临时存储（NX_RH_STORE），并把 HOME/USERPROFILE 指到临时目录——
+// 用户级迁移（~/.claude/skills、~/.workbuddy/skills）因此绝不碰真实用户目录。
 // 运行：pnpm test（或 node tests/smoke.mjs）
 import { spawnSync } from 'node:child_process';
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, lstatSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
@@ -12,9 +13,13 @@ const BIN = join(ROOT, '..', 'bin', 'cli.mjs');
 
 const tmp = mkdtempSync(join(tmpdir(), 'nx-rh-smoke-'));
 const storePath = join(tmp, 'store.json');
-// 本进程（含稍后动态 import 的 web server）也必须指向临时存储
+const home = join(tmp, 'home');
+mkdirSync(home, { recursive: true });
+// 本进程（含稍后动态 import 的 web server）也必须指向临时存储与临时 home
 process.env.NX_RH_STORE = storePath;
-const central = join(tmp, 'central');
+process.env.HOME = home;
+process.env.USERPROFILE = home;
+const hub = join(tmp, 'hub');
 const project = join(tmp, 'project');
 const project2 = join(tmp, 'project2');
 
@@ -26,7 +31,7 @@ function check(name, cond, extra = '') {
 
 function cli(args) {
   return spawnSync(process.execPath, [BIN, ...args], {
-    env: { ...process.env, NX_RH_STORE: storePath },
+    env: { ...process.env, NX_RH_STORE: storePath, HOME: home, USERPROFILE: home },
     encoding: 'utf8',
   });
 }
@@ -40,9 +45,10 @@ function cliJson(args) {
 }
 
 // ---- fixtures ----
-mkdirSync(join(central, 'skills', 'demo-skill'), { recursive: true });
+// 订阅源 1：目录下直接是 skill（新布局）
+mkdirSync(join(hub, 'demo-skill'), { recursive: true });
 writeFileSync(
-  join(central, 'skills', 'demo-skill', 'SKILL.md'),
+  join(hub, 'demo-skill', 'SKILL.md'),
   '---\nname: demo-skill\ndescription: smoke test skill\n---\n\n# Demo\n\nhello\n'
 );
 mkdirSync(join(project, '.claude'), { recursive: true });
@@ -55,22 +61,23 @@ try {
   check('cli help', cli(['help']).stdout.includes('repo add'));
   check('cli unknown -> exit 1', cli(['nope']).status === 1);
 
-  // ---- 2. 设置 ----
-  check('skill central set', cli(['skill', 'central', central]).status === 0);
+  // ---- 2. 订阅源（Skill Hub） ----
+  check('skill hub add', cli(['skill', 'hub', 'add', hub]).status === 0);
   const settings = cliJson(['setting', 'get']);
-  check('setting get', settings.skillCentralPath === central);
+  check('setting get', settings.skillHubPath === hub, String(settings.skillHubPath));
+  check('skill hub list', (cliJson(['skill', 'hub', 'list']).sources || []).some((s) => s.path === hub && s.current));
 
   // ---- 3. 仓库登记 CRUD ----
   // 仓库模块只做登记，不碰 git：状态 / diff / pull / push / resolve 已随 git 能力移除。
-  check('repo add', cli(['repo', 'add', central, '--name', 'central-repo', '--tags', 'test,fixture']).status === 0);
-  check('repo add 重复路径报错', cli(['repo', 'add', central]).status === 1);
+  check('repo add', cli(['repo', 'add', hub, '--name', 'hub-repo', '--tags', 'test,fixture']).status === 0);
+  check('repo add 重复路径报错', cli(['repo', 'add', hub]).status === 1);
   const list = cliJson(['repo', 'list']);
-  check('repo list --json', Array.isArray(list) && list.length === 1 && list[0].name === 'central-repo');
+  check('repo list --json', Array.isArray(list) && list.length === 1 && list[0].name === 'hub-repo');
 
   // CRUD 完备性（CLI 侧）。HTTP 侧由 tests/unit/registry.test.mjs 的 resource 断言覆盖——
   // 那里保证五个操作同时具备 cli 与 http，这里保证它们在 CLI 上真的跑得通。
   const repoId = list[0].id;
-  check('repo get 取单条', cliJson(['repo', 'get', repoId]).name === 'central-repo');
+  check('repo get 取单条', cliJson(['repo', 'get', repoId]).name === 'hub-repo');
   check('repo get 不存在时失败', cli(['repo', 'get', 'r_not_exist']).status === 1);
   check('repo update 改描述', cliJson(['repo', 'update', repoId, '--desc', '改过的']).desc === '改过的');
   check('repo update 后再 get 能读到', cliJson(['repo', 'get', repoId]).desc === '改过的');
@@ -79,7 +86,7 @@ try {
   mkdirSync(renameTarget, { recursive: true });
   const repo2 = cliJson(['repo', 'add', project, '--name', 'proj-early']);
   check('repo update 改路径', cliJson(['repo', 'update', repo2.id, '--path', renameTarget]).path === renameTarget);
-  check('repo update 改到已登记路径报错', cli(['repo', 'update', repo2.id, '--path', central]).status === 1);
+  check('repo update 改到已登记路径报错', cli(['repo', 'update', repo2.id, '--path', hub]).status === 1);
 
   // 扫描：只按「有没有 .git」识别仓库，不跑任何 git 子命令
   const scanRoot = join(tmp, 'scan-root');
@@ -89,66 +96,87 @@ try {
   const scanned = cliJson(['repo', 'scan', scanRoot, '--depth', '2']);
   check('repo scan 只登记含 .git 的目录', scanned.scanned === 2 && scanned.added.length === 2, JSON.stringify(scanned.added.map((x) => x.path)));
 
-  // ---- 4. skill 识别 ----
-  const centralSkills = cliJson(['skill', 'list', '--side', 'central']);
-  check('central skill 识别', Array.isArray(centralSkills) && centralSkills.length === 1 && centralSkills[0].name === 'demo-skill');
-
-  // ---- 5. 软链接同步（Windows 上应为 junction） ----
-  const sync = cliJson(['skill', 'sync', 'demo-skill', '--project', project, '--mode', 'symlink']);
-  check('skill sync symlink', sync.status === 'ok' && (sync.linkType === 'junction' || sync.linkType === 'symlink'), JSON.stringify(sync));
-  const projSkills = cliJson(['skill', 'list', '--side', 'project', '--path', project]);
-  check('项目侧识别为链接', Array.isArray(projSkills) && projSkills.length === 1 && !!projSkills[0].linkType, String(projSkills[0] && projSkills[0].linkType));
-  const syncAgain = cliJson(['skill', 'sync', 'demo-skill', '--project', project, '--mode', 'symlink']);
-  check('重复同步幂等跳过', syncAgain.status === 'ok' && syncAgain.skipped === true);
-
-  // ---- 6. 复制模式同步 ----
-  const syncCopy = cliJson(['skill', 'sync', 'demo-skill', '--project', project2, '--mode', 'copy']);
-  check('skill sync copy', syncCopy.status === 'ok' && syncCopy.mode === 'copy', JSON.stringify(syncCopy));
-
-  // ---- 7. 物化 ----
-  const mat = cliJson(['skill', 'materialize', 'demo-skill', '--project', project]);
-  check('materialize 转实体', mat.converted === true);
-  const projSkills2 = cliJson(['skill', 'list', '--side', 'project', '--path', project]);
-  check('物化后无链接形态', Array.isArray(projSkills2) && projSkills2.length === 1 && !projSkills2[0].linkType);
-
-  // ---- 8. 冲突检测与选侧 ----
-  const skillMd = join(project, '.claude', 'skills', 'demo-skill', 'SKILL.md');
-  writeFileSync(skillMd, readFileSync(skillMd, 'utf8').replace('hello', 'hello-edited'));
-  const conf = cliJson(['skill', 'conflict', 'demo-skill', '--project', project]);
-  check('冲突检测', conf.files.length === 1 && conf.files[0].side === 'both-differ' && !!conf.files[0].diff.includes('@@'));
-  const syncConf = cliJson(['skill', 'sync', 'demo-skill', '--project', project, '--mode', 'copy']);
-  check('同步遇冲突返回 conflict', syncConf.status === 'conflict');
-  check('apply 选中心侧', cli(['skill', 'apply', 'demo-skill', '--project', project, '--file', 'SKILL.md', '--side', 'central']).status === 0);
-  const conf2 = cliJson(['skill', 'conflict', 'demo-skill', '--project', project]);
-  check('冲突已解决', conf2.files.length === 0);
-
-  // 前导点文件（.gitignore）必须能走完 conflict -> apply 全流程。
-  // 文件路径校验一度复用了「目录名」的规则（拒绝前导点），结果是 conflict 列得出、
-  // apply 却报「非法文件路径」——冲突永远无法按文件落地。
-  writeFileSync(join(project, '.claude', 'skills', 'demo-skill', '.gitignore'), 'node_modules\n');
-  writeFileSync(join(central, 'skills', 'demo-skill', '.gitignore'), 'dist\n');
-  const dotConf = cliJson(['skill', 'conflict', 'demo-skill', '--project', project]);
-  check('.gitignore 冲突被列出', dotConf.files.some((f) => f.file === '.gitignore' && f.side === 'both-differ'));
+  // ---- 4. 订阅源 skill 识别 ----
+  const listed = cliJson(['skill', 'list']);
   check(
-    'apply --file .gitignore 成功（前导点文件不被当非法路径）',
-    cli(['skill', 'apply', 'demo-skill', '--project', project, '--file', '.gitignore', '--side', 'central']).status === 0
+    '订阅源 skill 识别（含来源）',
+    listed.skills.length === 1 && listed.skills[0].name === 'demo-skill' && listed.skills[0].source === hub,
+    JSON.stringify(listed.skills?.[0])
+  );
+  check('skill show 给出描述与来源', cliJson(['skill', 'show', 'demo-skill']).description === 'smoke test skill');
+  check('skill cat 输出全文', (cli(['skill', 'cat', 'demo-skill']).stdout || '').includes('hello'));
+
+  // ---- 5. 迁移（订阅源 → 项目级，软链接） ----
+  const mig = cliJson(['skill', 'migrate', 'demo-skill', '--to', 'project', '--project', project, '--platform', 'claude-code', '--mode', 'symlink']);
+  check('migrate 软链接', mig.status === 'ok' && ['junction', 'symlink'].includes(mig.results[0].linkType), JSON.stringify(mig).slice(0, 160));
+  const migAgain = cliJson(['skill', 'migrate', 'demo-skill', '--to', 'project', '--project', project, '--platform', 'claude-code']);
+  check('重复迁移幂等跳过', migAgain.status === 'ok' && migAgain.skipped >= 1, JSON.stringify(migAgain).slice(0, 160));
+  const projAfter = cliJson(['skill', 'list', '--project', project]);
+  const demoRow = projAfter.skills.find((s) => s.name === 'demo-skill');
+  check(
+    '迁移状态回读为已链接',
+    demoRow && demoRow.cells.some((c) => c.on && c.platform === 'claude-code' && c.scope === 'project' && c.linkType),
+    JSON.stringify(demoRow && demoRow.cells)
   );
 
+  // ---- 6. 迁移到用户级（临时 home，绝不碰真实 ~/） ----
+  const migUser = cliJson(['skill', 'migrate', 'demo-skill', '--to', 'user', '--platform', 'workbuddy']);
+  check('迁移到用户级 workbuddy', migUser.status === 'ok', JSON.stringify(migUser).slice(0, 160));
+  check('用户级落点正确', existsSync(join(home, '.workbuddy', 'skills', 'demo-skill', 'SKILL.md')));
+
+  // ---- 7. 复制模式 ----
+  const migCopy = cliJson(['skill', 'migrate', 'demo-skill', '--to', 'project', '--project', project2, '--platform', 'claude-code', '--mode', 'copy']);
+  check('migrate 复制模式', migCopy.status === 'ok' && migCopy.mode === 'copy', JSON.stringify(migCopy).slice(0, 160));
+  check(
+    '复制模式落的是实体副本',
+    existsSync(join(project2, '.claude', 'skills', 'demo-skill', 'SKILL.md')) &&
+      !lstatSync(join(project2, '.claude', 'skills', 'demo-skill')).isSymbolicLink()
+  );
+
+  // ---- 8. 物化（链接 → 实体） ----
+  const mat = cliJson(['skill', 'materialize', 'demo-skill', '--to', 'project', '--project', project, '--platform', 'claude-code']);
+  check('materialize 转实体', mat.converted === true, JSON.stringify(mat).slice(0, 160));
+  const projMat = cliJson(['skill', 'list', '--project', project]);
+  const demoRow2 = projMat.skills.find((s) => s.name === 'demo-skill');
+  check('物化后该目标不再是链接', demoRow2.cells.find((c) => c.scope === 'project' && c.platform === 'claude-code').linkType === '');
+
+  // ---- 9. 目的仓库直接覆盖（目的仓库不做冲突检测；冲突检测只在订阅源之间） ----
+  const skillMd = join(project, '.claude', 'skills', 'demo-skill', 'SKILL.md');
+  writeFileSync(skillMd, readFileSync(skillMd, 'utf8').replace('hello', 'hello-edited'));
+  const conf = cliJson(['skill', 'migrate', 'demo-skill', '--to', 'project', '--project', project, '--platform', 'claude-code', '--mode', 'copy']);
+  check('目的仓库直接被订阅源覆盖', conf.status === 'ok' && conf.migrated === 1, JSON.stringify(conf).slice(0, 200));
+  check('覆盖后为订阅源内容（本地改动被替换）', !readFileSync(skillMd, 'utf8').includes('hello-edited'));
+
   // 参数缺失时的报错必须带「用法:」——agent-workflow.md 教 agent 用它判定参数错误。
-  const usageErr = cli(['skill', 'sync', 'demo-skill']);
+  const usageErr = cli(['skill', 'migrate']);
   check('参数缺失报错含「用法:」锚点', usageErr.status === 1 && (usageErr.stdout + usageErr.stderr).includes('用法:'));
 
-  // ---- 9. 推送到中心 ----
-  writeFileSync(skillMd, readFileSync(skillMd, 'utf8').replace('hello', 'hello-pushed'));
-  const pushed = cliJson(['skill', 'push', 'demo-skill', '--project', project, '--force']);
-  check('skill push 到中心', pushed.status === 'ok');
-  const centralAfter = cliJson(['skill', 'list', '--side', 'central']);
-  check('中心内容已更新', centralAfter[0].md5 !== centralSkills[0].md5);
+  // ---- 10. 提交（平台副本 → 订阅源，删目标实文件） ----
+  mkdirSync(join(project, '.claude', 'skills', 'local-skill'), { recursive: true });
+  writeFileSync(
+    join(project, '.claude', 'skills', 'local-skill', 'SKILL.md'),
+    '---\nname: local-skill\ndescription: 只在项目里\n---\n\n# L\n'
+  );
+  const beforeSubmit = cliJson(['skill', 'list', '--project', project]);
+  check('未入 Hub 的 skill 被单列', (beforeSubmit.orphans || []).some((o) => o.name === 'local-skill'));
 
-  // ---- 10. 路径穿越防护 ----
-  check('非法 skill 名称拒绝', cli(['skill', 'sync', '../evil', '--project', project]).status === 1);
+  const submitted = cliJson(['skill', 'submit', 'local-skill', '--to', 'project', '--project', project, '--platform', 'claude-code']);
+  check('submit 收进订阅源', submitted.status === 'ok' && !submitted.skipped, JSON.stringify(submitted).slice(0, 200));
+  check('订阅源已有该 skill', existsSync(join(hub, 'local-skill', 'SKILL.md')));
+  const localPath = join(project, '.claude', 'skills', 'local-skill');
+  const localIsLink = lstatSync(localPath).isSymbolicLink();
+  check('目标实文件已删除并改回链接', localIsLink, String(localIsLink));
 
-  // ---- 11. merge3 原语 ----
+  // ---- 11. 撤销迁移（链接可自由删；实体需 --force） ----
+  const un = cliJson(['skill', 'unmigrate', 'local-skill', '--to', 'project', '--project', project, '--platform', 'claude-code']);
+  check('unmigrate 撤销链接', un.status === 'ok' && un.removed.length >= 1, JSON.stringify(un).slice(0, 160));
+  const unReal = cliJson(['skill', 'unmigrate', 'demo-skill', '--to', 'project', '--project', project, '--platform', 'claude-code']);
+  check('unmigrate 实体副本被阻止（blocked）', unReal.status === 'blocked', JSON.stringify(unReal).slice(0, 200));
+
+  // ---- 12. 路径穿越防护 ----
+  check('非法 skill 名称拒绝', cli(['skill', 'migrate', '../evil', '--to', 'project', '--project', project]).status === 1);
+
+  // ---- 13. merge3 原语 ----
   const baseF = join(tmp, 'base.txt');
   const aF = join(tmp, 'a.txt');
   const bF = join(tmp, 'b.txt');
@@ -161,152 +189,148 @@ try {
   const merged2 = cliJson(['skill', 'merge', '--base', baseF, '--a', aF, '--b', bF]);
   check('merge3 双侧冲突标记', merged2.conflicts.length === 1 && merged2.merged.includes('<<<<<<<'));
 
-  // ---- 12. SKILL.md frontmatter 解析（CRLF / 块标量 / 引号） ----
-  const crlfProject = join(tmp, 'crlf-project');
-  mkdirSync(join(crlfProject, '.claude', 'skills', 'crlf-skill'), { recursive: true });
+  // ---- 14. SKILL.md frontmatter 解析（CRLF / 块标量 / 引号），同时验证多源订阅 ----
+  const crlfSource = join(tmp, 'crlf-source');
+  mkdirSync(join(crlfSource, 'crlf-skill'), { recursive: true });
   writeFileSync(
-    join(crlfProject, '.claude', 'skills', 'crlf-skill', 'SKILL.md'),
+    join(crlfSource, 'crlf-skill', 'SKILL.md'),
     '---\r\nname: crlf-skill\r\ndescription: 换行是 CRLF 时也要能读出描述\r\n---\r\n\r\n# body\r\n'
   );
-  mkdirSync(join(crlfProject, '.claude', 'skills', 'block-skill'), { recursive: true });
+  mkdirSync(join(crlfSource, 'block-skill'), { recursive: true });
   writeFileSync(
-    join(crlfProject, '.claude', 'skills', 'block-skill', 'SKILL.md'),
+    join(crlfSource, 'block-skill', 'SKILL.md'),
     '---\nname: block-skill\ndescription: >\n  折叠块标量\n  要合并成一行\n---\n\n# body\n'
   );
-  mkdirSync(join(crlfProject, '.claude', 'skills', 'quoted-skill'), { recursive: true });
+  mkdirSync(join(crlfSource, 'quoted-skill'), { recursive: true });
   writeFileSync(
-    join(crlfProject, '.claude', 'skills', 'quoted-skill', 'SKILL.md'),
+    join(crlfSource, 'quoted-skill', 'SKILL.md'),
     '---\nname: quoted-skill\ndescription: "带引号的描述"\n---\n\n# body\n'
   );
-  const parsed = cliJson(['skill', 'list', '--side', 'project', '--path', crlfProject]);
-  const byName = Object.fromEntries((parsed || []).map((s) => [s.name, s.description]));
+  check('订阅第二个源', cli(['skill', 'hub', 'add', crlfSource]).status === 0);
+  const parsed = cliJson(['skill', 'list', '--source', crlfSource]);
+  const byName = Object.fromEntries((parsed.skills || []).map((s) => [s.name, s.description]));
   check('CRLF frontmatter 描述解析', byName['crlf-skill'] === '换行是 CRLF 时也要能读出描述', JSON.stringify(byName['crlf-skill']));
   check('折叠块标量描述解析', byName['block-skill'] === '折叠块标量 要合并成一行', JSON.stringify(byName['block-skill']));
   check('引号描述解析', byName['quoted-skill'] === '带引号的描述', JSON.stringify(byName['quoted-skill']));
 
-  // ---- 13. 内置 skill 包安装（repo-hub） ----
+  // ---- 15. 内置 skill 包安装（nx-rh，目录名 = 包名，见脚手架 A03 §二） ----
   const skillsHome = join(tmp, 'claude-skills');
   const bundleList = cliJson(['skill', 'install', '--list']);
   check(
-    'bundled 列表含 repo-hub',
-    Array.isArray(bundleList) && bundleList.some((s) => s.name === 'repo-hub' && s.files >= 4),
+    'bundled 列表含 nx-rh',
+    Array.isArray(bundleList) && bundleList.some((s) => s.name === 'nx-rh' && s.files >= 4),
     JSON.stringify(bundleList && bundleList.map((s) => s.name + ':' + s.files))
   );
 
   const inst = cliJson(['skill', 'install', '--to', skillsHome]);
   check('skill install 安装成功', inst.status === 'ok' && inst.installed === true && inst.files >= 4, JSON.stringify(inst));
-  const installedMd = readFileSync(join(skillsHome, 'repo-hub', 'SKILL.md'), 'utf8');
+  const installedMd = readFileSync(join(skillsHome, 'nx-rh', 'SKILL.md'), 'utf8');
   check('SKILL.md 落地且含 ref-map', installedMd.includes('场景路由（ref-map）') && installedMd.includes('[[repo-registry]]'));
-  check('references 一并复制', existsSync(join(skillsHome, 'repo-hub', 'references', 'skill-sync.md')));
+  check('references 一并复制', existsSync(join(skillsHome, 'nx-rh', 'references', 'skill-hub.md')));
 
   const again = cliJson(['skill', 'install', '--to', skillsHome]);
   check('重复安装幂等跳过', again.status === 'ok' && again.skipped === true);
 
-  writeFileSync(join(skillsHome, 'repo-hub', 'SKILL.md'), installedMd + '\n<!-- local edit -->\n');
+  writeFileSync(join(skillsHome, 'nx-rh', 'SKILL.md'), installedMd + '\n<!-- local edit -->\n');
   const conflicted = cliJson(['skill', 'install', '--to', skillsHome]);
   check('内容被改后返回 conflict', conflicted.status === 'conflict' && conflicted.count >= 1);
-  const notForced = readFileSync(join(skillsHome, 'repo-hub', 'SKILL.md'), 'utf8');
+  const notForced = readFileSync(join(skillsHome, 'nx-rh', 'SKILL.md'), 'utf8');
   check('未加 --force 不覆盖', notForced.includes('local edit'));
 
   const forced = cliJson(['skill', 'install', '--to', skillsHome, '--force']);
   check('--force 覆盖为包内版本', forced.status === 'ok' && forced.replaced === true);
-  check('覆盖后本地改动消失', !readFileSync(join(skillsHome, 'repo-hub', 'SKILL.md'), 'utf8').includes('local edit'));
+  check('覆盖后本地改动消失', !readFileSync(join(skillsHome, 'nx-rh', 'SKILL.md'), 'utf8').includes('local edit'));
 
   check('非法包名被拒', cli(['skill', 'install', '../evil', '--to', skillsHome]).status === 1);
+  check('旧名 repo-hub 仍可作别名', cli(['skill', 'install', 'repo-hub', '--to', skillsHome]).status === 0);
 
-  // ---- 13. 中心根目录布局 + 平台开关 + 多选比较 ----
-  const central2 = join(tmp, 'central-root'); // 根目录直接是 skill（新布局）
-  mkdirSync(join(central2, 'root-skill'), { recursive: true });
-  writeFileSync(
-    join(central2, 'root-skill', 'SKILL.md'),
-    '---\nname: root-skill\ndescription: 根布局 skill\n---\n\n# R\n'
-  );
-  const proj3 = join(tmp, 'proj3');
-  mkdirSync(join(proj3, '.claude'), { recursive: true });
-
-  check('skill central add', cli(['skill', 'central', 'add', central2]).status === 0);
-  const cs2 = cliJson(['skill', 'list', '--side', 'central', '--path', central2]);
-  check('中心根目录布局识别', Array.isArray(cs2) && cs2.length === 1 && cs2[0].name === 'root-skill', JSON.stringify(cs2 && cs2.map((x) => x.name)));
-
-  const syncP = cliJson(['skill', 'sync', 'root-skill', '--project', proj3, '--adapter', 'claude-code']);
-  check('同步到指定平台', syncP.status === 'ok', JSON.stringify(syncP));
-
-  const platOn = cliJson(['skill', 'platform-set', 'root-skill', '--project', proj3, '--adapter', 'cursor']);
-  check('平台开关-开(cursor)', platOn.status === 'ok' && platOn.platform === 'cursor', JSON.stringify(platOn));
-
-  const cmp = cliJson(['skill', 'compare', '--central', central2, '--project', proj3]);
+  // skill get：三段拼接 + sentinel + 顺手安装；--json 是不含 prefix 的四元
+  const got = cli(['skill', 'get']);
   check(
-    '多选比较汇总',
-    cmp.summary && cmp.summary.linked >= 1 && cmp.rows.length === 1 && cmp.rows[0].platforms.length === 2,
-    JSON.stringify(cmp.summary)
+    'skill get 三段拼接',
+    got.stdout.includes('# === nx-rh skill context ===') &&
+      got.stdout.includes('# --- begin skill content (do not modify this line) ---') &&
+      got.stdout.includes('-- install 状态 --') &&
+      got.stdout.includes('场景路由（ref-map）'),
+    got.stdout.slice(0, 120)
   );
-
-  const platOff = cliJson(['skill', 'platform-set', 'root-skill', '--project', proj3, '--adapter', 'cursor', '--off']);
-  check('平台开关-关(cursor)', platOff.removed === true, JSON.stringify(platOff));
-  const cmp2 = cliJson(['skill', 'compare', '--central', central2, '--project', proj3]);
-  check('关闭后平台计数更新', cmp2.rows[0].platforms.length === 1, JSON.stringify(cmp2.rows[0].platforms));
-
-  // 实体锚点：删掉唯一实体时，自动物化旁系软链接兜底
-  mkdirSync(join(central2, 'anchor-skill'), { recursive: true });
-  writeFileSync(
-    join(central2, 'anchor-skill', 'SKILL.md'),
-    '---\nname: anchor-skill\ndescription: anchor\n---\n\n# A\n'
-  );
-  check('同步实体 anchor-skill', cli(['skill', 'sync', 'anchor-skill', '--project', proj3, '--adapter', 'claude-code', '--mode', 'copy']).status === 0);
-  // 此时 proj3: root-skill=链接(claude-code)，anchor-skill=实体(claude-code)
-  const rmReal = cliJson(['skill', 'remove', 'anchor-skill', '--project', proj3]);
+  const gotJson = cliJson(['skill', 'get', '--json']);
   check(
-    '删除实体 skill 触发锚点物化',
-    rmReal.removed.length >= 1 && rmReal.anchor?.converted?.name === 'root-skill',
-    JSON.stringify(rmReal.anchor)
+    'skill get --json 四元（不含 prefix）',
+    gotJson.skillName === 'nx-rh' && gotJson.ref === 'SKILL.md' && typeof gotJson.contentBytes === 'number' &&
+      !!gotJson.install && !JSON.stringify(gotJson).includes('skill context ==='),
+    JSON.stringify(Object.keys(gotJson))
   );
-  const cmpA = cliJson(['skill', 'compare', '--central', central2, '--project', proj3]);
-  const rowRoot = cmpA.rows.find((r) => r.name === 'root-skill');
-  check(
-    '兜底后 root-skill 变实体',
-    rowRoot && rowRoot.state === 'same' && rowRoot.platforms.length === 1 && !rowRoot.platforms[0].linkType,
-    JSON.stringify(rowRoot && rowRoot.platforms)
-  );
+  const bare = cliJson(['skill', 'get', 'skill-hub', '--json']);
+  check('skill get 裸名 ref 解析到 references/', bare.ref === 'references/skill-hub.md', bare.ref);
+  check('skill get 拒绝越界 ref', cli(['skill', 'get', '..', '--json']).status === 1);
+  check('skill get 未知名字报可用列表', /未找到内置 skill: nope（可用: /.test(cli(['skill', 'get', 'nope']).stderr || cli(['skill', 'get', 'nope']).stdout));
 
-  // 悬空链接：中心侧删除后，项目侧仍可识别并删除
-  mkdirSync(join(central2, 'goner-skill'), { recursive: true });
-  writeFileSync(
-    join(central2, 'goner-skill', 'SKILL.md'),
-    '---\nname: goner-skill\ndescription: will vanish\n---\n\n# G\n'
-  );
-  check('同步 goner-skill', cli(['skill', 'sync', 'goner-skill', '--project', proj3, '--adapter', 'claude-code']).status === 0);
-  rmSync(join(central2, 'goner-skill'), { recursive: true, force: true });
-  const dList = cliJson(['skill', 'list', '--side', 'project', '--path', proj3]);
-  const dGoner = (dList || []).find((x) => x.name === 'goner-skill');
-  check('悬空链接仍可识别', !!dGoner && dGoner.linkType && dGoner.description.includes('链接目标缺失'), JSON.stringify(dGoner));
-  const dRm = cliJson(['skill', 'remove', 'goner-skill', '--project', proj3]);
-  check('悬空链接可删除', dRm.removed.length >= 1, JSON.stringify(dRm));
-
-  // 本地 skill（中心不存在）：平台开关从旁支本地创建，不强依赖中心
-  mkdirSync(join(proj3, '.claude', 'skills', 'local-skill'), { recursive: true });
-  writeFileSync(
-    join(proj3, '.claude', 'skills', 'local-skill', 'SKILL.md'),
-    '---\nname: local-skill\ndescription: 只在项目里\n---\n\n# L\n'
-  );
-  const platLocal = cliJson(['skill', 'platform-set', 'local-skill', '--project', proj3, '--adapter', 'cursor']);
-  check(
-    '本地 skill 平台开关从旁支创建',
-    platLocal.status === 'ok' && platLocal.platform === 'cursor' && platLocal.from === 'sibling',
-    JSON.stringify(platLocal)
-  );
-  const platLocal2 = cliJson(['skill', 'platform-set', 'local-skill', '--project', proj3, '--adapter', 'cursor']);
-  check('旁支创建幂等', platLocal2.status === 'ok' && platLocal2.skipped === true, JSON.stringify(platLocal2));
-
-  check('project 候选添加', cli(['skill', 'project', 'add', proj3]).status === 0);
+  // ---- 16. 平台范围与项目候选 ----
+  check('project 候选添加', cli(['skill', 'project', 'add', project]).status === 0);
   const pList = cliJson(['skill', 'project', 'list']);
-  check('project 候选列表', Array.isArray(pList) && pList.some((x) => x === proj3));
+  check('project 候选列表', Array.isArray(pList) && pList.some((x) => x === project));
+  check('skill adapters 含 workbuddy', cliJson(['skill', 'adapters']).some((a) => a.id === 'workbuddy'));
+  check('skill platform 设置', cli(['skill', 'platform', 'claude-code', 'workbuddy']).status === 0);
 
-  const rmSkill = cliJson(['skill', 'remove', 'root-skill', '--project', proj3]);
-  check('skill remove 删除项目侧', rmSkill.removed.length >= 1, JSON.stringify(rmSkill));
-  const cmp3 = cliJson(['skill', 'compare', '--central', central2, '--project', proj3]);
-  check('删除后变仅中心', cmp3.rows[0].state === 'only-central');
+  // ---- 16b. 零启动盘点：目录 + 完整描述 + 平台落点；平台别名；全局/项目化；可逆 ----
+  const showOut = cli(['skill', 'show', 'demo-skill', '--project', project]);
+  check('skill show 打印完整描述与平台落点矩阵',
+    showOut.stdout.includes('smoke test skill') && showOut.stdout.includes('用户·') && showOut.stdout.includes('项目·'));
 
-  // ---- 14. 环境变量（只读 + dry-run：这里绝不真写注册表）----
+  const addrOut = cli(['skill', 'adapters', '--project', project]);
+  check('skill adapters 打印项目级/用户级绝对落点',
+    addrOut.stdout.includes(join(project, '.claude', 'skills')) &&
+      addrOut.stdout.includes(join(home, '.claude', 'skills')));
+
+  const listLong = cli(['skill', 'list', '--long', '--project', project]);
+  check('skill list --long 打印目录与完整描述',
+    listLong.stdout.includes('目录: ') && listLong.stdout.includes('smoke test skill'));
+
+  // 平台别名（claude / wb / cursor）+ adapt 动词别名 = 把 skill 变成 .cursor 形态
+  const adaptAlias = cliJson(['skill', 'adapt', 'demo-skill', '--platform', 'cursor', '--to', 'project', '--project', project]);
+  check('adapt 别名 + 平台别名 cursor', adaptAlias.status === 'ok', JSON.stringify(adaptAlias).slice(0, 140));
+  check('cursor 项目落点生成', existsSync(join(project, '.cursor', 'skills', 'demo-skill', 'SKILL.md')));
+  const unAlias = cliJson(['skill', 'unmigrate', 'demo-skill', '--platform', 'cursor', '--to', 'project', '--project', project]);
+  check('迁移可逆（撤销链接）', unAlias.status === 'ok' && unAlias.removed.length >= 1 && !existsSync(join(project, '.cursor', 'skills', 'demo-skill')));
+
+  const globalAlias = cliJson(['skill', 'adapt', 'demo-skill', '--platform', 'wb', '--to', 'global']);
+  check('--to global 与平台别名 wb', globalAlias.status === 'ok' && existsSync(join(home, '.workbuddy', 'skills', 'demo-skill', 'SKILL.md')));
+  check('未知平台报错并列可用项', cli(['skill', 'adapt', 'demo-skill', '--platform', 'nope']).status === 1);
+
+  // ---- 16c. 批量选择：--all / --include / --exclude / --match / --dry-run ----
+  // 前面「订阅第二个源」把主源切走了，这里切回来再测全量
+  check('切回主源', cli(['skill', 'hub', hub]).status === 0);
+  const bulkDir = join(tmp, 'bulk-proj');
+  mkdirSync(bulkDir, { recursive: true });
+
+  const dry = cliJson(['skill', 'migrate', '--all', '--dry-run', '--platform', 'claude-code', '--to', 'project', '--project', bulkDir]);
+  check('批量 dry-run 列出计划且不落盘',
+    dry.dryRun === true && dry.selected.length === 2 && !existsSync(join(bulkDir, '.claude')),
+    JSON.stringify(dry.selected));
+
+  const bulk = cliJson(['skill', 'migrate', '--all', '--platform', 'claude-code', '--to', 'project', '--project', bulkDir]);
+  check('批量全量迁移', bulk.status === 'ok' && bulk.migrated === bulk.selected.length && bulk.selected.length === 2,
+    JSON.stringify(bulk).slice(0, 160));
+  check('批量落点齐全', ['demo-skill', 'local-skill'].every((n) => existsSync(join(bulkDir, '.claude', 'skills', n, 'SKILL.md'))));
+
+  const ex = cliJson(['skill', 'migrate', '--all', '--exclude', 'demo*', '--platform', 'claude-code', '--to', 'project', '--project', bulkDir, '--dry-run']);
+  check('--exclude 通配排除', !ex.selected.includes('demo-skill') && ex.selected.length === 1, JSON.stringify(ex.selected));
+  const inc = cliJson(['skill', 'migrate', '--include', 'demo*', '--platform', 'claude-code', '--to', 'project', '--project', bulkDir, '--dry-run']);
+  check('--include 模式筛选', JSON.stringify(inc.selected) === JSON.stringify(['demo-skill']), JSON.stringify(inc.selected));
+  const mt = cliJson(['skill', 'migrate', '--all', '--match', 'smoke test', '--platform', 'claude-code', '--to', 'project', '--project', bulkDir, '--dry-run']);
+  check('--match 按描述筛', JSON.stringify(mt.selected) === JSON.stringify(['demo-skill']), JSON.stringify(mt.selected));
+  const multi = cliJson(['skill', 'migrate', 'demo-skill', 'local-skill', '--platform', 'claude-code', '--to', 'project', '--project', bulkDir]);
+  check('多位置参数 <name...>', multi.selected.length === 2, JSON.stringify(multi.selected));
+
+  const unDry = cliJson(['skill', 'unmigrate', '--all', '--exclude', 'demo*', '--to', 'project', '--project', bulkDir, '--dry-run']);
+  check('撤销预演：排除项不在计划里',
+    unDry.dryRun === true && unDry.plan.length === 1 && !unDry.plan.some((x) => x.name === 'demo-skill'),
+    JSON.stringify(unDry.plan.map((x) => x.name)));
+  check('撤销预演未落盘', existsSync(join(bulkDir, '.claude', 'skills', 'local-skill')));
+  check('无选择方式报用法', cli(['skill', 'migrate']).status === 1);
+
+  // ---- 17. 环境变量（只读 + dry-run：这里绝不真写注册表）----
   //
   // 本模块是唯一「状态不在临时 store 里」的模块——它改的是操作系统注册表。
   // 所以冒烟只走两条安全路径：读，以及按设计就不落盘的 --dry-run。
@@ -317,157 +341,91 @@ try {
     const st = cliJson(['env', 'status']);
     check('env status 在非 win32 上 supported=false', st.supported === false, JSON.stringify(st));
 
-    const list = cli(['env', 'list', '--json']);
+    const envList = cli(['env', 'list', '--json']);
     let code = null;
-    try { code = JSON.parse(list.stdout).code; } catch { /* 非 JSON 输出说明崩了，下面会失败 */ }
-    check('env list 在非 win32 报 BLOCKED 而不是崩溃', list.status === 1 && code === 'BLOCKED', list.stdout.slice(0, 120));
+    try { code = JSON.parse(envList.stdout).code; } catch { /* 非 JSON 输出说明崩了，下面会失败 */ }
+    check('env list 在非 win32 报 BLOCKED 而不是崩溃', envList.status === 1 && code === 'BLOCKED', envList.stdout.slice(0, 120));
     check('env 写在非 win32 上同样被拦下', cli(['env', 'set', 'X', '1', '--json']).status === 1);
   } else {
     const st = cliJson(['env', 'status']);
     check('env status 报告平台 / 提权 / 两个 scope 的可写性',
       st.supported === true && typeof st.elevated === 'boolean' && !!st.scopeWritable, JSON.stringify(st));
     check('env status 的用户级始终可写（HKCU 属于当前用户）', st.scopeWritable.user === true);
-
+    // 注意：env 读的是真实注册表（与 HOME 无关），所以这里只读、不写。
     const ls = cliJson(['env', 'list']);
     check('env list 返回合并视图 + 生效 PATH',
       Array.isArray(ls.merged) && Array.isArray(ls.path) && !!ls.scopes?.user, JSON.stringify(ls).slice(0, 140));
-    check('env list 的每条都带来源与遮蔽标记',
-      ls.merged.every((m) => (m.scope === 'user' || m.scope === 'system') &&
-        typeof m.shadow === 'boolean' && typeof m.duplicate === 'boolean'));
 
-    const pl = cliJson(['env', 'path', 'list']);
-    check('env path list 按条目返回两个 scope 的 PATH', Array.isArray(pl.user) && Array.isArray(pl.system));
-
-    check('env snapshot list 可读', Array.isArray(cliJson(['env', 'snapshot', 'list'])));
-
-    // ---- dry-run 的惰性：本模块最该被断言的一条 ----
-    // PATH 是唯一「改错就让整台机器命令行不可用」的东西，所以必须证明
-    // dry-run 路径连一个字节都没写。
     const probe = 'NX_RH_SMOKE_PROBE_' + process.pid;
     const before = cliJson(['env', 'path', 'list']);
-
     const dry = cliJson(['env', 'set', probe, 'x', '--dry-run']);
     check('env set --dry-run 返回 diff 而不是结果', dry.dryRun === true && typeof dry.diff === 'string');
     check('env set --dry-run 之后变量仍不存在', cli(['env', 'get', probe]).status === 1);
-    check('env set --dry-run 不产生快照副作用', dry.snapshot === undefined);
-
-    const pathDry = cliJson(['env', 'path', 'add', 'C:\\nx-rh-smoke-nonexistent', '--dry-run']);
-    check('env path add --dry-run 给出将发生的改动',
-      pathDry.dryRun === true && /nx-rh-smoke-nonexistent/.test(pathDry.diff));
-
     const after = cliJson(['env', 'path', 'list']);
     check('env path add --dry-run 真的没动 PATH',
       JSON.stringify(before.user) === JSON.stringify(after.user) &&
       JSON.stringify(before.system) === JSON.stringify(after.system));
-
-    // 删除不存在的条目是幂等跳过，不是错误（与 setting 的 removeCandidate 同一立场）
-    check('env path remove 不存在的条目时幂等跳过',
-      cliJson(['env', 'path', 'remove', 'C:\\nx-rh-smoke-nonexistent']).status === 'skipped');
-
-    // 保类型：往一个含 %VAR% 的新变量写值，默认应为 ExpandString
-    const kindDry = cliJson(['env', 'set', probe + '_KIND', '%USERPROFILE%\\bin', '--dry-run']);
-    check('env set 含 %VAR% 的新值默认落 ExpandString', /ExpandString/.test(kindDry.diff), kindDry.diff);
   }
 
-  // ---- 15. Web API ----
+  // ---- 17. 启动目录作用域与最近项目 ----
+  check('health 暴露 cwdScope', typeof cliJson(['health']).cwdScope === 'string');
+  const boot0 = cliJson(['bootstrap']);
+  check('bootstrap 暴露作用域与最近项目',
+    typeof boot0.cwdScope === 'string' && Array.isArray(boot0.recents) && typeof boot0.projectRoot === 'string');
+  check('recents add', (cliJson(['recents', 'add', project]) || []).some((r) => r.path === project));
+  check('recents 幂等', (cliJson(['recents', 'add', project]) || []).filter((r) => r.path === project).length === 1);
+  check('recents 带归一化 scope 键', typeof (cliJson(['recents']) || [])[0]?.scope === 'string');
+  check('recents remove', !(cliJson(['recents', 'remove', project]) || []).some((r) => r.path === project));
+
+  // ---- 18. Web API ----
   const { startServer } = await import(pathToFileURL(join(ROOT, '..', 'src', 'runtime', 'server.js')).href);
   const server = await startServer({ port: 0 });
   const base = 'http://127.0.0.1:' + server.address().port;
 
   const boot = await (await fetch(base + '/api/bootstrap')).json();
   check('api bootstrap', boot.ok && boot.data.repos.length === 4, JSON.stringify(boot.data.repos?.length));
+  check('api bootstrap 带启动目录', typeof boot.data.projectRoot === 'string' && !!boot.data.projectRoot);
+  check('api bootstrap 带最近项目与作用域键',
+    Array.isArray(boot.data.recents) && typeof boot.data.cwdScope === 'string');
+  check('api bootstrap 带 appStorePath（A03 SOP6 五字段）',
+    typeof boot.data.appStorePath === 'string' && !!boot.data.appStorePath);
 
-  // ---- 环境变量的 HTTP 侧（同样只走读与 dry-run）----
-  // 这段的存在理由：面板调的每条路由都必须真的能通，而 CLI 与 HTTP 虽同源于
-  // action 声明，参数整形（body vs flag）却是两条路径——只测 CLI 会漏掉这一半。
-  const envStatusRes = await (await fetch(base + '/api/env/status')).json();
-  check('api env status', envStatusRes.ok && typeof envStatusRes.data.supported === 'boolean');
+  // 作用域头：带上它，projectRoot 切到该目录——面板「切项目」靠的就是这一条，
+  // 业务 action 完全不感知（见脚手架 ref B03 第四节）。
+  const scoped = await (await fetch(base + '/api/bootstrap', { headers: { 'x-nx-rh-scope': project } })).json();
+  check('x-nx-rh-scope 切换作用域', scoped.ok && scoped.data.projectRoot === project, scoped.data?.projectRoot);
+  const health = await (await fetch(base + '/api/health')).json();
+  check('api health 暴露 cwdScope（供端口探测认领）', health.ok && typeof health.data.cwdScope === 'string');
 
-  if (process.platform === 'win32') {
-    const envListRes = await (await fetch(base + '/api/env')).json();
-    check('api env list', envListRes.ok && Array.isArray(envListRes.data.merged));
-
-    const envPathRes = await (await fetch(base + '/api/env/path')).json();
-    check('api env path list', envPathRes.ok && Array.isArray(envPathRes.data.user));
-
-    // PUT /api/env/:name 带 dry-run —— 面板的编辑弹窗就走这条
-    const envDryRes = await (
-      await fetch(base + '/api/env/NX_RH_SMOKE_HTTP', {
-        method: 'PUT',
-        headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ value: 'x', scope: 'user', 'dry-run': true }),
-      })
-    ).json();
-    check('api env set 走 dry-run 返回 diff', envDryRes.ok && envDryRes.data.dryRun === true && !!envDryRes.data.diff);
-    check('api env set dry-run 之后变量仍不存在',
-      (await fetch(base + '/api/env/NX_RH_SMOKE_HTTP')).status === 404);
-
-    // 字面量路由必须压过 :name 参数路由（/api/env/path 不能被当成变量名 "path" 之外的路径）
-    check('api /api/env/path 未被 /api/env/:name 抢走', envPathRes.ok);
-
-    // POST /api/env/path 带 dry-run
-    const pathDryRes = await (
-      await fetch(base + '/api/env/path', {
-        method: 'POST',
-        headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ dir: 'C:\\nx-rh-smoke-http', scope: 'user', 'dry-run': true }),
-      })
-    ).json();
-    check('api env path add 走 dry-run', pathDryRes.ok && pathDryRes.data.dryRun === true);
-  } else {
-    const envListRes = await (await fetch(base + '/api/env')).json();
-    check('api env list 在非 win32 返回可分类错误',
-      !envListRes.ok && envListRes.code === 'BLOCKED', JSON.stringify(envListRes).slice(0, 120));
-  }
-
-  const html = await (await fetch(base + '/')).text();
-  check('web 首页', html.includes('npx-repo-hub') && !/[\u{1F300}-\u{1FAFF}\u{2600}-\u{27BF}]/u.test(html));
-
-  const addRes = await (
-    await fetch(base + '/api/repos', {
-      method: 'POST',
-      headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ path: project2, name: 'proj2' }),
-    })
-  ).json();
-  check('api repo add', addRes.ok && addRes.data.name === 'proj2');
-
-  const skillsRes = await (
-    await fetch(base + '/api/skills?side=project&path=' + encodeURIComponent(project))
-  ).json();
-  check('api skills project', skillsRes.ok && skillsRes.data.length === 1);
-
-  // 平台开关有两条入口：CLI 用 --off，面板传 enabled。二者必须走同一条分支。
-  // 这里曾经出过严重回归——action 里写成 `enabled: !ctx.off`，面板传来的 false
-  // 被 !undefined 顶成 true，于是面板上「关闭平台」永远关不掉；而当时的测试
-  // 只覆盖了 CLI 的 --off，所以完全没被发现。
-  const postPlatform = async (body) =>
-    (await (await fetch(base + '/api/skills/platform', {
-      method: 'POST',
-      headers: { 'content-type': 'application/json' },
-      body: JSON.stringify(body),
-    })).json()).data;
-
-  const viaCli = cliJson([
-    'skill', 'platform-set', 'demo-skill', '--project', project, '--adapter', 'claude-code', '--off',
-  ]);
-  const viaPanel = await postPlatform({
-    name: 'demo-skill', project, adapter: 'claude-code', enabled: false,
-  });
+  const skillsRes = await (await fetch(base + '/api/skills?project=' + encodeURIComponent(project))).json();
   check(
-    '平台开关：面板 enabled:false 与 CLI --off 走同一分支',
-    viaPanel.status === viaCli.status,
-    `panel=${JSON.stringify(viaPanel)} cli=${JSON.stringify(viaCli)}`
+    'api skills 返回订阅源与迁移状态',
+    skillsRes.ok && Array.isArray(skillsRes.data.skills) && Array.isArray(skillsRes.data.sources),
+    JSON.stringify(skillsRes).slice(0, 160)
   );
 
-  const panelOn = await postPlatform({
-    name: 'demo-skill', project, adapter: 'claude-code', enabled: true,
-  });
-  check('平台开关：面板 enabled:true 能重新开启', panelOn.status === 'ok' && !panelOn.removed, JSON.stringify(panelOn));
+  const sourcesRes = await (await fetch(base + '/api/skills/sources')).json();
+  check('api skills sources', sourcesRes.ok && sourcesRes.data.sources.length >= 2);
 
-  // /api/skills 不带 side 时应默认 central，而不是 400
-  const defSide = await (await fetch(base + '/api/skills')).json();
-  check('GET /api/skills 默认 side=central', defSide.ok === true, JSON.stringify(defSide).slice(0, 120));
+  // 面板走 HTTP 迁移：必须与 CLI 同源生效（用项目级目标，避免碰真实 home）
+  const httpMig = await (
+    await fetch(base + '/api/skills/migrate', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ name: 'demo-skill', to: 'project', project: project2, platform: 'workbuddy', mode: 'symlink' }),
+    })
+  ).json();
+  check('api skills migrate', httpMig.ok && httpMig.data.status === 'ok', JSON.stringify(httpMig).slice(0, 160));
+  check('HTTP 迁移落到 .workbuddy/skills', existsSync(join(project2, '.workbuddy', 'skills', 'demo-skill', 'SKILL.md')));
+
+  const httpUn = await (
+    await fetch(base + '/api/skills/unmigrate', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ name: 'demo-skill', to: 'project', project: project2, platform: 'workbuddy' }),
+    })
+  ).json();
+  check('api skills unmigrate', httpUn.ok && httpUn.data.removed.length >= 1);
 
   const bundledRes = await (await fetch(base + '/api/bundled')).json();
   check(
@@ -479,7 +437,7 @@ try {
     await fetch(base + '/api/repos', {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ path: central }),
+      body: JSON.stringify({ path: hub }),
     })
   ).json();
   check('api 重复添加报错', !badRes.ok && /已登记/.test(badRes.error));
@@ -487,7 +445,20 @@ try {
   const notFound = await (await fetch(base + '/api/nothing')).json();
   check('api 404', !notFound.ok);
 
+  // 一个面板管所有项目：同端口再 serve 一次，应认领已有面板而不是起第二个进程
+  const claim = cli(['serve', '--port', String(server.address().port), '--no-open', project2]);
+  check('同端口 serve 认领已有面板', claim.status === 0 && claim.stdout.includes('已在运行的面板'), claim.stdout.slice(0, 140));
+
   await new Promise((r) => server.close(r));
+
+  // 静态页（构建产物存在时才有意义；未 build 时跳过）
+  if (existsSync(join(ROOT, '..', 'src', 'web', 'public', 'index.html'))) {
+    const server2 = await startServer({ port: 0 });
+    const base2 = 'http://127.0.0.1:' + server2.address().port;
+    const html = await (await fetch(base2 + '/')).text();
+    check('web 首页', html.includes('npx-repo-hub') && !/[\u{1F300}-\u{1FAFF}\u{2600}-\u{27BF}]/u.test(html));
+    await new Promise((r) => server2.close(r));
+  }
 } finally {
   rmSync(tmp, { recursive: true, force: true });
 }

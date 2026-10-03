@@ -5,14 +5,27 @@
 // 而不是像改造前那样只能对错误文案做字符串匹配。
 const DEFAULT_TIMEOUT_MS = 30000;
 
+// 作用域：面板当前选中的项目目录。每次请求自动带上 x-nx-rh-scope 头，
+// 服务端据此激活 AsyncLocalStorage 作用域——业务 action 完全不感知「切项目」。
+// 放在模块级而不是每次调用传参：只要 UI 改了项目，之后所有请求自动跟随。
+let activeScope = '';
+
+export function setActiveScope(dir) {
+  activeScope = dir || '';
+}
+
 export async function api(path, opts = {}) {
   const ctrl = new AbortController();
   const timer = setTimeout(() => ctrl.abort(), opts.timeoutMs || DEFAULT_TIMEOUT_MS);
 
   try {
+    const headers = {};
+    if (opts.body) headers['content-type'] = 'application/json';
+    if (activeScope) headers['x-nx-rh-scope'] = activeScope;
+
     const res = await fetch(path, {
       method: opts.method || 'GET',
-      headers: opts.body ? { 'content-type': 'application/json' } : undefined,
+      headers: Object.keys(headers).length ? headers : undefined,
       body: opts.body ? JSON.stringify(opts.body) : undefined,
       signal: ctrl.signal,
     });

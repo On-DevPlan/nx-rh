@@ -58,6 +58,56 @@ header {
 }
 .brand { font-weight: 800; letter-spacing: 0.4px; font-size: 13px; display: inline-flex; align-items: center; gap: 7px; }
 .brand img { width: 20px; height: 20px; border-radius: 5px; display: block; }
+
+/* 右上角：激活目录 + 最近目录下拉（每个目录启动 serve 自动登记，也可手动登记） */
+header .meta {
+  margin-left: auto;
+  min-width: 0;
+  max-width: 42vw;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--mid);
+  font-size: 12px;
+  font-family: ui-monospace, Consolas, monospace;
+}
+header details.recents { position: relative; font-size: 12px; }
+header details.recents summary { cursor: pointer; color: var(--mid); user-select: none; white-space: nowrap; }
+header details.recents summary:hover { color: var(--ink); }
+header details.recents ul {
+  position: absolute;
+  right: 0;
+  top: calc(100% + 6px);
+  margin: 0;
+  padding: 4px;
+  list-style: none;
+  background: var(--paper);
+  border: 1px solid var(--soft-2);
+  border-radius: 8px;
+  box-shadow: var(--shadow-relief);
+  max-height: 320px;
+  overflow: auto;
+  min-width: 220px;
+  z-index: 20;
+}
+header details.recents li button {
+  display: block;
+  width: 100%;
+  text-align: left;
+  border: 0;
+  background: none;
+  padding: 5px 8px;
+  border-radius: 5px;
+  cursor: pointer;
+  font-size: 12px;
+  font-family: ui-monospace, Consolas, monospace;
+  max-width: 380px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+header details.recents li button:hover { background: var(--soft); color: var(--ink); }
+header details.recents li button.active { color: var(--ink); font-weight: 600; }
 .brand .sub { margin-left: 8px; font-weight: 400; color: var(--mid); }
 
 nav { display: inline-flex; gap: 2px; padding: 3px; background: var(--soft); border-radius: var(--radius-pill); }
@@ -75,8 +125,6 @@ nav { display: inline-flex; gap: 2px; padding: 3px; background: var(--soft); bor
 .tab:hover { color: var(--ink); }
 /* 选中态：单层立体阴影，不叠加 --shadow */
 .tab.active { background: var(--paper); color: var(--ink); font-weight: 600; box-shadow: var(--shadow-relief); }
-
-.meta { margin-left: auto; color: var(--mid); font-family: ui-monospace, Consolas, monospace; }
 
 main { padding: 8px 20px 28px; max-width: 1240px; margin: 0 auto; }
 .panel { display: none; }

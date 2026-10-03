@@ -3,11 +3,13 @@
 // 分层例外：本模块是**刻意的聚合器**，允许 import 其他模块的 service。
 // 其余模块之间禁止互相依赖（唯一的只读例外是 settings，见其 service 注释）。
 import { readFileSync } from 'node:fs';
-import { storePathFromEnv } from '../../core/paths.js';
+import fsp from 'node:fs/promises';
+import { storePathFromEnv, projectRoot, cwdScope } from '../../core/paths.js';
 import { compileRoute } from '../../runtime/spec.js';
-import { badInput, notFound } from '../../core/errors.js';
+import { badInput, notFound, blocked } from '../../core/errors.js';
 import * as settings from '../settings/service.js';
 import * as repos from '../repos/service.js';
+import * as recentsSvc from './service.js';
 import { listAdapters } from '../skills/adapters.js';
 
 const VERSION = JSON.parse(
@@ -27,11 +29,22 @@ async function commandTable() {
 // 一次拿齐面板启动所需的全部上下文。
 // 历史缺口：Web 有 /api/bootstrap，CLI 却没有对应命令，agent 只能多次往返拼装。
 async function bootstrap() {
+  const skills = await import('../skills/service.js');
   return {
     version: VERSION,
-    storePath: storePathFromEnv(),
+    // A03 §1 SOP 6：bootstrap 是 zero-config 的一次性上下文聚合，
+    // appStorePath 是规范字段名（agent 据此知道数据在哪、能手工修）。
+    appStorePath: storePathFromEnv(),
+    // 启动目录注入：面板的「当前项目」默认取它（serve <dir> 或 cwd）；
+    // cwdScope 是它的归一化键，面板切换项目时按这个键回传 x-nx-rh-scope 头。
+    projectRoot: projectRoot(),
+    cwdScope: cwdScope(),
+    // 全局跨作用域的「最近项目」——面板的项目下拉由它驱动
+    recents: await recentsSvc.listRecents(),
     settings: await settings.getSettings(),
     adapters: listAdapters(),
+    hub: await skills.hubInfo(),
+    sources: (await skills.listSources()).sources,
     repos: await repos.listRepos(),
     // 命令表随 bootstrap 下发前端，面板底部的「CLI 等价」提示由此渲染，
     // 而不是各视图手写字符串。带 http 字段，故映射是双向可查的。
@@ -84,16 +97,63 @@ export default {
       id: 'system.health',
       cli: ['health'],
       http: ['GET', '/api/health'],
-      summary: '健康检查（进程存活 + 存储可达）',
+      summary: '健康检查（进程存活 + 存储可达 + 当前作用域）',
       run: async () => {
         const s = await settings.getSettings();
+        const storePath = storePathFromEnv();
+        // 存储不可达 / cwd 不可达时给出**明确的错误码**，而不是假装健康（A03 §1 SOP 7）。
+        // 注意：文件损坏属于「降级为空结构」（A05 §四），这里查的是可达性不是内容。
+        try {
+          const st = await fsp.stat(storePath).catch((e) => {
+            if (e && e.code === 'ENOENT') return null;
+            throw e;
+          });
+          if (st && !st.isFile()) throw blocked(`存储路径不是文件: ${storePath}`);
+          if (st) await fsp.access(storePath); // 可读性
+          await fsp.access(process.cwd());
+        } catch (err) {
+          if (err && err.code) throw err;
+          throw blocked(`存储或工作目录不可达: ${storePath}（${String((err && err.message) || err)}）`);
+        }
         return {
           status: 'ok',
           version: VERSION,
-          storePath: storePathFromEnv(),
+          appStorePath: storePath,
+          // 启动探测靠它认领同端口上的面板：是 nx-rh 的面板才有 cwdScope 字段
+          cwdScope: cwdScope(),
+          projectRoot: projectRoot(),
           storeReadable: !!s,
         };
       },
+    },
+    {
+      id: 'system.recents',
+      cli: ['recents'],
+      http: ['GET', '/api/recents'],
+      summary: '最近项目目录清单（跨作用域，最近在前）',
+      run: () => recentsSvc.listRecents(),
+      render: (list) =>
+        list.length
+          ? list.map((r) => `${r.path}  (${r.lastUsedAt.slice(0, 19).replace('T', ' ')})`).join('\n')
+          : '（暂无最近项目，用 nx-rh recents add <目录> 添加，或在项目目录里启动 serve）',
+    },
+    {
+      id: 'system.recents.touch',
+      cli: ['recents', 'add'],
+      http: ['POST', '/api/recents'],
+      summary: '把一个目录登记为最近项目',
+      args: [{ name: 'path', required: false }],
+      run: (ctx) => recentsSvc.touchRecent(ctx.path || ctx.dir || projectRoot()),
+      render: (list) => `已登记，共 ${list.length} 个最近项目`,
+    },
+    {
+      id: 'system.recents.remove',
+      cli: ['recents', 'remove'],
+      http: ['DELETE', '/api/recents'],
+      summary: '从最近项目移除（不动磁盘）',
+      args: ['path'],
+      run: (ctx) => recentsSvc.removeRecent(ctx.path || ctx.dir),
+      render: (list) => `已移除，剩余 ${list.length} 个`,
     },
     {
       id: 'system.routes',
