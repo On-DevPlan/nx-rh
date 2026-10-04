@@ -266,6 +266,24 @@ input:focus, select:focus {
   /* 标题色条：与 list 间的分隔——主体内部最后一道 1px */
 }
 h3 { font-size: 13px; margin: 0; font-weight: 700; }
+
+/* 收起/展开：次要区块（未入 Hub）的表头本身就是按钮——不加边框不加底色，
+   只有三角指示状态，避免把「次要信息」做得比正文还抢眼 */
+.disclose {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  background: none;
+  border: 0;
+  padding: 0;
+  font: inherit;
+  font-weight: 700;
+  color: inherit;
+  cursor: pointer;
+}
+.disclose:hover { color: var(--ink); }
+.disclose .caret { width: 10px; font-size: 10px; color: var(--mid); line-height: 1; }
+
 .cols { display: flex; gap: 14px; align-items: flex-start; }
 .col { flex: 1; min-width: 0; }
 .list { padding: 0; }

@@ -90,7 +90,7 @@ function SkillEditor({ mode, skill = {}, close, reload }) {
 }
 
 export default function SkillsView() {
-  const { boot, ui, patchUi, refreshBoot } = useStore();
+  const { boot, ui, patchUi, toggleSel, refreshBoot } = useStore();
   const toast = useToast();
   const guard = useGuard();
   const { dialog, node: dialogNode } = useDialog();
@@ -317,8 +317,18 @@ export default function SkillsView() {
         groups.set(key, g);
       }
     }
-    return [...groups.values()].sort((a, b) => a.key.localeCompare(b.key));
+    // 项目级在前：用户级游离大多是本机常驻的旧副本，优先级低（次要信息）
+    return [...groups.values()].sort((a, b) =>
+      (a.scope === b.scope ? 0 : a.scope === 'project' ? -1 : 1) || a.key.localeCompare(b.key)
+    );
   }, [data, platformOpts]);
+
+  // 未入 Hub 默认收起（ui.orphansOpen）：它只是「待收敛」的提示，不是日常要看的信息。
+  // 收起时表头仍给出数量与作用域分布，不至于完全丢信息。
+  const orphansOpen = !!ui.orphansOpen;
+  const orphanCount = orphanGroups.reduce((n, g) => n + g.items.length, 0);
+  const orphanProjCount = orphanGroups.filter((g) => g.scope === 'project').reduce((n, g) => n + g.items.length, 0);
+  const orphanUserCount = orphanCount - orphanProjCount;
 
   // ---- 详情弹窗：查看 + 操作都收进来，行上只留一个入口（轻量） ----
   const closeModal = () => setModal(null);
@@ -576,10 +586,21 @@ export default function SkillsView() {
 
       <div className="card">
         <div className="colhead">
-          <h3>未入 Hub</h3>
-          <span className="muted">按平台目录分组 —— 提交后收敛为「唯一实文件 = 订阅源」</span>
+          <h3>
+            <button
+              className="disclose"
+              title="未入 Hub 是次要信息，默认收起；展开后按平台目录分组"
+              onClick={() => patchUi({ orphansOpen: !orphansOpen })}
+            >
+              <span className="caret">{orphansOpen ? '▾' : '▸'}</span> 未入 Hub
+            </button>
+            <span className="muted">
+              {' '}{orphanCount} 个{orphanCount ? `（项目 ${orphanProjCount} · 用户 ${orphanUserCount}）` : ''}
+              {orphansOpen ? ' —— 提交后收敛为「唯一实文件 = 订阅源」' : ''}
+            </span>
+          </h3>
         </div>
-        <div className="list">
+        <div className="list" hidden={!orphansOpen}>
           {orphanGroups.length ? (
             orphanGroups.map((g) => (
               <Fragment key={g.key}>

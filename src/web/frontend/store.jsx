@@ -15,6 +15,7 @@ const DEFAULT_UI = {
   source: '',         // Skill 页选中的订阅源（留空 = 当前主源）
   activeScope: null,  // 激活的项目目录（右上角切换）
   selSkills: [],      // Skill 页多选勾选（skill 名）
+  orphansOpen: false, // 「未入 Hub」区块展开与否（次要信息，默认收起）
 };
 
 function loadUi() {

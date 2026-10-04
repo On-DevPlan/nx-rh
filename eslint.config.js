@@ -24,8 +24,23 @@ export default defineConfig([
       ecmaVersion: 'latest',
       sourceType: 'module',
       parserOptions: { ecmaFeatures: { jsx: true } },
+      // 手写全局表（不引 globals 包）：浏览器与 Node 两侧混用是本项目的事实，
+      // 有了这张表才能开 no-undef——否则「调用了一个没解构/没定义的函数」
+      // 这类问题（0.10.1 的 toggleSel）会一路滑到运行时才炸。
+      globals: {
+        // 浏览器
+        document: 'readonly', window: 'readonly', navigator: 'readonly', localStorage: 'readonly',
+        sessionStorage: 'readonly', location: 'readonly', history: 'readonly', fetch: 'readonly',
+        console: 'readonly', performance: 'readonly', crypto: 'readonly',
+        setTimeout: 'readonly', clearTimeout: 'readonly', setInterval: 'readonly', clearInterval: 'readonly',
+        queueMicrotask: 'readonly', structuredClone: 'readonly', requestAnimationFrame: 'readonly',
+        URL: 'readonly', URLSearchParams: 'readonly', AbortController: 'readonly', AbortSignal: 'readonly',
+        Blob: 'readonly', FormData: 'readonly', TextEncoder: 'readonly', TextDecoder: 'readonly',
+        // Node
+        process: 'readonly', Buffer: 'readonly', __dirname: 'readonly', __filename: 'readonly',
+      },
     },
-    rules: BASE_RULES,
+    rules: { ...BASE_RULES, 'no-undef': 'error' },
   },
 
   // ---- 分层约束 ----
