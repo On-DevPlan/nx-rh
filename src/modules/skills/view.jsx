@@ -255,14 +255,15 @@ export default function SkillsView() {
     await load();
   });
 
-  const submit = (name) => guard(async () => {
+  // to 缺省 'project'；未入 Hub 的行点勋章时会带自己的作用域进来（实文件在哪就从哪提交）
+  const submit = (name, to = 'project') => guard(async () => {
     const cur = source || data?.hub?.path;
     if (!cur) { toast('请先订阅一个 skill 目录'); return; }
-    const r = await api('/api/skills/submit', { method: 'POST', body: { name, to: 'project', platform: 'all', project } });
+    const r = await api('/api/skills/submit', { method: 'POST', body: { name, to, platform: 'all', project } });
     if (r.status === 'conflict') {
       const ok = await dialog({ message: `订阅源已有同名 skill 且内容不同（${r.files.length} 个文件）。\n用这份副本覆盖订阅源？` });
       if (!ok) return;
-      await api('/api/skills/submit', { method: 'POST', body: { name, to: 'project', platform: 'all', project, force: true } });
+      await api('/api/skills/submit', { method: 'POST', body: { name, to, platform: 'all', project, force: true } });
     }
     toast(`已提交到订阅源，目标实文件已删除`);
     await load();
@@ -497,16 +498,27 @@ export default function SkillsView() {
           {(s.source || '').replace(/^.*[\\/]/, '')}
         </span>
       )}
-      {/* 状态标签：只读。操作全部在详情弹窗里，行上不留一排按钮 */}
+      {/* 勋章即操作：点一下 = 迁移到该落点 / 已迁移则撤销（未入 Hub 的行 = 提交到订阅源） */}
       <span className="plats">
         {(s.cells || []).filter((c) => platformOpts.includes(c.platform)).map((c) => (
-          <span
+          <button
             key={c.scope + c.platform}
             className={'pill' + (c.on ? (c.linkType ? ' on lnk' : ' on real') : '')}
-            title={`${SCOPE_SHORT[c.scope]}·${c.platform}${c.on ? '（已迁移 · ' + (c.linkType ? c.linkType + ' 链接' : '实体副本') + '）' : '（未迁移）'}`}
+            title={
+              orphan
+                ? `${SCOPE_SHORT[c.scope]}·${c.platformName || c.platform}：不在订阅源里 · 点击提交到订阅源`
+                : c.on
+                  ? `${SCOPE_SHORT[c.scope]}·${c.platformName || c.platform}：已迁移（${c.linkType ? c.linkType + ' 链接' : '实体副本'}）· 点击撤销`
+                  : `点击迁移到 ${SCOPE_SHORT[c.scope]}·${c.platformName || c.platform}`
+            }
+            onClick={(e) => {
+              e.stopPropagation();
+              // 勋章即操作：已在该落点 → 撤销；不在 → 迁移；未入 Hub → 提交到订阅源
+              if (orphan) submit(s.name, c.scope); else toggleCell(s.name, c);
+            }}
           >
             {SCOPE_SHORT[c.scope] === '用户' ? '用' : '项'}·{shortLabel(c.platform, adapters)}
-          </span>
+          </button>
         ))}
       </span>
       <span className="acts">
