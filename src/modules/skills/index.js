@@ -42,11 +42,48 @@ function cellText(cells) {
     .join(' ');
 }
 
-// 来源目录的短名：取末两段（`D:\a_other\md\sl\skills` → `sl/skills`）。
-// 单源时表头已经写了订阅源，行里再重复一遍纯属噪音——只在多源时用它消歧。
-function shortSource(p) {
-  const parts = String(p || '').replace(/\\/g, '/').split('/').filter(Boolean);
-  return parts.slice(-2).join('/');
+const pathSegs = (p) => String(p || '').replace(/\\/g, '/').split('/').filter(Boolean);
+const lastSeg = (p) => pathSegs(p).slice(-1)[0] || String(p || '');
+
+// 订阅源的展示名（与 src/modules/skills/view.jsx 的 sourceLabel 是同一套算法，改一处要改两处）。
+//
+// 从前是「取末两段」：`D:\a_other\md\sl\skills` → `sl/skills`。能区分，但每一行都拖着
+// 那个毫无信息量的 `skills` 尾巴；而订阅源目录**几乎都叫 skills**，所以这段尾巴在
+// 整个列表里重复出现几十次。多源列表里本来就该只留「能区分」的那一小段。
+//
+// 做法：先剥掉**所有源共有**的尾部段（通常就是 `skills`），再取「最短能唯一区分」的尾部；
+// 父目录也重名时继续往上退。all = 全部来源路径（不传就只能退回末段）。
+function sourceLabel(p, all) {
+  if (!p) return '';
+  const uniq = [...new Set([...(all || []), p].filter(Boolean))];
+  if (uniq.length < 2) return lastSeg(p);
+
+  const all2 = uniq.map(pathSegs);
+  let common = 0;
+  const minLen = Math.min(...all2.map((s) => s.length));
+  while (common + 1 < minLen) {
+    const i = common + 1;
+    const tail = all2[0][all2[0].length - i].toLowerCase();
+    if (all2.every((s) => s[s.length - i].toLowerCase() === tail)) common += 1;
+    else break;
+  }
+  const pools = all2.map((s) => (s.length > common ? s.slice(0, s.length - common) : s));
+
+  const idx = uniq.indexOf(p);
+  const own = pools[idx];
+  let n = 1;
+  while (n < own.length) {
+    const tail = own.slice(-n).join('/').toLowerCase();
+    if (!pools.some((o, j) => j !== idx && o.slice(-n).join('/').toLowerCase() === tail)) break;
+    n += 1;
+  }
+  return own.slice(-n).join('/') || lastSeg(p);
+}
+
+// 把一组来源渲染成可区分的短名串。来源元素可以是路径字符串，也可以是 {path} / {source}
+function sourceLabels(items, sep = ' / ') {
+  const all = (items || []).map((x) => (typeof x === 'string' ? x : x.path || x.source));
+  return all.map((p) => sourceLabel(p, all)).join(sep);
 }
 
 function renderSkillList(d, ctx) {
@@ -60,13 +97,14 @@ function renderSkillList(d, ctx) {
     lines.push(`! ${p.reason}  —— ${p.path}`);
   }
   for (const c of (d.conflicts || []).filter((x) => !x.same)) {
-    lines.push(`! 同名 skill 在多个订阅源且内容不同: ${c.name}  —— ${c.sources.map((s) => shortSource(s.path)).join(' / ')}`);
+    lines.push(`! 同名 skill 在多个订阅源且内容不同: ${c.name}  —— ${sourceLabels(c.sources)}`);
   }
   for (const c of (d.conflicts || []).filter((x) => x.same)) {
-    lines.push(`· 重复订阅（内容一致）: ${c.name}  —— ${c.sources.map((s) => shortSource(s.path)).join(' / ')}`);
+    lines.push(`· 重复订阅（内容一致）: ${c.name}  —— ${sourceLabels(c.sources)}`);
   }
   if ((d.hubProblems || []).length || (d.conflicts || []).length) lines.push('');
-  const multi = new Set(d.skills.map((s) => s.source)).size > 1;
+  const srcAll = [...new Set(d.skills.map((s) => s.source))];
+  const multi = srcAll.length > 1;
   if (!d.skills.length) lines.push('（订阅源里暂无 skill）');
   for (const s of d.skills) {
     if (ctx && ctx.long) {
@@ -80,7 +118,7 @@ function renderSkillList(d, ctx) {
       lines.push('');
       continue;
     }
-    const tag = multi ? `  [${shortSource(s.source)}]` : '';
+    const tag = multi ? `  [${sourceLabel(s.source, srcAll)}]` : '';
     lines.push(`${s.name.padEnd(28)} ${(s.description || '').slice(0, 48)}${tag}`.trimEnd());
   }
   if (d.orphans?.length) {
@@ -107,7 +145,8 @@ function renderMigrate(d) {
     for (const b of d.blocked) {
       if (seen.has(b.name)) continue;
       seen.add(b.name);
-      lines.push(`  ${b.name.padEnd(28)} ${b.sources.map((s) => `${shortSource(s.source)}(${s.md5.slice(0, 6)})`).join('  ')}`);
+      const all = b.sources.map((s) => s.source);
+      lines.push(`  ${b.name.padEnd(28)} ${b.sources.map((s) => `${sourceLabel(s.source, all)}(${s.md5.slice(0, 6)})`).join('  ')}`);
     }
     lines.push('先解决订阅（删掉多余来源），或用 --source <路径> 指定用哪一份。');
     return lines.join('\n');
@@ -183,10 +222,10 @@ function renderShow(d) {
     for (const h of d.outline) lines.push(`    ${'  '.repeat(h.level - 1)}${'#'.repeat(h.level)} ${h.text}`);
   }
   if (d.conflict && !d.conflict.same) {
-    lines.push(`  ! 跨源冲突: 同名 skill 在多个订阅源且内容不同（${d.conflict.sources.map((s) => shortSource(s.path)).join(' / ')}）`);
+    lines.push(`  ! 跨源冲突: 同名 skill 在多个订阅源且内容不同（${sourceLabels(d.conflict.sources)}）`);
     lines.push('    迁移会 blocked，先解决订阅或用 --source <路径> 指定用哪一份。');
   } else if (d.conflict) {
-    lines.push(`  · 重复订阅（内容一致）: ${d.conflict.sources.map((s) => shortSource(s.path)).join(' / ')}`);
+    lines.push(`  · 重复订阅（内容一致）: ${sourceLabels(d.conflict.sources)}`);
   }
   lines.push('  平台落点（skill migrate <name> --platform <id> --to user|global|project）：');
   for (const c of d.cells) {
@@ -306,10 +345,11 @@ export default {
         for (const p of d.hubProblems) lines.push(`  ! ${p.reason}  —— ${p.path}`);
         for (const c of d.conflicts.filter((x) => !x.same)) {
           lines.push(`  ! 跨源冲突: ${c.name}`);
-          for (const e of c.entries) lines.push(`      ${shortSource(e.source)}  ${e.md5.slice(0, 8)}  ${e.dir}`);
+          const all = c.entries.map((e) => e.source);
+          for (const e of c.entries) lines.push(`      ${sourceLabel(e.source, all)}  ${e.md5.slice(0, 8)}  ${e.dir}`);
         }
         for (const c of d.conflicts.filter((x) => x.same)) {
-          lines.push(`  · 重复订阅（内容一致）: ${c.name} —— ${c.entries.map((e) => shortSource(e.source)).join(' / ')}`);
+          lines.push(`  · 重复订阅（内容一致）: ${c.name} —— ${sourceLabels(c.entries)}`);
         }
         lines.push('');
         lines.push('处理：取消订阅多余来源（skill hub remove）；真冲突保留一份实文件后再迁移。');

@@ -15,6 +15,47 @@ function shortLabel(adapterId, adapters) {
   return (a ? a.name : adapterId).replace(/\s*\(.*\)$/, '').split(/[\s-]/)[0].toLowerCase();
 }
 
+const pathSegs = (p) => String(p || '').replace(/\\/g, '/').split('/').filter(Boolean);
+const lastSeg = (p) => pathSegs(p).slice(-1)[0] || String(p || '');
+
+// 订阅源的展示名（与 src/modules/skills/index.js 的 sourceLabel 是同一套算法，改一处要改两处）。
+//
+// 单源时末段就够了。**多源时不行**：订阅源目录几乎都叫 `skills`
+// （`~/.claude/skills`、`D:\a_other\md\sl\skills`），末段全都一模一样，
+// 于是列表里每一行的来源标签都写着同一个词，等于没标；下拉里也变成两个「skills」。
+//
+// 做法：先剥掉**所有源共有**的尾部段（通常就是 `skills`），再取「最短能唯一区分」的尾部；
+// 父目录也重名时继续往上退。完整路径始终留在 title 里，所以不会丢信息。
+// all = 全部订阅源路径（不传就只能退回末段，也就是这里要修掉的那个行为）。
+function sourceLabel(p, all) {
+  if (!p) return '';
+  const uniq = [...new Set([...(all || []), p].filter(Boolean))];
+  if (uniq.length < 2) return lastSeg(p);
+
+  const all2 = uniq.map(pathSegs);
+  // 1) 公共尾部段不参与区分
+  let common = 0;
+  const minLen = Math.min(...all2.map((s) => s.length));
+  while (common + 1 < minLen) {
+    const i = common + 1;
+    const tail = all2[0][all2[0].length - i].toLowerCase();
+    if (all2.every((s) => s[s.length - i].toLowerCase() === tail)) common += 1;
+    else break;
+  }
+  const pools = all2.map((s) => (s.length > common ? s.slice(0, s.length - common) : s));
+
+  // 2) 最短唯一后缀（父目录同名就再往上退一级）
+  const idx = uniq.indexOf(p);
+  const own = pools[idx];
+  let n = 1;
+  while (n < own.length) {
+    const tail = own.slice(-n).join('/').toLowerCase();
+    if (!pools.some((o, j) => j !== idx && o.slice(-n).join('/').toLowerCase() === tail)) break;
+    n += 1;
+  }
+  return own.slice(-n).join('/') || lastSeg(p);
+}
+
 // ---- skill 编辑器：新建 / 编辑共用（面板里的 C 与 U） ----
 function SkillEditor({ mode, skill = {}, close, reload }) {
   const { toast } = useToast();
@@ -172,6 +213,8 @@ export default function SkillsView() {
   useEffect(() => { load(); }, [load]);
 
   const sources = data?.sources || boot?.sources || [];
+  // 订阅源的展示名要拿「全部源」才能算出唯一后缀，见 sourceLabel
+  const srcPaths = sources.map((s) => s.path);
   const platformOpts = useMemo(
     () => (settings.platforms || []).filter((id) => adapters.some((a) => a.id === id)),
     [settings.platforms, adapters]
@@ -643,8 +686,11 @@ export default function SkillsView() {
           重复订阅
         </span>
       ) : (
-        <span className="tag" title={s.alsoIn?.length ? '同时存在于: ' + s.alsoIn.join(', ') : '来源目录'}>
-          {(s.source || '').replace(/^.*[\\/]/, '')}
+        <span
+          className="tag"
+          title={`来源: ${s.source || '（未知）'}${s.alsoIn?.length ? `\n同时存在于:\n${s.alsoIn.join('\n')}` : ''}`}
+        >
+          {sourceLabel(s.source, srcPaths)}
         </span>
       )}
       {/* 一个汇总标签（不随平台数膨胀），明细与逐落点操作在详情页的竖向列表里 */}
@@ -704,7 +750,9 @@ export default function SkillsView() {
               >
                 <option value="">（当前主源）</option>
                 {sources.map((s) => (
-                  <option key={s.path} value={s.path}>{s.path.replace(/^.*[\\/]/, '')}  ({s.count})</option>
+                  <option key={s.path} value={s.path} title={s.path}>
+                    {sourceLabel(s.path, srcPaths)}  ({s.count}){s.current ? ' · 主源' : ''}
+                  </option>
                 ))}
               </select>
               <button className="btn small ghost" title="订阅 skill 目录" onClick={addSource}>＋</button>
@@ -777,7 +825,7 @@ export default function SkillsView() {
             <input type="checkbox" checked={allSelected} title="全选 / 全不选" onChange={toggleAll} />
             {' '}
             {filtered ? `显示 ${visibleSkills.length} / ${allSkills.length}` : `${allSkills.length}`} 个
-            {hubPath ? <span title={'订阅源: ' + hubPath}> · {hubPath.replace(/^.*[\\/]/, '')}</span> : null}
+            {hubPath ? <span title={'当前主源: ' + hubPath}> · {sourceLabel(hubPath, srcPaths)}</span> : null}
             {filtered ? (
               <button
                 className="btn small ghost"
