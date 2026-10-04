@@ -2,6 +2,44 @@
 
 本文件记录对外可见的变更。格式参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)。
 
+## [0.12.0] - 2026-10-04 多 skill 包：`skill hub` 归位、内置 skill 可分组、新增 rh-collect
+
+### Added
+
+- **包里可以有多个 skill 了**（脚手架 B04）：`assets/` 下每个 `<name>/SKILL.md` 就是一个可装的
+  skill，由 `assets/groups.json` 归组。`skill list` 列**包内**可装的 skill 与 group（并标出默认
+  装哪个），`skill install [name]` 装单个，`skill install --group <key>` 一键装一组，
+  `skill groups` 看每个 group 含哪些 skill。
+- **`groups.json` 只是别名表，不是第二条事实源**。事实源永远只有 `assets/<x>/SKILL.md`：
+  文件缺失或解析失败时降级为「每个 skill 各成一组」——照样能装，只是没了 `--group`；
+  但 **schema 错**（缺 `groups`、某组缺 `skills`、skill 名非法）必须显式报错，那是打包事故，
+  静默吞掉只会让排查抓瞎。
+- **内置 skill `rh-collect`**：把 agent 在工作过程中发现 / 克隆的 git 仓库收进登记表的专用手册，
+  核心是「先扫描发现（零副作用），**问过用户再登记**」，与下面的 `repo scan --dry-run` 配套。
+- **`repo scan [root] [--depth N] [--dry-run]`**：`--dry-run` **只列出**发现的仓库、不登记。
+  「看看这底下都有些什么」和「把它们都收进来」是两件事，此前合并成一个动作，
+  等于逼人先猜、再后悔。`root` 现在可以省略，缺省当前目录。
+
+### Changed
+
+- **⚠️ 破坏性：业务命令全部归到 `skill hub` 下** —— `show / cat / add / update / remove /
+  purge / migrate / unmigrate / submit / materialize / merge / sources / subscribe /
+  unsubscribe / main / project / platform / adapters / check`。
+  原先 `skill list` 列的是**订阅源里的 skill**，而 `skill hub list|add|remove` 操作的却是
+  **订阅源本身** —— 同一个 `skill` 前缀下混着两套不同的宾语，还撞名（`list` 到底列 skill
+  还是列源？）。现在分工固定：`skill list` = 包内可装的，**订阅源里的 skill 与源自身
+  一律走 `skill hub`**（源本身是 `sources | subscribe | unsubscribe | main | check`）。
+  **脚本里写死的 `nx-rh skill migrate …` 要改成 `nx-rh skill hub migrate …`。**
+- `skill hub submit` 的 `--to` 缺省改为 `all`（未入 Hub 的 skill 多在**用户级**目录里，
+  原来缺省 project 经常一个都收不到）。
+- `skill install` 的返回多一个显式 `group` 字段：装一个与装一组的判别靠它，不做形状嗅探
+  ——「装一个」的退化结果里也可能带数组。
+
+### Fixed
+
+- 默认 install 的标记改为读**本包自己的** package.json，不再读 `process.cwd()`：
+  全局安装时 cwd 是用户的任意目录，永远匹配不上，标记会静默消失。
+
 ## [0.11.1] - 2026-10-04 面板修复：多源目录名可区分、skill 查看器可滚动
 
 ### Fixed
