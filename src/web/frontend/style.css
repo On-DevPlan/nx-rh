@@ -267,6 +267,22 @@ input:focus, select:focus {
 }
 h3 { font-size: 13px; margin: 0; font-weight: 700; }
 
+/* 子表头：作用域组内的「平台 · 目录」一行（未入 Hub 用）。
+   比 colhead 低一档：缩进 + 浅底色 + 更小字号，明示它从属于上面的作用域组。 */
+.subhead {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  height: var(--row-h);
+  padding: 0 12px 0 26px;
+  font-size: 11px;
+  color: var(--mid);
+  background: var(--soft);
+}
+.subhead .name { font-weight: 600; color: var(--ink); flex-shrink: 0; }
+.subhead .path { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.subhead > :last-child { margin-left: auto; flex-shrink: 0; }
+
 /* 收起/展开：次要区块（未入 Hub）的表头本身就是按钮——不加边框不加底色，
    只有三角指示状态，避免把「次要信息」做得比正文还抢眼 */
 .disclose {

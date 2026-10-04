@@ -305,7 +305,7 @@ export default function SkillsView() {
   // 用户级形态仍能在详情弹窗里看到并单独操作。
   const orphanGroups = useMemo(() => {
     const projName = String(project || '').replace(/^.*[\\/]/, '');
-    const mk = (key, scope, label) => ({ key, scope, label, dirs: new Set(), items: [] });
+    const mk = (key, scope, label) => ({ key, scope, label, items: [], buckets: new Map() });
     const proj = mk('project', 'project', projName ? `项目 · ${projName}` : '项目');
     const user = mk('user', 'user', '用户级');
     for (const o of data?.orphans || []) {
@@ -314,12 +314,27 @@ export default function SkillsView() {
       const hasProj = cells.some((c) => c.scope === 'project');
       const g = hasProj ? proj : user;
       g.items.push(o);
+      // 组内再按平台各自聚合：一个平台目录一行，直接写清「哪个平台 · 哪个目录」，
+      // 比「等 2 个目录」有用——不说平台名，用户根本不知道那份副本是给谁用的。
       for (const c of cells) {
-        if ((c.scope === 'project') === hasProj) g.dirs.add(String(c.dir || '').replace(/[\\/][^\\/]+$/, ''));
+        if ((c.scope === 'project') !== hasProj) continue;
+        const b = g.buckets.get(c.platform) || {
+          platform: c.platform,
+          platformName: c.platformName || c.platform,
+          dir: String(c.dir || '').replace(/[\\/][^\\/]+$/, ''),
+          items: [],
+        };
+        b.items.push(o);
+        g.buckets.set(c.platform, b);
       }
     }
+    const finish = (g) => ({
+      ...g,
+      // 平台名一览给组表头用；子表头按平台名排
+      bucketList: [...g.buckets.values()].sort((a, b) => a.platformName.localeCompare(b.platformName)),
+    });
     // 项目组在前；用户级游离大多是本机常驻旧副本，属于次要信息
-    return [proj, user].filter((g) => g.items.length);
+    return [finish(proj), finish(user)].filter((g) => g.items.length);
   }, [data, platformOpts, project]);
 
   // 分组各自的展开状态（会话级，不持久化）：默认项目组展开、用户组收起
@@ -625,15 +640,20 @@ export default function SkillsView() {
                     </button>
                     <span className="muted" style={{ fontWeight: 400 }}>  {g.items.length} 个</span>
                   </h3>
-                  <Copyable
-                    className="muted"
-                    text={[...g.dirs].join('\n')}
-                    title="点击复制这一组涉及的平台目录"
-                  >
-                    {[...g.dirs][0]}{g.dirs.size > 1 ? ` 等 ${g.dirs.size} 个目录` : ''}
-                  </Copyable>
+                  <span className="muted">{g.bucketList.map((b) => b.platformName).join(' · ')}</span>
                 </div>
-                {isGroupOpen(g) ? g.items.map((o) => renderRow(o, { orphan: true })) : null}
+                {isGroupOpen(g)
+                  ? g.bucketList.map((b) => (
+                      <Fragment key={b.platform}>
+                        <div className="subhead">
+                          <span className="name">{b.platformName}</span>
+                          <Copyable className="path" text={b.dir} title="点击复制该平台的目录">{b.dir}</Copyable>
+                          <span>{b.items.length} 个</span>
+                        </div>
+                        {b.items.map((o) => renderRow(o, { orphan: true }))}
+                      </Fragment>
+                    ))
+                  : null}
               </Fragment>
             ))
           ) : (
