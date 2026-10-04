@@ -2,6 +2,26 @@
 
 本文件记录对外可见的变更。格式参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)。
 
+## [0.11.1] - 2026-10-04 面板修复：多源目录名可区分、skill 查看器可滚动
+
+### Fixed
+
+- **多源订阅源的目录名现在能区分了**。订阅源目录几乎都叫 `skills`
+  （`~/.claude/skills`、`D:\a_other\md\sl\skills`），而面板有三处只取路径末段 ——
+  于是列表里 43 行的来源标签全是同一个词 `skills`，订阅源下拉也变成两个「skills」，
+  等于没标。改用「先剥掉**所有源共有**的尾部段，再取最短能唯一区分的尾部」：
+  现在是 `sl` / `.claude`，完整路径仍留在 `title` 里；下拉额外标出「· 主源」。
+  CLI 的 `shortSource`（原来取末两段，`sl/skills` / `.claude/skills`）也统一到同一套规则。
+- **skill 查看器的正文与文件树可以滚动了**。`.skl-files` 原先把高度约束写在容器上
+  （`max-height` + `overflow:hidden`），而 grid 子项的 `min-height` 默认是 `auto`
+  —— 子项被正文撑到全高（一份 SKILL.md 实测 9596px），容器那边只负责把它**裁掉**，
+  子项自己的 `overflow:auto` 永远不生效：表现为「看得见开头、滚不动、后面全够不着」。
+  现在把高度约束给在子项上（`min-height:0` + `max-height` + `overflow:auto`），
+  超过就自己内部滚，内容短时也不留一大块空白。
+- 同一个坑的另外两处一并补上：`.modal-body`（`.modal-box` 是 flex 列，子项默认
+  `min-height:auto` 会拒绝收缩，长 diff / 长落点列表同样被裁）、`.dlg` 浮层
+  （内容高过视口会溢出到屏幕外且滚不到）。
+
 ## [0.11.0] - 2026-10-04 面板信息架构重构：环境变量页 / Skill 页 + skill 的完整查看与删除
 
 ### Added
