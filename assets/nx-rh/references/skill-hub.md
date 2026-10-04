@@ -17,7 +17,7 @@
                      project: <启动目录>/<platform.dir>/<name>
 ```
 
-- 订阅源可以订阅**多个、允许重叠**；当前主源用 `nx-rh skill hub` 查看 / 切换
+- 订阅源可以订阅**多个、允许重叠**；当前主源用 `nx-rh skill hub main` 查看 / 切换
 - 目标 = 平台 × 作用域：`--platform` 选平台，`--to global|user|project|all` 选作用域
   （`global` 与 `user` 同义，都指 `~/`；缺省 `project`）
 - 平台既可用 id，也可用自然别名：`--platform claude` / `wb` / `cursor` / `gemini` / `universal`
@@ -26,12 +26,25 @@
   「把一个 skill 变成 .claude / .workbuddy / .cursor」在终端里直接可抄，无需先起面板
 - **不做项目之间互迁**——项目目录只是落地副本，真相永远在订阅源里
 
+## 命令命名空间（`skill` vs `skill hub`）
+
+| 命令 | 管什么 |
+| --- | --- |
+| `skill list` / `install` / `get` / `groups` | **包内的内置 skill**（随 nx-rh 发布的手册）；`--group <key>` 按组一键装 |
+| `skill hub list` / `show` / `cat` / `add` / `update` / `remove` / `purge` | 你订阅源里的 skill（本 ref 讲的就是这一套） |
+| `skill hub migrate` / `unmigrate` / `submit` / `materialize` | 订阅源 ↔ 平台目录的搬运 |
+| `skill hub sources` / `subscribe` / `unsubscribe` / `main` / `check` | 订阅源本身 |
+
+一句话：`skill list` 列的是**包里能装的**，`skill hub list` 列的是**你订阅源里的**。
+旧路径（`skill list` 指业务清单、`skill hub add/remove` 指订阅源）已验证过的别名仍可用，
+但**新写的东西请按上表**。
+
 ## SOP
 
 ### 1. 零启动盘点：订阅源里有什么、在哪、做什么
 
 ```bash
-nx-rh skill list [--source <路径>] [--project <项目根>] [--long] [--json]
+nx-rh skill hub list [--source <路径>] [--project <项目根>] [--long] [--json]
 ```
 
 - 默认一行一个：`名称 · 描述（截断）`；多订阅源时额外标出来源短名（如 `sl/skills`）
@@ -115,10 +128,10 @@ nx-rh skill materialize <name> --to user|project [--platform P]
 ## 订阅源管理
 
 ```bash
-nx-rh skill hub list                             # 订阅源清单（* 为当前主源）
-nx-rh skill hub add <路径>                       # 订阅一个 skill 目录（并设为主源）
-nx-rh skill hub remove <路径>                    # 取消订阅（不动磁盘）
-nx-rh skill hub <路径>                           # 直接切换当前主源
+nx-rh skill hub sources                          # 订阅源清单（* 为当前主源）
+nx-rh skill hub subscribe <路径>                 # 订阅一个 skill 目录（并设为主源）
+nx-rh skill hub unsubscribe <路径>               # 取消订阅（不动磁盘）
+nx-rh skill hub main [<路径>]                    # 查看 / 切换当前主源
 ```
 
 ## 批量选择（全量迁移，不手点）
@@ -184,7 +197,7 @@ nx-rh skill hub check          # 来源健康：目录缺失 / 空源 / 嵌套�
 
 | 问题 | kind | 含义 | 处理 |
 | --- | --- | --- | --- |
-| 目录不存在 | `missing` | 订阅的路径没了 | `skill hub remove` |
+| 目录不存在 | `missing` | 订阅的路径没了 | `skill hub unsubscribe` |
 | 没有实文件 skill | `empty` | 空目录，或里面全是链接 | 确认订阅的是不是真相源 |
 | 嵌套订阅 | `nested` | A 在 B 里面，会重复计数 | 只订阅叶子那层 |
 | 同一根重复订阅 | `same-root` | 两个路径解析到同一个 skills 根 | 留一个 |
@@ -226,7 +239,7 @@ nx-rh skill platform [claude-code workbuddy ...]               # 启用哪些平
 
 | 现象 | 原因 | 处理 |
 | --- | --- | --- |
-| `未设置 Skill Hub 订阅源` | 没有设置主源 | `nx-rh skill hub add <路径>` |
+| `未设置 Skill Hub 订阅源` | 没有设置主源 | `nx-rh skill hub subscribe <路径>` |
 | `订阅源里没有该 skill` | 主源缺该 skill，且各平台目录里也没有 | 换主源；或从平台目录 `skill submit <name>` 收进源 |
 | `目标目录里没有该 skill` | `--to` 选的那一侧没有它（未入 Hub 的 skill 多半在**用户级**） | `skill submit` 缺省已是 `--to all`；核对 `skill show <name>` 的落点矩阵 |
 | `… 的落点是断链：<落点> → <目标>（目标已不存在）` | 链接指向的目标被删/被移走了（常见于订阅源目录改名后留下的残留） | `skill purge <name>` 清掉；`skill show` 里 `broken: true` 就是这个原因 |

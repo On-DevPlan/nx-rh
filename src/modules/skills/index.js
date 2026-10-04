@@ -128,13 +128,13 @@ function renderSkillList(d, ctx) {
   }
   if (!ctx || !ctx.long) {
     lines.push('');
-    lines.push('（--long 看完整描述与目录；skill show <name> 看各平台落点）');
+    lines.push('（--long 看完整描述与目录；skill hub show <name> 看各平台落点）');
   }
   return lines.join('\n');
 }
 
 function renderSources(d) {
-  if (!d.sources.length) return '（暂无订阅源，用 nx-rh skill hub add <path> 添加）';
+  if (!d.sources.length) return '（暂无订阅源，用 nx-rh skill hub subscribe <path> 添加）';
   return d.sources.map((s) => `${s.current ? '*' : ' '} ${s.path}  (${s.count} 个)${s.exists ? '' : '  [目录不存在]'}`).join('\n');
 }
 
@@ -227,7 +227,7 @@ function renderShow(d) {
   } else if (d.conflict) {
     lines.push(`  · 重复订阅（内容一致）: ${sourceLabels(d.conflict.sources)}`);
   }
-  lines.push('  平台落点（skill migrate <name> --platform <id> --to user|global|project）：');
+  lines.push('  平台落点（skill hub migrate <name> --platform <id> --to user|global|project）：');
   for (const c of d.cells) {
     const head = `${SCOPE_MARK[c.scope] || c.scope}·${c.platformName || c.platform}`;
     lines.push(`    ${head.padEnd(22)} ${c.on ? c.linkType || '实体副本' : '未迁移'}  ${c.dir}`);
@@ -280,7 +280,7 @@ export default {
     // ---- 平台适配器 ----
     {
       id: 'skill.adapters',
-      cli: ['skill', 'adapters'],
+      cli: [['skill', 'hub', 'adapters'], ['skill', 'adapters']],
       http: ['GET', '/api/skills/adapters'],
       summary: '平台适配器清单（每平台的项目级 / 用户级绝对落点）',
       flags: { project: { type: 'string' } },
@@ -291,7 +291,7 @@ export default {
     // ---- 订阅源（Skill Hub）----
     {
       id: 'skill.sources',
-      cli: [['skill', 'hub', 'list'], ['skill', 'sources']],
+      cli: [['skill', 'hub', 'sources'], ['skill', 'sources']],
       http: ['GET', '/api/skills/sources'],
       summary: '订阅源清单（* 为当前主源）',
       run: () => service.listSources(),
@@ -299,7 +299,7 @@ export default {
     },
     {
       id: 'skill.hub.add',
-      cli: ['skill', 'hub', 'add'],
+      cli: ['skill', 'hub', 'subscribe'],
       http: ['POST', '/api/skills/sources'],
       summary: '订阅一个 skill 目录（并设为主源）',
       args: ['path'],
@@ -311,7 +311,7 @@ export default {
     },
     {
       id: 'skill.hub.remove',
-      cli: ['skill', 'hub', 'remove'],
+      cli: ['skill', 'hub', 'unsubscribe'],
       http: ['DELETE', '/api/skills/sources'],
       summary: '取消订阅（不动磁盘）',
       args: ['path'],
@@ -320,7 +320,7 @@ export default {
     },
     {
       id: 'skill.hub',
-      cli: ['skill', 'hub'],
+      cli: [['skill', 'hub', 'main'], ['skill', 'hub']],
       http: null,
       summary: '查看 / 设置当前主订阅源',
       args: [{ name: 'path', required: false }],
@@ -361,7 +361,7 @@ export default {
     {
       id: 'skill.list',
       // `skill scan` 是历史别名，与 `skill list` 同义
-      cli: [['skill', 'list'], ['skill', 'scan']],
+      cli: [['skill', 'hub', 'list'], ['skill', 'scan']],
       http: ['GET', '/api/skills'],
       summary: '列出订阅源 skill（名称 / 来源目录 / 描述 + 各目标迁移状态）',
       flags: { project: { type: 'string' }, source: { type: 'string' }, long: { type: 'boolean' } },
@@ -370,7 +370,7 @@ export default {
     },
     {
       id: 'skill.show',
-      cli: [['skill', 'show'], ['skill', 'describe']],
+      cli: [['skill', 'hub', 'show'], ['skill', 'show'], ['skill', 'describe']],
       http: ['GET', '/api/skills/detail'],
       summary: '查看单个 skill：完整描述 + 来源目录 + 各平台落点与当前形态',
       args: ['name'],
@@ -384,7 +384,7 @@ export default {
       // cat = 任意 skill 的全文（给外部 agent 当业务上下文）。
       // 订阅源与**未入 Hub 的平台副本**都读得到 —— 后者从前只查订阅源，必然 NOT_FOUND。
       id: 'skill.cat',
-      cli: ['skill', 'cat'],
+      cli: [['skill', 'hub', 'cat'], ['skill', 'cat']],
       http: ['GET', '/api/skills/content'],
       summary: '输出 skill 全文（SKILL.md 或 --ref <相对路径>），订阅源与未入 Hub 的平台副本都能读',
       args: ['name'],
@@ -399,7 +399,7 @@ export default {
           bar,
           d.content.replace(/\s*$/, ''),
           bar,
-          `# 需要迁移到本机？nx-rh skill migrate ${d.skillName} --to user`,
+          `# 需要迁移到本机？nx-rh skill hub migrate ${d.skillName} --to user`,
         ].join('\n');
       },
     },
@@ -407,7 +407,7 @@ export default {
     // ---- skill 实体的增改删（只动订阅源那份实文件） ----
     {
       id: 'skill.add',
-      cli: ['skill', 'add'],
+      cli: [['skill', 'hub', 'add'], ['skill', 'add']],
       http: ['POST', '/api/skills'],
       summary: '在订阅源新建一个 skill（已存在同名则报冲突）',
       args: [{ name: 'name', required: true }],
@@ -417,7 +417,7 @@ export default {
     },
     {
       id: 'skill.update',
-      cli: ['skill', 'update'],
+      cli: [['skill', 'hub', 'update'], ['skill', 'update']],
       http: ['PATCH', '/api/skills/:name'],
       summary: '改写订阅源 skill 的 SKILL.md 全文（须含 name/description frontmatter）',
       args: ['name'],
@@ -427,7 +427,7 @@ export default {
     },
     {
       id: 'skill.remove',
-      cli: ['skill', 'remove'],
+      cli: [['skill', 'hub', 'remove'], ['skill', 'remove']],
       http: ['DELETE', '/api/skills/:name'],
       summary: '从订阅源删除 skill（目标侧还有引用时返回 blocked，--force 继续）',
       args: ['name'],
@@ -445,7 +445,7 @@ export default {
       // purge 是「这个名字不该存在了」——连各平台落点一起删。
       // **未入 Hub 的 skill 只有这一条路能删**（订阅源里根本没有它，remove 是 NOT_FOUND）。
       id: 'skill.purge',
-      cli: ['skill', 'purge'],
+      cli: [['skill', 'hub', 'purge'], ['skill', 'purge']],
       http: ['POST', '/api/skills/purge'],
       summary: '彻底删除 skill：所有平台落点 + 订阅源里的实文件（--dry-run 先看清单）',
       args: ['name'],
@@ -467,7 +467,7 @@ export default {
     {
       id: 'skill.migrate',
       // `skill adapt` 是同一动作的口语别名：把 skill 适配成某平台形态（落到它的目录）
-      cli: [['skill', 'migrate'], ['skill', 'adapt']],
+      cli: [['skill', 'hub', 'migrate'], ['skill', 'migrate'], ['skill', 'adapt']],
       http: ['POST', '/api/skills/migrate'],
       summary: '订阅源 → 平台目录（<name...> | --all | --include；--exclude/--match 精筛；--dry-run 预演）',
       args: [{ name: 'name', rest: true, required: false }],
@@ -481,7 +481,7 @@ export default {
         ...SELECT,
       },
       run: (ctx) => {
-        if (!hasSelection(ctx)) throw badInput(`用法: nx-rh skill migrate ${SELECT_USAGE}`);
+        if (!hasSelection(ctx)) throw badInput(`用法: nx-rh skill hub migrate ${SELECT_USAGE}`);
         // CLI flag 名是 --dry-run（连字符），service 参数是 dryRun（驼峰）——在这一处映射
         return service.migrateSkill({ ...ctx, dryRun: ctx['dry-run'] === true, project: projectOf(ctx) });
       },
@@ -489,7 +489,7 @@ export default {
     },
     {
       id: 'skill.unmigrate',
-      cli: ['skill', 'unmigrate'],
+      cli: [['skill', 'hub', 'unmigrate'], ['skill', 'unmigrate']],
       http: ['POST', '/api/skills/unmigrate'],
       summary: '撤销迁移（<name...> | --all | --include；--exclude/--match 精筛；--dry-run 预演）',
       args: [{ name: 'name', rest: true, required: false }],
@@ -501,14 +501,14 @@ export default {
         ...SELECT,
       },
       run: (ctx) => {
-        if (!hasSelection(ctx)) throw badInput(`用法: nx-rh skill unmigrate ${SELECT_USAGE}`);
+        if (!hasSelection(ctx)) throw badInput(`用法: nx-rh skill hub unmigrate ${SELECT_USAGE}`);
         return service.unmigrateSkill({ ...ctx, dryRun: ctx['dry-run'] === true, project: projectOf(ctx) });
       },
       render: renderUnmigrate,
     },
     {
       id: 'skill.submit',
-      cli: ['skill', 'submit'],
+      cli: [['skill', 'hub', 'submit'], ['skill', 'submit']],
       http: ['POST', '/api/skills/submit'],
       summary: '平台副本 → 订阅源（<name...> | --all 取「未入 Hub」那批；提交后删除目标实文件）',
       args: [{ name: 'name', rest: true, required: false }],
@@ -523,14 +523,14 @@ export default {
         ...SELECT,
       },
       run: (ctx) => {
-        if (!hasSelection(ctx)) throw badInput(`用法: nx-rh skill submit ${SELECT_USAGE}`);
+        if (!hasSelection(ctx)) throw badInput(`用法: nx-rh skill hub submit ${SELECT_USAGE}`);
         return service.submitSkill({ ...ctx, dryRun: ctx['dry-run'] === true, project: projectOf(ctx) });
       },
       render: renderSubmit,
     },
     {
       id: 'skill.materialize',
-      cli: ['skill', 'materialize'],
+      cli: [['skill', 'hub', 'materialize'], ['skill', 'materialize']],
       http: ['POST', '/api/skills/materialize'],
       summary: '把目标侧的链接转换为实体副本',
       args: ['name'],
@@ -542,7 +542,7 @@ export default {
     // ---- 设置：平台范围 / 项目目录 ----
     {
       id: 'setting.platforms',
-      cli: ['skill', 'platform'],
+      cli: [['skill', 'hub', 'platform'], ['skill', 'platform']],
       http: null,
       summary: '查看 / 设置启用的平台（首个为默认平台）',
       args: [{ name: 'platforms', rest: true, required: false }],
@@ -558,15 +558,15 @@ export default {
     },
     {
       id: 'skill.project.list',
-      cli: [['skill', 'project', 'list'], ['skill', 'project']],
+      cli: [['skill', 'hub', 'project', 'list'], ['skill', 'project', 'list'], ['skill', 'project']],
       http: null,
       summary: '项目目录候选清单',
       run: async () => (await import('../settings/service.js')).listCandidates('project'),
-      render: (l) => (l.length ? l.join('\n') : '（暂无项目目录候选，用 skill project add <path> 添加）'),
+      render: (l) => (l.length ? l.join('\n') : '（暂无项目目录候选，用 skill hub project add <path> 添加）'),
     },
     {
       id: 'skill.project.add',
-      cli: ['skill', 'project', 'add'],
+      cli: [['skill', 'hub', 'project', 'add'], ['skill', 'project', 'add']],
       http: ['POST', '/api/skills/project'],
       summary: '添加项目目录候选',
       args: ['path'],
@@ -575,7 +575,7 @@ export default {
     },
     {
       id: 'skill.project.remove',
-      cli: ['skill', 'project', 'remove'],
+      cli: [['skill', 'hub', 'project', 'remove'], ['skill', 'project', 'remove']],
       http: ['DELETE', '/api/skills/project'],
       summary: '从候选移除项目目录（不动磁盘）',
       args: ['path'],
@@ -586,7 +586,7 @@ export default {
     // ---- 通用：三方合并（保留的 diff 原语）----
     {
       id: 'skill.merge',
-      cli: ['skill', 'merge'],
+      cli: [['skill', 'hub', 'merge'], ['skill', 'merge']],
       http: ['POST', '/api/util/merge'],
       summary: 'diff3-lite 三方合并原语（CLI 传文件路径，HTTP 传文本）',
       flags: {

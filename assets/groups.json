@@ -1,0 +1,14 @@
+{
+  "version": 1,
+  "$comment": "group 名 → skill 名列表的别名表。路径恒由 assets/<skills[i]>/ 推导——本文件只做聚合，不是第二条事实源。",
+  "groups": {
+    "nx-rh": {
+      "skills": ["nx-rh"],
+      "summary": "本项目主 skill（默认 install 装的就是这个）：仓库登记 + Skill 订阅/迁移/提交 + 环境变量"
+    },
+    "rh-collect": {
+      "skills": ["rh-collect"],
+      "summary": "把 agent 发现的 git 仓库收进 nx-rh 登记表（先问再入）"
+    }
+  }
+}

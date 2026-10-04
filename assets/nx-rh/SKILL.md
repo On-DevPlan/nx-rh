@@ -26,7 +26,7 @@ agent_created: true
    本手册按**场景**组织，不追求穷举命令。要完整命令面就跑 `nx-rh help --json` 或
    `nx-rh routes --json`——那两份由代码生成，不可能与实现脱节。手册里没写到某条命令
    不等于它不存在（只保证反过来：手册里写了的都真实存在）。
-2. **先读后写**：任何写操作（migrate / unmigrate / submit / materialize / env set）执行前，先用 `skill list` / `skill show` 看清现状。
+2. **先读后写**：任何写操作（migrate / unmigrate / submit / materialize / env set）执行前，先用 `skill hub list` / `skill hub show` 看清现状。
 3. **冲突不静默**：迁移到已存在且内容不同的目标时，命令返回 `conflict` 状态并列出文件清单，必须显式 `--force` 或手动处理；不要用 `--force` 掩盖不确定性。
 4. **幂等重试**：重复执行同一命令是安全的（已就绪会返回 `skipped`）；失败以非零退出码 + 可读错误返回，可安全重试。
 5. **只动该动的**：`repo remove` 只注销登记、不碰磁盘；`skill unmigrate` 删除实体副本需 `--force`；删除或覆盖类操作前先确认目标路径与影响面。
@@ -41,12 +41,20 @@ agent_created: true
 ## 主流程（最短路径）
 
 ```
-1. 定位：nx-rh repo list  ·  nx-rh skill list [--source <路径>] [--project <项目根>]
+1. 定位：nx-rh repo list  ·  nx-rh skill hub list [--source <路径>] [--project <项目根>]
 2. 诊断：nx-rh repo get <id>  ·  nx-rh skill show <name>
-3. 行动：nx-rh repo add|scan|update  ·  nx-rh skill migrate|unmigrate|submit|materialize|purge ...
+3. 行动：nx-rh repo add|scan|update  ·  nx-rh skill hub migrate|unmigrate|submit|materialize|purge ...
 4. 复核：重跑第 2 步，确认状态已按预期变化
 5. 汇报：说明实际执行了什么 + 剩余风险（尤其冲突未处理项）
 ```
+
+> **两个 list 别混**：`skill list` 列的是**包里能装的内置 skill**；
+> `skill hub list` 列的是**你订阅源里的 skill**。业务命令（show / cat / add / update /
+> remove / purge / migrate / unmigrate / submit / materialize）全都挂在 `skill hub` 下。
+> 订阅源本身用 `skill hub sources | subscribe | unsubscribe | main | check`。
+>
+> 另有配套 skill **`rh-collect`**（`skill install rh-collect` 或 `skill install --group=rh-collect`）：
+> 把 agent 发现的 git 仓库**先问过用户**再登记进仓库清单。
 
 ## 场景路由（ref-map）
 

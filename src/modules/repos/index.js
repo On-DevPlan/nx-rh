@@ -6,6 +6,8 @@
 // 面板里做不出比 IDE 更好的体验，真要看状态直接用 git 自己（见 README「为什么不管 git」）。
 import * as service from './service.js';
 
+const lastSeg = (p) => String(p || '').replace(/\\/g, '/').split('/').filter(Boolean).slice(-1)[0] || '';
+
 // ---- CLI 人读渲染（Web 端拿 JSON，用不到这些） ----
 // 签名是 (data, ctx)：ctx 让渲染能引用入参。
 
@@ -106,11 +108,29 @@ export default {
       id: 'repo.scan',
       cli: ['repo', 'scan'],
       http: ['POST', '/api/repos/scan'],
-      summary: '扫描目录，发现仓库并登记（按 .git / 目录特征识别）',
-      args: ['root'],
-      flags: { depth: { type: 'number', default: 3 } },
-      run: (ctx) => service.scanRepos(ctx.root, ctx.depth),
-      render: (d) => `扫描 ${d.root}: 发现 ${d.scanned} 个仓库，新登记 ${d.added.length} 个`,
+      summary: '扫描目录发现 git 仓库；--dry-run 只列出（发现模式，不登记）',
+      // root 缺省当前目录：最常见的用法就是「看看我现在这个目录下面都有些什么仓库」
+      args: [{ name: 'root', required: false }],
+      flags: {
+        depth: { type: 'number', default: 3 },
+        'dry-run': { type: 'boolean', hint: '只列出发现的仓库，不登记' },
+      },
+      run: (ctx) => service.scanRepos(ctx.root || process.cwd(), ctx.depth, { dryRun: ctx['dry-run'] === true }),
+      render: (d) => {
+        const head = `${d.dryRun ? '发现（未登记）' : '扫描'} ${d.root}: ${d.scanned} 个 git 仓库`;
+        if (!d.scanned) return `${head}\n（这个深度下没有找到）`;
+        const lines = [head];
+        for (const r of d.found) {
+          lines.push(`  ${r.known ? '已登记' : '未登记'}  ${r.path}${r.name && r.name !== lastSeg(r.path) ? `  (${r.name})` : ''}`);
+        }
+        if (d.dryRun) {
+          lines.push('', `确认要收进来的用: nx-rh repo add <path> --desc "一句话描述"`);
+          lines.push('（`repo scan` 不带 --dry-run 会直接登记全部）');
+        } else {
+          lines.push('', `新登记 ${d.added.length} 个${d.skipped ? `，已在册 ${d.skipped} 个` : ''}`);
+        }
+        return lines.join('\n');
+      },
     },
     {
       id: 'repo.open',

@@ -52,14 +52,24 @@ export default function ReposView() {
     });
   };
 
-  const doScan = () => guard(async () => {
-    if (!scan.root.trim()) return;
+  // 扫描有两种意图：「看看这底下有什么」（只发现，零副作用）与「都收进来」（真登记）。
+  // 前者是人/agent 的探测步骤，不该顺手改状态。
+  const doScan = (dryRun) => guard(async () => {
+    const root = scan.root.trim() || boot?.projectRoot || '';
+    if (!root) return;
     const r = await api('/api/repos/scan', {
       method: 'POST',
-      body: { root: scan.root.trim(), depth: parseInt(scan.depth, 10) || 3 },
+      body: { root, depth: parseInt(scan.depth, 10) || 3, 'dry-run': dryRun },
     });
-    setScanResult(`扫描 ${r.root}\n发现 ${r.scanned} 个仓库，新登记 ${r.added.length} 个`
-      + (r.added.length ? '\n\n' + r.added.map((x) => `  + ${x.name}  ${x.path}`).join('\n') : ''));
+    const lines = (r.found || []).map((x) => `  ${x.known ? '已登记' : '未登记'}  ${x.path}`);
+    if (dryRun) {
+      setScanResult(`发现 ${r.root} 下 ${r.scanned} 个 git 仓库（未登记，磁盘与登记表都没动）`
+        + (lines.length ? '\n\n' + lines.join('\n') : '\n')
+        + (r.scanned ? '\n\n要收进来：点「扫描登记」，或逐个 nx-rh repo add <path> --desc "一句话描述"' : ''));
+    } else {
+      setScanResult(`扫描 ${r.root}: 发现 ${r.scanned} 个仓库，新登记 ${r.added.length} 个`
+        + (r.added.length ? '\n\n' + r.added.map((x) => `  + ${x.name}  ${x.path}`).join('\n') : ''));
+    }
     await refreshBoot();
   });
 
@@ -90,11 +100,12 @@ export default function ReposView() {
         <button className="btn" onClick={submit}>{editing ? '保存修改' : '添加仓库'}</button>
         {editing ? <button className="btn ghost" onClick={resetForm}>取消编辑</button> : null}
         <span className="sep"></span>
-        <input placeholder="扫描根目录" size="20" spellCheck="false" value={scan.root}
+        <input placeholder="扫描根目录（留空＝当前项目）" size="20" spellCheck="false" value={scan.root}
           onChange={(e) => setScan({ ...scan, root: e.target.value })} />
         <input placeholder="深度" size="3" value={scan.depth}
           onChange={(e) => setScan({ ...scan, depth: e.target.value })} />
-        <button className="btn ghost" onClick={doScan}>扫描登记</button>
+        <button className="btn ghost" title="只列出发现的 git 仓库，不登记" onClick={() => doScan(true)}>只发现</button>
+        <button className="btn ghost" onClick={() => doScan(false)}>扫描登记</button>
       </div>
 
       {editing ? (

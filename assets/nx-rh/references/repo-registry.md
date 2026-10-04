@@ -68,7 +68,7 @@ nx-rh repo add <path> [--name N] [--desc D] [--tags a,b] [--notes T]
 ### 3. 批量发现
 
 ```bash
-nx-rh repo scan <root> [--depth 3]
+nx-rh repo scan [root] [--depth 3] [--dry-run]   # 不带 --dry-run 会真的全部登记
 ```
 
 - 递归查找含 `.git` 的目录（目录或文件都算——worktree / submodule 下是文件）并登记；已登记的自动跳过
@@ -103,6 +103,7 @@ nx-rh repo remove <id>   # 只移除登记，磁盘文件不受影响
 | --- | --- | --- |
 | 用 `repo list` 判断仓库有没有未提交改动 | 这里没有 git 信息，只会得到误导性结论 | 用 `git -C <path> status -sb` |
 | 用 `repo scan C:\` 全盘扫 | 极慢且登记大量无关目录 | 指定项目根 + 合理 `--depth` |
+| 拿 `repo scan` 当「看看有什么」 | 它会**真的全部登记**，几十条 desc 为空的记录立刻淹掉清单 | 探测用 `repo scan --dry-run`（只列出、零副作用），挑完再逐个 `repo add --desc` |
 | 把 `notes` 当 changelog 写 | 元信息越滚越长，列表失去可读性 | 只记「这个仓库是干什么的 / 在哪个生态里」 |
 
 ## 失败排查

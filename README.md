@@ -194,27 +194,31 @@ localStorage 持久化，刷新不丢。
 | `nx-rh repo add <path> [--name N] [--desc D] [--tags a,b] [--notes T]` | 添加仓库 |
 | `nx-rh repo update <id> [...]` | 编辑登记（含 `--path` 改路径） |
 | `nx-rh repo remove <id>` | 删除登记（不动磁盘） |
-| `nx-rh repo scan <root> [--depth 3]` | 扫描目录发现仓库 |
+| `nx-rh repo scan [root] [--depth 3] [--dry-run]` | 扫描发现 git 仓库；**`--dry-run` 只列出**（发现模式，零副作用），不带则全部登记。`root` 缺省当前目录 |
 | `nx-rh repo open <id>` | 在文件管理器中打开 |
-| `nx-rh skill adapters [--project <目录>]` | 平台清单 + 每平台的**项目级 / 用户级绝对落点** |
-| `nx-rh skill list [--source <路径>] [--project <项目根>] [--long]` | 零启动盘点：名称 / 来源目录 / 描述（`--long` 完整）+ 迁移状态 + 未入 Hub |
-| `nx-rh skill show <name> [--project <项目根>]` | 完整描述 + 目录 + 各平台落点与形态 |
-| `nx-rh skill cat <name> [--ref <相对路径>]` | 输出订阅源 skill 全文，供外部 agent 获取上下文 |
-| `nx-rh skill add <name> [--description 文本] [--content 全文]` | 新建 skill（写入当前订阅源；同名 → CONFLICT） |
-| `nx-rh skill update <name> --content <全文>` | 改写 SKILL.md（须含 name/description frontmatter） |
-| `nx-rh skill remove <name> [--force]` | 删除 skill（目标侧还有引用时 blocked） |
+| `nx-rh skill hub adapters [--project <目录>]` | 平台清单 + 每平台的**项目级 / 用户级绝对落点** |
+| `nx-rh skill hub list [--source <路径>] [--project <项目根>] [--long]` | 零启动盘点：名称 / 来源目录 / 描述（`--long` 完整）+ 迁移状态 + 未入 Hub |
+| `nx-rh skill hub show <name> [--project <项目根>]` | 完整描述 + 目录 + 各平台落点与形态 |
+| `nx-rh skill hub cat <name> [--ref <相对路径>]` | 输出 skill 全文（订阅源与未入 Hub 的平台副本都读得到） |
+| `nx-rh skill hub add <name> [--description 文本] [--content 全文]` | 新建 skill（写入当前订阅源；同名 → CONFLICT） |
+| `nx-rh skill hub update <name> --content <全文>` | 改写 SKILL.md（须含 name/description frontmatter） |
+| `nx-rh skill hub remove <name> [--force]` | 只从订阅源删除（目标侧还有引用时 blocked） |
+| `nx-rh skill hub purge <name> [--dry-run] [--force]` | **彻底删除**：所有平台落点 + 订阅源实文件（未入 Hub 的 skill 只有这条能删） |
+| `nx-rh skill list` | **包内**可装的 skill + 默认装哪个 + 有哪些 group（注意与 `skill hub list` 的区别） |
+| `nx-rh skill install [name] [--group <key>] [--to DIR] [--force]` | 安装内置 skill；`--group` 一键装一组（`groups.json` 分组） |
+| `nx-rh skill groups` | 可装的 group → 它包含哪些 skill |
 | `nx-rh skill get [name] [ref] [--to DIR]` | 内置手册三段导出（prefix + sentinel + 正文 + install 状态），并顺手安装 |
-| `nx-rh skill migrate\|adapt <name...> --to global\|user\|project\|all [--platform P] [--mode symlink\|copy]` | 订阅源 → 平台目录（目的仓库直接覆盖；`--platform` 可用别名 `claude` / `wb` / `cursor`） |
-| `nx-rh skill migrate --all [--include 模式] [--exclude 模式] [--match 描述词] [--dry-run]` | 批量迁移：全量 / 取子集 / 排除个别 / 按描述挑；`--dry-run` 只出计划不落盘 |
-| `nx-rh skill unmigrate <name...> --to global\|user\|project\|all [--platform P] [--force]` | 撤销迁移（迁移可逆；实体副本需 `--force`）；同样支持 `--all/--exclude/--dry-run` |
-| `nx-rh skill submit <name...> [--to project] [--all] [--exclude 模式] [--dry-run]` | 平台副本 → 订阅源；`--all` 一次收掉所有「未入 Hub」的 skill |
-| `nx-rh skill submit <name> [--to project] [--platform P] [--force]` | 平台副本 → 订阅源，随后删除目标实文件 |
-| `nx-rh skill materialize <name> --to user\|project [--platform P]` | 链接转实体 |
-| `nx-rh skill merge --base F --a F --b F` | diff3 合并原语 |
-| `nx-rh skill hub list\|add\|remove\|<path>` | 订阅源清单 / 订阅 / 取消订阅 / 切主源 |
+| `nx-rh skill hub migrate\|adapt <name...> --to global\|user\|project\|all [--platform P] [--mode symlink\|copy]` | 订阅源 → 平台目录（目的仓库直接覆盖；`--platform` 可用别名 `claude` / `wb` / `cursor`） |
+| `nx-rh skill hub migrate --all [--include 模式] [--exclude 模式] [--match 描述词] [--dry-run]` | 批量迁移：全量 / 取子集 / 排除个别 / 按描述挑；`--dry-run` 只出计划不落盘 |
+| `nx-rh skill hub unmigrate <name...> --to global\|user\|project\|all [--platform P] [--force]` | 撤销迁移（迁移可逆；实体副本需 `--force`）；同样支持 `--all/--exclude/--dry-run` |
+| `nx-rh skill hub submit <name...> [--exclude 模式] [--dry-run]` | 平台副本 → 订阅源；`--to` 缺省 `all`（未入 Hub 的 skill 多在**用户级**目录里） |
+| `nx-rh skill hub submit <name> [--to user\|project] [--platform P] [--force]` | 平台副本 → 订阅源，随后删除目标实文件 |
+| `nx-rh skill hub materialize <name> --to user\|project [--platform P]` | 链接转实体 |
+| `nx-rh skill hub merge --base F --a F --b F` | diff3 合并原语 |
+| `nx-rh skill hub sources\|subscribe\|unsubscribe\|main` | 订阅源清单 / 订阅 / 取消订阅 / 切主源 |
 | `nx-rh skill hub check` | 来源健康诊断：目录缺失 / 空源 / 嵌套订阅 / 重复根 / 跨源同名冲突 |
-| `nx-rh skill project list\|add\|remove <path>` | 项目目录候选 |
-| `nx-rh skill platform [ids...]` | 启用的平台范围 / 默认平台 |
+| `nx-rh skill hub project list\|add\|remove <path>` | 项目目录候选 |
+| `nx-rh skill hub platform [ids...]` | 启用的平台范围 / 默认平台 |
 | `nx-rh setting get [key]` / `setting set k=v [k2=v2 ...]` | 设置页 |
 | `nx-rh env status` | 环境变量页：能力横幅（平台 / 提权 / 两个 scope 可否写） |
 | `nx-rh env list [--scope user\|system]` | 变量表（不带 scope 则合并两 scope 并标注遮蔽与拼接） |
@@ -340,7 +344,7 @@ nx-rh skill get nx-rh skill-hub     # 裸名 ref → references/skill-hub.md
                      project: <启动目录>/<platform.dir>/<name>
 ```
 
-- **订阅源可多个、可重叠**：`skill hub add/remove/list` 维护；每个 skill 在列表里标注来源
+- **订阅源可多个、可重叠**：`skill hub subscribe/unsubscribe/sources` 维护；每个 skill 在列表里标注来源
 - **启动目录注入**：`nx-rh serve [dir]` 与 CLI 的当前目录即「项目根」，面板默认打开它；`--project` 可覆盖
 - **识别**：扫描源与目标目录，解析每个 `SKILL.md` 的 frontmatter（name/description）、算 md5、识别链接形态（symlink / junction / 实体）
 - **迁移形态**：
@@ -354,7 +358,7 @@ nx-rh skill get nx-rh skill-hub     # 裸名 ref → references/skill-hub.md
   不算来源，也不制造假冲突
 - **提交**：`skill submit` 把平台目录里的实体 skill 收进订阅源，然后**删除目标实文件**并改回链接——收敛「唯一实文件 = 订阅源」
 - **物化**：链接 → 实体副本（断开与订阅源的实时同步）
-- **零启动盘点**：`skill list`（`--long` 看完整描述与 skill 目录）/ `skill show <name>`（平台 × 作用域的落点矩阵）/
+- **零启动盘点**：`skill hub list`（`--long` 看完整描述与 skill 目录）/ `skill hub show <name>`（平台 × 作用域的落点矩阵）/
   `skill adapters`（每个平台的项目级与用户级绝对路径）——不起面板就能判断「这个 skill 能不能在 X 平台上用、该放到哪」
 - **平台别名**：`--platform claude` / `wb` / `cursor` / `gemini` / `universal` 等价于对应 id；
   `skill adapt` 是 `skill migrate` 的别名（口语说法：把一个 skill 变成 .cursor）

@@ -78,10 +78,10 @@ try {
   check('cli unknown -> exit 1', cli(['nope']).status === 1);
 
   // ---- 2. 订阅源（Skill Hub） ----
-  check('skill hub add', cli(['skill', 'hub', 'add', hub]).status === 0);
+  check('skill hub subscribe', cli(['skill', 'hub', 'subscribe', hub]).status === 0);
   const settings = cliJson(['setting', 'get']);
   check('setting get', settings.skillHubPath === hub, String(settings.skillHubPath));
-  check('skill hub list', (cliJson(['skill', 'hub', 'list']).sources || []).some((s) => s.path === hub && s.current));
+  check('skill hub sources', (cliJson(['skill', 'hub', 'sources']).sources || []).some((s) => s.path === hub && s.current));
 
   // ---- 3. 仓库登记 CRUD ----
   // 仓库模块只做登记，不碰 git：状态 / diff / pull / push / resolve 已随 git 能力移除。
@@ -112,8 +112,16 @@ try {
   const scanned = cliJson(['repo', 'scan', scanRoot, '--depth', '2']);
   check('repo scan 只登记含 .git 的目录', scanned.scanned === 2 && scanned.added.length === 2, JSON.stringify(scanned.added.map((x) => x.path)));
 
+  const dryScan = cliJson(['repo', 'scan', scanRoot, '--depth', '2', '--dry-run']);
+  check(
+    'repo scan --dry-run 只发现不登记（零副作用）',
+    dryScan.dryRun === true && dryScan.scanned === 2 && dryScan.added.length === 0
+      && dryScan.found.every((x) => x.known === true),
+    JSON.stringify(dryScan).slice(0, 220)
+  );
+
   // ---- 4. 订阅源 skill 识别 ----
-  const listed = cliJson(['skill', 'list']);
+  const listed = cliJson(['skill', 'hub', 'list']);
   check(
     '订阅源 skill 识别（含来源）',
     listed.skills.length === 1 && listed.skills[0].name === 'demo-skill' && listed.skills[0].source === hub,
@@ -127,7 +135,7 @@ try {
   check('migrate 软链接', mig.status === 'ok' && ['junction', 'symlink'].includes(mig.results[0].linkType), JSON.stringify(mig).slice(0, 160));
   const migAgain = cliJson(['skill', 'migrate', 'demo-skill', '--to', 'project', '--project', project, '--platform', 'claude-code']);
   check('重复迁移幂等跳过', migAgain.status === 'ok' && migAgain.skipped >= 1, JSON.stringify(migAgain).slice(0, 160));
-  const projAfter = cliJson(['skill', 'list', '--project', project]);
+  const projAfter = cliJson(['skill', 'hub', 'list', '--project', project]);
   const demoRow = projAfter.skills.find((s) => s.name === 'demo-skill');
   check(
     '迁移状态回读为已链接',
@@ -152,7 +160,7 @@ try {
   // ---- 8. 物化（链接 → 实体） ----
   const mat = cliJson(['skill', 'materialize', 'demo-skill', '--to', 'project', '--project', project, '--platform', 'claude-code']);
   check('materialize 转实体', mat.converted === true, JSON.stringify(mat).slice(0, 160));
-  const projMat = cliJson(['skill', 'list', '--project', project]);
+  const projMat = cliJson(['skill', 'hub', 'list', '--project', project]);
   const demoRow2 = projMat.skills.find((s) => s.name === 'demo-skill');
   check('物化后该目标不再是链接', demoRow2.cells.find((c) => c.scope === 'project' && c.platform === 'claude-code').linkType === '');
 
@@ -173,7 +181,7 @@ try {
     join(project, '.claude', 'skills', 'local-skill', 'SKILL.md'),
     '---\nname: local-skill\ndescription: 只在项目里\n---\n\n# L\n'
   );
-  const beforeSubmit = cliJson(['skill', 'list', '--project', project]);
+  const beforeSubmit = cliJson(['skill', 'hub', 'list', '--project', project]);
   check('未入 Hub 的 skill 被单列', (beforeSubmit.orphans || []).some((o) => o.name === 'local-skill'));
 
   const submitted = cliJson(['skill', 'submit', 'local-skill', '--to', 'project', '--project', project, '--platform', 'claude-code']);
@@ -222,8 +230,8 @@ try {
     join(crlfSource, 'quoted-skill', 'SKILL.md'),
     '---\nname: quoted-skill\ndescription: "带引号的描述"\n---\n\n# body\n'
   );
-  check('订阅第二个源', cli(['skill', 'hub', 'add', crlfSource]).status === 0);
-  const parsed = cliJson(['skill', 'list', '--source', crlfSource]);
+  check('订阅第二个源', cli(['skill', 'hub', 'subscribe', crlfSource]).status === 0);
+  const parsed = cliJson(['skill', 'hub', 'list', '--source', crlfSource]);
   const byName = Object.fromEntries((parsed.skills || []).map((s) => [s.name, s.description]));
   check('CRLF frontmatter 描述解析', byName['crlf-skill'] === '换行是 CRLF 时也要能读出描述', JSON.stringify(byName['crlf-skill']));
   check('折叠块标量描述解析', byName['block-skill'] === '折叠块标量 要合并成一行', JSON.stringify(byName['block-skill']));
@@ -231,11 +239,23 @@ try {
 
   // ---- 15. 内置 skill 包安装（nx-rh，目录名 = 包名，见脚手架 A03 §二） ----
   const skillsHome = join(tmp, 'claude-skills');
-  const bundleList = cliJson(['skill', 'install', '--list']);
+  const bundleList = cliJson(['skill', 'list']);
   check(
-    'bundled 列表含 nx-rh',
-    Array.isArray(bundleList) && bundleList.some((s) => s.name === 'nx-rh' && s.files >= 4),
-    JSON.stringify(bundleList && bundleList.map((s) => s.name + ':' + s.files))
+    'skill list 是内置可装清单（B04 形状：skills 名字数组 + defaultGroup + groups）',
+    Array.isArray(bundleList.skills) && bundleList.skills.includes('nx-rh')
+      && bundleList.defaultGroup === 'nx-rh' && Array.isArray(bundleList.groups)
+      && bundleList.groups.includes('rh-collect'),
+    JSON.stringify(bundleList).slice(0, 220)
+  );
+  check('skill install --list 仍是别名（形状随主命令）',
+    Array.isArray(cliJson(['skill', 'install', '--list']).skills));
+  const bundleGroups = cliJson(['skill', 'groups']);
+  check(
+    'skill groups 给出 group → skills 映射',
+    Array.isArray(bundleGroups.groups)
+      && (bundleGroups.groupSkills['nx-rh'] || []).includes('nx-rh')
+      && (bundleGroups.groupSkills['rh-collect'] || []).includes('rh-collect'),
+    JSON.stringify(bundleGroups).slice(0, 220)
   );
 
   const inst = cliJson(['skill', 'install', '--to', skillsHome]);
@@ -259,6 +279,15 @@ try {
 
   check('非法包名被拒', cli(['skill', 'install', '../evil', '--to', skillsHome]).status === 1);
   check('旧名 repo-hub 仍可作别名', cli(['skill', 'install', 'repo-hub', '--to', skillsHome]).status === 0);
+
+  const groupInst = cliJson(['skill', 'install', '--group=rh-collect', '--to', skillsHome]);
+  check(
+    'skill install --group 装该组全部 skill（聚合形状用显式 group 字段判别）',
+    groupInst.group === 'rh-collect' && groupInst.skills.length === 1 && groupInst.skills[0].name === 'rh-collect',
+    JSON.stringify(groupInst).slice(0, 220)
+  );
+  check('未知 group 报错并列可用', cli(['skill', 'install', '--group=bogus', '--to', skillsHome]).status === 1);
+  check('<name> 与 --group 互斥', cli(['skill', 'install', 'nx-rh', '--group=nx-rh', '--to', skillsHome]).status === 1);
 
   // skill get：三段拼接 + sentinel + 顺手安装；--json 是不含 prefix 的四元
   const got = cli(['skill', 'get']);
@@ -300,7 +329,7 @@ try {
     addrOut.stdout.includes(join(project, '.claude', 'skills')) &&
       addrOut.stdout.includes(join(home, '.claude', 'skills')));
 
-  const listLong = cli(['skill', 'list', '--long', '--project', project]);
+  const listLong = cli(['skill', 'hub', 'list', '--long', '--project', project]);
   check('skill list --long 打印目录与完整描述',
     listLong.stdout.includes('目录: ') && listLong.stdout.includes('smoke test skill'));
 
@@ -447,7 +476,9 @@ try {
   const bundledRes = await (await fetch(base + '/api/bundled')).json();
   check(
     'api bundled 列表',
-    bundledRes.ok && bundledRes.data.skills.some((s) => s.name === 'nx-rh') && !!bundledRes.data.defaultDir
+    bundledRes.ok && !!bundledRes.data.defaultDir
+      && bundledRes.data.skills.some((s) => s.name === 'nx-rh' && s.files >= 4)
+      && Array.isArray(bundledRes.data.groups)
   );
 
   const badRes = await (

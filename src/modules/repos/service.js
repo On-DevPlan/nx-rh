@@ -109,8 +109,10 @@ async function hasGitDir(dir) {
   }
 }
 
-// 扫描根目录下的仓库并登记（跳过依赖类大目录，允许 .claude 等点目录）
-export async function scanRepos(root, depth = 3) {
+// 扫描根目录下的 git 仓库。
+// `dryRun` 时**只列出**（发现模式）：「看看这底下都有些什么仓库」和「把它们都收进来」
+// 是两个动作，前者不该有任何副作用——agent 的探测步骤尤其不能顺手改状态。
+export async function scanRepos(root, depth = 3, { dryRun = false } = {}) {
   const absRoot = resolve(String(root || ''));
   const found = [];
 
@@ -130,6 +132,25 @@ export async function scanRepos(root, depth = 3) {
   }
 
   await walk(absRoot, depth);
+
+  const repos = (await loadStore()).repos;
+  const byPath = new Map(repos.map((r) => [r.path.toLowerCase(), r]));
+  const detail = found.map((p) => {
+    const hit = byPath.get(p.toLowerCase());
+    return { path: p, known: !!hit, name: hit ? hit.name : '' };
+  });
+
+  if (dryRun) {
+    return {
+      root: absRoot,
+      dryRun: true,
+      scanned: found.length,
+      found: detail,
+      added: [],
+      skipped: detail.filter((x) => x.known).length,
+    };
+  }
+
   const added = [];
   for (const p of found) {
     try {
@@ -138,7 +159,14 @@ export async function scanRepos(root, depth = 3) {
       // 已登记，跳过
     }
   }
-  return { root: absRoot, scanned: found.length, added };
+  return {
+    root: absRoot,
+    dryRun: false,
+    scanned: found.length,
+    found: detail,
+    added,
+    skipped: detail.length - added.length,
+  };
 }
 
 // 在系统文件管理器中打开（"操作 OS 方便"的最小切口）

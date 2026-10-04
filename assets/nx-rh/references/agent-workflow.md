@@ -49,7 +49,7 @@ nx-rh routes --http "POST /api/skills/migrate"   # 手里有端点，反查该�
 nx-rh repo list --json
 
 # 订阅源里的 skill 及各目标迁移状态
-nx-rh skill list --project <P> --json
+nx-rh skill hub list --project <P> --json
 ```
 
 > git 状态（分支 / 领先落后 / 变更 / 冲突）**不在这里**——本工具不提供 git 操作。
@@ -60,7 +60,7 @@ nx-rh skill list --project <P> --json
 单条命令只作用于一个对象，批量靠外层循环：
 
 ```bash
-for name in $(nx-rh skill list --json | jq -r '.skills[].name'); do
+for name in $(nx-rh skill hub list --json | jq -r '.skills[].name'); do
   nx-rh skill migrate "$name" --to project --project <P> --json
 done
 ```
@@ -92,7 +92,7 @@ nx-rh repo list --json | jq 'group_by(.tags[]) | map({tag: .[0].tags[0], n: leng
 
 1. **不做破坏性推断**：删除、覆盖类操作需明确授权；`--force` 不是"重试按钮"。
 2. **测试隔离**：任何自测都设 `NX_RH_STORE` 指向临时目录，禁止写真实 `~/.nx-rh/store.json`。
-3. **改动前后留痕**：写操作前后各跑一次 `skill list`，把差异写进汇报。
+3. **改动前后留痕**：写操作前后各跑一次 `skill hub list`，把差异写进汇报。
 4. **不确定就停**：遇到未覆盖的命令或非预期输出，停下来询问，不要猜测参数。
 
 ## 正反例
