@@ -463,12 +463,27 @@ export default function SkillsView() {
     setModal({ title: `skill · ${s.name}`, node });
   };
 
+  // 行上的状态只用**一个**标签表达：勋章按「平台 × 作用域」线性膨胀（2 平台 4 个、
+  // 4 平台 8 个），行里根本放不下。逐落点的迁移 / 撤销归详情页的竖向列表。
+  const rowCells = (s) => (s.cells || []).filter((c) => platformOpts.includes(c.platform));
+  const cellState = (s, orphan) => {
+    const cells = rowCells(s);
+    if (!cells.length) return '—';
+    if (orphan) return `${cells.length} 处`;
+    const on = cells.filter((c) => c.on).length;
+    return on ? `已迁移 ${on}/${cells.length}` : '未迁移';
+  };
+  const cellSummary = (s) =>
+    rowCells(s)
+      .map((c) => `${SCOPE_SHORT[c.scope]}·${c.platformName || shortLabel(c.platform, adapters)}：${c.on ? (c.linkType || '实体') : '未迁移'}`)
+      .join('\n');
+
   const renderRow = (s, { orphan } = {}) => (
     <div
       key={s.name}
       className="row"
       style={{ cursor: 'pointer' }}
-      title="点击查看详情与操作"
+      title="点击查看详情与操作（逐落点的迁移 / 撤销在里面）"
       onClick={() => openDetail(s, { orphan })}
     >
       <input
@@ -498,28 +513,12 @@ export default function SkillsView() {
           {(s.source || '').replace(/^.*[\\/]/, '')}
         </span>
       )}
-      {/* 勋章即操作：点一下 = 迁移到该落点 / 已迁移则撤销（未入 Hub 的行 = 提交到订阅源） */}
-      <span className="plats">
-        {(s.cells || []).filter((c) => platformOpts.includes(c.platform)).map((c) => (
-          <button
-            key={c.scope + c.platform}
-            className={'pill' + (c.on ? (c.linkType ? ' on lnk' : ' on real') : '')}
-            title={
-              orphan
-                ? `${SCOPE_SHORT[c.scope]}·${c.platformName || c.platform}：不在订阅源里 · 点击提交到订阅源`
-                : c.on
-                  ? `${SCOPE_SHORT[c.scope]}·${c.platformName || c.platform}：已迁移（${c.linkType ? c.linkType + ' 链接' : '实体副本'}）· 点击撤销`
-                  : `点击迁移到 ${SCOPE_SHORT[c.scope]}·${c.platformName || c.platform}`
-            }
-            onClick={(e) => {
-              e.stopPropagation();
-              // 勋章即操作：已在该落点 → 撤销；不在 → 迁移；未入 Hub → 提交到订阅源
-              if (orphan) submit(s.name, c.scope); else toggleCell(s.name, c);
-            }}
-          >
-            {SCOPE_SHORT[c.scope] === '用户' ? '用' : '项'}·{shortLabel(c.platform, adapters)}
-          </button>
-        ))}
+      {/* 一个汇总标签（不随平台数膨胀），明细与逐落点操作在详情页的竖向列表里 */}
+      <span
+        className={'tag' + (orphan ? ' bad' : rowCells(s).length && rowCells(s).every((c) => c.on) ? ' strong' : '')}
+        title={cellSummary(s) || '当前启用的平台没有落点'}
+      >
+        {cellState(s, orphan)}
       </span>
       <span className="acts">
         <button
