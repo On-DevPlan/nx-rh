@@ -192,12 +192,19 @@ main { padding: 8px 20px 28px; max-width: 1240px; margin: 0 auto; }
   display: grid;
   grid-template-columns: 220px 1fr;
   min-height: 240px;
-  max-height: 46vh;
   border: var(--border);
   border-radius: var(--radius-flat);
   overflow: hidden;
 }
+/* 高度约束放在**子项**上，不放在容器上。
+   容器只给 max-height 是不够的：grid 子项的 min-height 默认是 auto（内容最小高度），
+   会被内容撑到全高（一份 SKILL.md 实测 9596px），而容器那边只负责把它**裁掉** ——
+   结果是「看得见开头、滚不动、后面全够不着」，子项自己的 overflow:auto 永远不生效。
+   子项自己带 max-height + min-height:0，才会在超过时自己内部滚动；
+   内容短时行高就跟着内容走，不会平白留一大块空白。 */
 .skl-tree {
+  min-height: 0;
+  max-height: 46vh;
   overflow: auto;
   padding: 4px;
   background: var(--soft);
@@ -230,7 +237,8 @@ main { padding: 8px 20px 28px; max-width: 1240px; margin: 0 auto; }
   font-family: ui-monospace, Consolas, monospace;
 }
 .skl-file .b { flex: 0 0 auto; font-size: 10px; }
-.skl-body { overflow: auto; padding: 10px 12px; background: var(--paper); }
+/* 正文面板同理：min-height:0 才能让它自己的 max-height 生效 */
+.skl-body { min-height: 0; max-height: 46vh; overflow: auto; padding: 10px 12px; background: var(--paper); }
 
 /* ---------- 输入框：核心显示密度（与行同高） ---------- */
 input, select {
@@ -324,6 +332,9 @@ input:focus, select:focus {
   justify-content: center;
   padding: 96px 16px;
   z-index: 50;
+  /* 浮层自己可滚：`.dlg` 是 flex（align-items:flex-start），内容高过视口时
+     没有 overflow 就会直接溢出到屏幕外、还滚不到 */
+  overflow: auto;
 }
 .dlg-box {
   background: var(--paper);
@@ -566,7 +577,10 @@ dd .adapter-dir { display: inline-block; margin-right: 14px; }
   font-weight: 700;
   border-bottom: var(--border);
 }
-.modal-body { padding: 14px; overflow: auto; }
+/* min-height:0 是「flex 子项不能滚」那个坑的另一半：.modal-box 是 flex 列容器，
+   子项默认 min-height:auto 会拒绝缩到内容以下 —— 于是长内容（diff / 长落点列表）
+   超出 max-height:84vh 时会被 .modal-box 的 overflow:hidden 直接裁掉，滚不到。 */
+.modal-body { min-height: 0; padding: 14px; overflow: auto; }
 
 /* ---------- 全局页脚（App.jsx 的 footer）：与 .cli-hint 同族的提示区 ---------- */
 footer {
