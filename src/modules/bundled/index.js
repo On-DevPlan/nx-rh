@@ -81,12 +81,15 @@ export default {
         const info = await service.groupsInfo();
         if (meta.transport !== 'http') return info;
         const details = await service.listBundledSkills();
+        // 展开顺序要紧：info.skills 是**名字数组**，details 是**对象数组**
+        // （{name,dir,files,description}）。先铺 info、再压 details，否则
+        // skills 会被覆盖回字符串数组 —— 面板与 smoke 读 skills[].name 全变 undefined。
         return {
+          ...info,
           defaultDir: service.DEFAULT_SKILLS_DIR,
           // smoke 与面板都在读 skills[].name —— HTTP 侧保持这个形状
           skills: details,
           details,
-          ...info,
         };
       },
       render: renderList,
