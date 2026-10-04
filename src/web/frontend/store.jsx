@@ -16,6 +16,8 @@ const DEFAULT_UI = {
   activeScope: null,  // 激活的项目目录（右上角切换）
   selSkills: [],      // Skill 页多选勾选（skill 名）
   orphansOpen: false, // 「未入 Hub」区块展开与否（次要信息，默认收起）
+  q: '',              // Skill 页搜索词（名称 / 描述，即时过滤）
+  listFilter: 'all',  // Skill 页筛选：all | todo（未迁移）| conflict（跨源冲突）
 };
 
 function loadUi() {

@@ -135,6 +135,8 @@ main { padding: 8px 20px 28px; max-width: 1240px; margin: 0 auto; }
 .toolbar label { color: var(--mid); }
 .sep { width: 1px; height: 16px; background: var(--soft-2); margin: 0 4px; }
 .grow { max-width: 340px; }
+/* 搜索框：列表的主要入口，允许比普通输入更宽 */
+.toolbar .search { max-width: 460px; }
 
 /* ---------- 输入框：核心显示密度（与行同高） ---------- */
 input, select {
@@ -318,6 +320,16 @@ h3 { font-size: 13px; margin: 0; font-weight: 700; }
 .row:hover { background: var(--soft); }
 .row .name { font-weight: 600; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .row .desc { color: var(--mid); flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+/* 列表行（skill）：名称定宽 —— 一列名字对齐才扫得动；描述降为次要（11px 灰字单行） */
+.row.skl { gap: 10px; }
+.row.skl .name { flex: 0 0 auto; width: 208px; }
+.row.skl .desc { font-size: 11px; }
+
+/* 行尾操作：常显就是「每行一个按钮」的噪音，默认压低、悬停/聚焦才提亮
+   （不移除：可发现性与键盘可达性都要留） */
+.row.skl .acts { opacity: .35; transition: opacity .12s; }
+.row.skl:hover .acts, .row.skl:focus-within .acts { opacity: 1; }
 .row .acts { margin-left: auto; display: flex; align-items: center; gap: 6px; flex-shrink: 0; }
 
 /* ---------- pill / tag：平台、状态小标签 ---------- */

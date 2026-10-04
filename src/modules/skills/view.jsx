@@ -102,6 +102,11 @@ export default function SkillsView() {
   const adapters = boot?.adapters || [];
   const source = ui.source || '';
 
+  // 搜索 / 筛选：48 个 skill 靠滚动找是不行的，先用「名字或描述」命中再谈其它。
+  const q = String(ui.q || '').trim().toLowerCase();
+  const listFilter = ui.listFilter || 'all';
+  const hit = (s) => !q || `${s.name} ${s.description || ''}`.toLowerCase().includes(q);
+
   // 项目 = 右上角激活的目录（无则服务进程目录）。项目级信息只针对它。
   // 必须声明在 load 之前——load 的依赖数组引用它，声明在后就是 TDZ 白屏。
   const project = ui.activeScope?.path || boot?.projectRoot || '';
@@ -309,6 +314,7 @@ export default function SkillsView() {
     const proj = mk('project', 'project', projName ? `项目 · ${projName}` : '项目');
     const user = mk('user', 'user', '用户级');
     for (const o of data?.orphans || []) {
+      if (q && !`${o.name} ${o.description || ''}`.toLowerCase().includes(q)) continue;
       const cells = (o.cells || []).filter((c) => platformOpts.includes(c.platform));
       if (!cells.length) continue;
       const hasProj = cells.some((c) => c.scope === 'project');
@@ -335,19 +341,21 @@ export default function SkillsView() {
     });
     // 项目组在前；用户级游离大多是本机常驻旧副本，属于次要信息
     return [finish(proj), finish(user)].filter((g) => g.items.length);
-  }, [data, platformOpts, project]);
+  }, [data, platformOpts, project, q]);
 
   // 分组各自的展开状态（会话级，不持久化）：默认项目组展开、用户组收起
   const [groupOpen, setGroupOpen] = useState({});
-  const isGroupOpen = (g) => groupOpen[g.key] ?? g.scope === 'project';
+  // 默认：项目组展开、用户组收起；搜索时两组都展开（命中就在里面，别让用户再点一次）
+  const isGroupOpen = (g) => groupOpen[g.key] ?? (g.scope === 'project' || !!q);
   const toggleGroup = (g) => setGroupOpen((m) => ({ ...m, [g.key]: !isGroupOpen(g) }));
 
   // 未入 Hub 默认收起（ui.orphansOpen）：它只是「待收敛」的提示，不是日常要看的信息。
   // 收起时表头仍给出数量与作用域分布，不至于完全丢信息。
-  const orphansOpen = !!ui.orphansOpen;
+  // 例外：正在搜索且这里有命中 → 自动展开，否则用户会以为「搜不到」。
   const orphanProjCount = orphanGroups.find((g) => g.scope === 'project')?.items.length || 0;
   const orphanUserCount = orphanGroups.find((g) => g.scope === 'user')?.items.length || 0;
   const orphanCount = orphanProjCount + orphanUserCount;
+  const orphansOpen = !!ui.orphansOpen || (!!q && orphanCount > 0);
 
   // ---- 详情弹窗：查看 + 操作都收进来，行上只留一个入口（轻量） ----
   const closeModal = () => setModal(null);
@@ -493,10 +501,20 @@ export default function SkillsView() {
       .map((c) => `${SCOPE_SHORT[c.scope]}·${c.platformName || shortLabel(c.platform, adapters)}：${c.on ? (c.linkType || '实体') : '未迁移'}`)
       .join('\n');
 
+  // 列表过滤：搜索（名称/描述）+ 三态筛选。计数给表头用，避免「筛完看不到总共多少」
+  const allSkills = data?.skills || [];
+  const visibleSkills = allSkills.filter((s) => {
+    if (!hit(s)) return false;
+    if (listFilter === 'todo') return !(rowCells(s).length && rowCells(s).every((c) => c.on));
+    if (listFilter === 'conflict') return !!s.conflict;
+    return true;
+  });
+  const filtered = !!q || listFilter !== 'all';
+
   const renderRow = (s, { orphan } = {}) => (
     <div
       key={s.name}
-      className="row"
+      className="row skl"
       style={{ cursor: 'pointer' }}
       title="点击查看详情与操作（逐落点的迁移 / 撤销在里面）"
       onClick={() => openDetail(s, { orphan })}
@@ -508,8 +526,9 @@ export default function SkillsView() {
         onClick={(e) => e.stopPropagation()}
         onChange={() => toggleSel('selSkills', s.name)}
       />
-      <span className="name">{s.name}</span>
-      <span className="desc">{s.description}</span>
+      <span className="name" title={s.name}>{s.name}</span>
+      {/* 描述是「次要信息」：11px 灰字、单行截断，悬停看全文 */}
+      <span className="desc" title={s.description || ''}>{s.description}</span>
       {orphan ? (
         <span className="tag bad" title="不在订阅源里，实文件散落在平台目录">未入 Hub</span>
       ) : s.conflict && !s.conflict.same ? (
@@ -549,18 +568,38 @@ export default function SkillsView() {
   return (
     <>
       <div className="toolbar">
+        {/* 搜索放最前：48 个 skill，先能找再谈别的 */}
+        <input
+          className="search grow"
+          type="search"
+          placeholder="搜索名称 / 描述…（Esc 清空）"
+          value={ui.q || ''}
+          onChange={(e) => patchUi({ q: e.target.value })}
+          onKeyDown={(e) => { if (e.key === 'Escape') patchUi({ q: '' }); }}
+        />
+        <select
+          value={listFilter}
+          title="筛选列表：未迁移 = 还有落点没铺；跨源冲突 = 多订阅源同名不同内容"
+          onChange={(e) => patchUi({ listFilter: e.target.value })}
+        >
+          <option value="all">全部</option>
+          <option value="todo">未迁移</option>
+          <option value="conflict">跨源冲突</option>
+        </select>
+        <span className="sep"></span>
         <label>订阅源</label>
-        <select className="grow" value={source} onChange={(e) => patchUi({ source: e.target.value })}>
-          <option value="">（当前主源）{hubPath ? '  ·  ' + hubPath : ''}</option>
+        <select
+          value={source}
+          title={hubPath ? '当前主源: ' + hubPath : '尚未订阅 Skill Hub'}
+          onChange={(e) => patchUi({ source: e.target.value })}
+        >
+          <option value="">（当前主源）</option>
           {sources.map((s) => (
-            <option key={s.path} value={s.path}>{s.path.replace(/^.*[\\/]/, '')}  ·  {s.path}  ({s.count})</option>
+            <option key={s.path} value={s.path}>{s.path.replace(/^.*[\\/]/, '')}  ({s.count})</option>
           ))}
         </select>
         <button className="btn ghost" title="订阅 skill 目录" onClick={addSource}>＋</button>
         <button className="btn ghost" title="取消订阅" onClick={removeSource}>－</button>
-        <span className="muted">
-          项目在右上角「最近目录」切换：项目级信息只针对激活的那个目录
-        </span>
       </div>
       <div className="toolbar">
         <label>默认平台</label>
@@ -579,6 +618,9 @@ export default function SkillsView() {
         </select>
         <span className="sep"></span>
         <button className="btn ghost" onClick={() => guard(load)}>刷新</button>
+        <span className="muted" title={project ? '项目级信息只针对右上角激活的这个目录' : ''}>
+          {project ? '项目: ' + project.replace(/^.*[\\/]/, '') : ''}
+        </span>
         {data?.hub && !data.hub.path ? <span className="muted">尚未订阅 Skill Hub</span> : null}
       </div>
       <div className="toolbar">
@@ -598,18 +640,33 @@ export default function SkillsView() {
           <span className="muted">
             <input type="checkbox" checked={allSelected} title="全选 / 全不选" onChange={toggleAll} />
             {' '}
-            {hubPath ? `${hubPath} · ` : ''}{data?.skills?.length ?? 0} 个
+            {filtered ? `显示 ${visibleSkills.length} / ${allSkills.length}` : `${allSkills.length}`} 个
+            {hubPath ? <span title={'订阅源: ' + hubPath}> · {hubPath.replace(/^.*[\\/]/, '')}</span> : null}
+            {filtered ? (
+              <button
+                className="btn small ghost"
+                style={{ marginLeft: 8 }}
+                title="清除搜索与筛选"
+                onClick={() => patchUi({ q: '', listFilter: 'all' })}
+              >
+                清除筛选
+              </button>
+            ) : null}
             {hubPath ? (
-              <button className="btn small" style={{ marginLeft: 10 }} title="在当前订阅源新建一个 skill" onClick={openCreate}>
+              <button className="btn small" style={{ marginLeft: 8 }} title="在当前订阅源新建一个 skill" onClick={openCreate}>
                 ＋ 新建
               </button>
             ) : null}
           </span>
         </div>
         <div className="list">
-          {data?.skills?.length
-            ? data.skills.map((s) => renderRow(s))
-            : <div className="row muted">（订阅源里暂无 skill；点上方＋订阅一个 skill 目录）</div>}
+          {visibleSkills.length
+            ? visibleSkills.map((s) => renderRow(s))
+            : allSkills.length
+              ? <div className="row muted">没有匹配的 skill（当前搜索「{ui.q}」）
+                  　<button className="btn small ghost" onClick={() => patchUi({ q: '', listFilter: 'all' })}>清除筛选</button>
+                </div>
+              : <div className="row muted">（订阅源里暂无 skill；点上方＋订阅一个 skill 目录）</div>}
         </div>
       </div>
 
@@ -625,6 +682,7 @@ export default function SkillsView() {
             </button>
             <span className="muted">
               {' '}{orphanCount} 个{orphanCount ? `（项目 ${orphanProjCount} · 用户 ${orphanUserCount}）` : ''}
+              {q && orphanCount ? ` · 匹配「${ui.q}」` : ''}
               {orphansOpen ? ' —— 提交后收敛为「唯一实文件 = 订阅源」' : ''}
             </span>
           </h3>
