@@ -89,6 +89,56 @@ function SkillEditor({ mode, skill = {}, close, reload }) {
   );
 }
 
+// skill 文件查看器：左树右内容，SKILL.md 默认选中。
+//
+// 「完整查看」的落点就在这里——一个 skill 不止 SKILL.md，还常有 scripts/、references/，
+// 而它们恰恰是决定「这个 skill 到底干什么」的部分。内容按需拉（点哪个读哪个），
+// 目录大的 skill 也不会一次性把几百 KB 塞进弹窗。
+function SkillFiles({ name, files }) {
+  // 默认选 SKILL.md（大小写不敏感：Windows 上存在写成 skill.md 的 skill）
+  const [cur, setCur] = useState(
+    () => (files.find((f) => f.path.toLowerCase() === 'skill.md')?.path || files[0]?.path || '')
+  );
+  const [text, setText] = useState(null);
+  const [err, setErr] = useState('');
+
+  useEffect(() => {
+    if (!cur) return undefined;
+    let alive = true;
+    setText(null);
+    setErr('');
+    api(`/api/skills/content?name=${encodeURIComponent(name)}&ref=${encodeURIComponent(cur)}`)
+      .then((d) => { if (alive) setText(d.content); })
+      .catch((e) => { if (alive) setErr(String((e && e.message) || e)); });
+    return () => { alive = false; };
+  }, [name, cur]);
+
+  if (!files.length) return <div className="muted">（这个 skill 目录里没有文件）</div>;
+  return (
+    <div className="skl-files">
+      <div className="skl-tree">
+        {files.map((f) => (
+          <button
+            key={f.path}
+            type="button"
+            className={'skl-file' + (f.path === cur ? ' on' : '')}
+            title={f.path}
+            onClick={() => setCur(f.path)}
+          >
+            <span className="p">{f.path}</span>
+            <span className="b">{f.bytes < 1024 ? `${f.bytes} B` : `${Math.round(f.bytes / 1024)} KB`}</span>
+          </button>
+        ))}
+      </div>
+      <div className="skl-body">
+        {err ? <div className="dlg-msg">读取失败：{err}</div>
+          : text === null ? <div className="muted">读取中…</div>
+            : <pre>{text}</pre>}
+      </div>
+    </div>
+  );
+}
+
 export default function SkillsView() {
   const { boot, ui, patchUi, toggleSel, refreshBoot } = useStore();
   const toast = useToast();
@@ -138,22 +188,30 @@ export default function SkillsView() {
   const selectedHub = useMemo(() => selectedNames.filter((n) => hubNames.includes(n)), [selectedNames, hubNames]);
   const selectedOrphans = useMemo(() => selectedNames.filter((n) => orphanNames.includes(n)), [selectedNames, orphanNames]);
   const allSelected = hubNames.length > 0 && hubNames.every((n) => selSkills.has(n));
-  const toggleAll = () => patchUi({ selSkills: allSelected ? [] : hubNames });
+  const allOrphansSelected = orphanNames.length > 0 && orphanNames.every((n) => selSkills.has(n));
+  // 全选 = 并集 / 差集，不是整体替换 —— 否则「全选订阅源」会把已勾的「未入 Hub」清掉，
+  // 而用户根本看不出发生了什么（两处勾选长得很像）。顺手把已失效的名字修剪掉。
+  const selectAll = (names, on) => patchUi((u) => {
+    const keep = u.selSkills.filter((n) => hubNames.includes(n) || orphanNames.includes(n));
+    return { selSkills: on ? [...new Set([...keep, ...names])] : keep.filter((n) => !names.includes(n)) };
+  });
+  const toggleAll = () => selectAll(hubNames, !allSelected);
+  const toggleAllOrphans = () => selectAll(orphanNames, !allOrphansSelected);
 
-  // 批量迁移：有勾选就只迁勾选的，没勾选就全量（--all）。
-  // 全量前必须确认——「避免手点」不等于「允许误点」。
+  // 批量只作用于**勾选的**。「不勾选就是全量」这种隐式语义按钮上写不出来——
+  // 用户没法从界面判断这一按下去会动 3 个还是 48 个。要全量就先「全选」，
+  // 那是一个看得见的动作。（避免手点 ≠ 允许误点。）
   const bulkMigrate = (to) => guard(async () => {
     const names = selectedHub;
-    const total = names.length || hubNames.length;
-    if (!total) { toast('没有可迁移的 skill'); return; }
+    if (!names.length) { toast('请先勾选要迁移的 skill（表头可全选）'); return; }
     const ok = await dialog({
-      message: `将${names.length ? `勾选的 ${names.length} 个` : `全部 ${total} 个`} skill 迁移到${SCOPE_SHORT[to]}？\n平台: ${platformOpts.join(', ')} · 形态: ${settings.skillSyncMode === 'copy' ? '复制' : '软链接'}`,
+      message: `将勾选的 ${names.length} 个 skill 迁移到${SCOPE_SHORT[to]}？\n平台: ${platformOpts.join(', ')} · 形态: ${settings.skillSyncMode === 'copy' ? '复制' : '软链接'}`,
     });
     if (!ok) return;
-    const body = names.length
-      ? { name: names, to, platform: 'all', project, mode: settings.skillSyncMode }
-      : { all: true, to, platform: 'all', project, mode: settings.skillSyncMode };
-    const r = await api('/api/skills/migrate', { method: 'POST', body });
+    const r = await api('/api/skills/migrate', {
+      method: 'POST',
+      body: { name: names, to, platform: 'all', project, mode: settings.skillSyncMode },
+    });
     if (r.status === 'blocked') {
       toast(`${r.blocked.length} 处被阻止：同名 skill 在多个订阅源且内容不同（先解决订阅）`);
     } else {
@@ -175,19 +233,21 @@ export default function SkillsView() {
     await load();
   });
 
-  // 批量提交：优先勾选的「未入 Hub」；没勾选就是全部游离 skill
+  // 批量提交：只提交勾选的「未入 Hub」（同上，不做隐式全量）
   const bulkSubmit = () => guard(async () => {
     if (!source && !data?.hub?.path) { toast('请先订阅一个 skill 目录'); return; }
-    const body = selectedOrphans.length
-      ? { name: selectedOrphans, to: 'project', platform: 'all', project }
-      : { all: true, to: 'project', platform: 'all', project };
-    const n = selectedOrphans.length || orphanNames.length;
-    if (!n) { toast('没有未入 Hub 的 skill'); return; }
+    const n = selectedOrphans.length;
+    if (!n) { toast('请先勾选要提交的 skill（「未入 Hub」表头可全选）'); return; }
     const ok = await dialog({
-      message: `把${selectedOrphans.length ? `勾选的 ${n} 个` : `全部 ${n} 个「未入 Hub」的`} skill 提交到订阅源？\n提交后会删除目标实文件并改回链接。`,
+      message: `把勾选的 ${n} 个「未入 Hub」skill 提交到订阅源？\n提交后会删除目标实文件并改回链接。`,
     });
     if (!ok) return;
-    const r = await api('/api/skills/submit', { method: 'POST', body });
+    const r = await api('/api/skills/submit', {
+      method: 'POST',
+      // to:'all' —— 未入 Hub 的 skill 常常躺在**用户级**平台目录里，
+      // 写死 'project' 会让提交直接报「目标目录里没有该 skill」（实测踩过）
+      body: { name: selectedOrphans, to: 'all', platform: 'all', project },
+    });
     toast(`已提交 ${r.submitted} 个（跳过 ${r.skipped}）`);
     await load();
     await refreshBoot();
@@ -260,8 +320,9 @@ export default function SkillsView() {
     await load();
   });
 
-  // to 缺省 'project'；未入 Hub 的行点勋章时会带自己的作用域进来（实文件在哪就从哪提交）
-  const submit = (name, to = 'project') => guard(async () => {
+  // to 缺省 'all'：未入 Hub 的 skill 常常躺在**用户级**平台目录里，写死 'project'
+  // 会让提交直接报「目标目录里没有该 skill」（实测确认过）。让服务端按落点自己找。
+  const submit = (name, to = 'all') => guard(async () => {
     const cur = source || data?.hub?.path;
     if (!cur) { toast('请先订阅一个 skill 目录'); return; }
     const r = await api('/api/skills/submit', { method: 'POST', body: { name, to, platform: 'all', project } });
@@ -275,33 +336,9 @@ export default function SkillsView() {
     await refreshBoot();
   });
 
-  const showContext = (name) => guard(async () => {
-    const d = await api('/api/skills/content?name=' + encodeURIComponent(name));
-    setModal({
-      title: `skill 上下文 · ${name}`,
-      node: (
-        <>
-          <div className="muted" style={{ marginBottom: 8 }}>
-            来源: {d.source} · {d.contentBytes} 字节
-            <button className="btn small" style={{ marginLeft: 12 }} onClick={() => {
-              navigator.clipboard?.writeText(d.content);
-              toast('已复制 SKILL.md');
-            }}>复制全文</button>
-          </div>
-          {(d.outline?.length) ? (
-            <div className="muted" style={{ marginBottom: 8, maxHeight: 120, overflow: 'auto' }}>
-              {d.outline.map((h, i) => (
-                <div key={i} style={{ paddingLeft: (h.level - 1) * 14 }}>
-                  {'#'.repeat(h.level)} {h.text}
-                </div>
-              ))}
-            </div>
-          ) : null}
-          <pre>{d.content}</pre>
-        </>
-      ),
-    });
-  });
+  // 注：「查看全文」曾是这里的一个独立弹窗，只读 SKILL.md 且只认订阅源
+  // （未入 Hub 的 skill 点它必然 NOT_FOUND）。现在全文并入详情弹窗的文件面板，
+  // 见 openDetail / SkillFiles。
 
   const hubPath = data?.hub?.path || boot?.hub?.path || '';
 
@@ -348,6 +385,13 @@ export default function SkillsView() {
   // 默认：项目组展开、用户组收起；搜索时两组都展开（命中就在里面，别让用户再点一次）
   const isGroupOpen = (g) => groupOpen[g.key] ?? (g.scope === 'project' || !!q);
   const toggleGroup = (g) => setGroupOpen((m) => ({ ...m, [g.key]: !isGroupOpen(g) }));
+
+  // 平台子组各自的展开状态（会话级）：外层组（项目 / 用户级）之下的 Claude Code / WorkBuddy 那一层。
+  // 默认全部展开——它就是内容本身；能收起是为了「一次只盯一个平台」。
+  const [bucketOpen, setBucketOpen] = useState({});
+  const bucketKey = (g, b) => `${g.key}/${b.platform}`;
+  const isBucketOpen = (g, b) => bucketOpen[bucketKey(g, b)] ?? true;
+  const toggleBucket = (g, b) => setBucketOpen((m) => ({ ...m, [bucketKey(g, b)]: !isBucketOpen(g, b) }));
 
   // 未入 Hub 默认收起（ui.orphansOpen）：它只是「待收敛」的提示，不是日常要看的信息。
   // 收起时表头仍给出数量与作用域分布，不至于完全丢信息。
@@ -403,88 +447,144 @@ export default function SkillsView() {
     toast('已删除');
   });
 
-  const openDetail = (s, { orphan } = {}) => {
-    const cells = (s.cells || []).filter((c) => platformOpts.includes(c.platform));
-    const node = (
-      <>
-        <div className="muted" style={{ marginBottom: 10 }}>{s.description}</div>
-        {!orphan && s.source ? (
-          <div className="muted" style={{ marginBottom: 6 }}>
-            来源: <Copyable text={s.source}>{s.source}</Copyable>
-            {s.dir ? <> · 目录: <Copyable text={s.dir}>{s.dir}</Copyable></> : null}
-          </div>
-        ) : null}
-        {s.conflict && !s.conflict.same ? (
-          <div style={{ marginBottom: 10 }}>
-            <span
-              className="tag bad"
-              title={s.conflict.sources.map((x) => x.path).join('\n')}
-            >
-              跨源冲突：同名实文件在多个订阅源且内容不同，迁移会被阻止（skill hub check）
-            </span>
-          </div>
-        ) : null}
+  // 彻底删除：先 dry-run 拿「将删除哪些路径」的清单，确认后才落盘。
+  // 与 env 页同一套流程——这是面板上少数几个不可逆的操作，用户必须先看见会发生什么。
+  const doPurge = (name) => guard(async () => {
+    const dry = await api('/api/skills/purge', { method: 'POST', body: { name, 'dry-run': true } });
+    const p = dry.plan;
+    const lines = [
+      ...p.targets.map((c) => `  落点    ${SCOPE_SHORT[c.scope]}·${c.platformName}  ${c.path}${c.linkType ? '（链接）' : '（实体副本）'}`),
+      ...p.sources.map((s) => `  订阅源  ${s.source}\n          → ${s.dir}`),
+    ];
+    const ok = await dialog({
+      title: `彻底删除 ${name}`,
+      message: `将删除以下 ${lines.length} 处，不可恢复：\n${lines.join('\n')}`
+        + (p.copies ? `\n\n其中 ${p.copies} 处是实体副本，可能含本地改动。` : '')
+        + (p.sources.length ? '\n\n订阅源那份也会删掉——不删的话，下次迁移会把它原样带回来。' : ''),
+      danger: true,
+      okText: '删除',
+    });
+    if (!ok) return;
+    const r = await api('/api/skills/purge', { method: 'POST', body: { name, force: true } });
+    closeModal();
+    await reloadAll();
+    toast(`已彻底删除 ${name}（${r.removed.length} 处）`);
+  });
 
-        {(s.outline?.length) ? (
-          <>
-            <div className="colhead">
-              <h3>结构</h3>
-              <span className="muted">{s.stats?.sections ?? s.outline.length} 节 · {s.stats?.lines ?? '?'} 行 · {s.stats?.bytes ?? '?'} 字节</span>
+  // 详情 = 完整查看。内容现拉，而不是复用列表行——列表里未入 Hub 的 skill
+  // 根本没有 outline / files / source，而它恰恰是最需要看清楚的那个。
+  const openDetail = (s, { orphan } = {}) => guard(async () => {
+    const d = await api('/api/skills/detail?name=' + encodeURIComponent(s.name));
+    const cells = (d.cells || []).filter((c) => platformOpts.includes(c.platform));
+    const isOrphan = orphan || d.origin === 'link' || d.origin === 'target';
+    const copySkillMd = () => {
+      api(`/api/skills/content?name=${encodeURIComponent(s.name)}`)
+        .then((x) => { navigator.clipboard?.writeText(x.content); toast('已复制 SKILL.md'); })
+        .catch((e) => toast(String((e && e.message) || e)));
+    };
+    setModal({
+      title: `skill · ${s.name}`,
+      node: (
+        <>
+          <div className="row-inline" style={{ alignItems: 'flex-start', gap: 12, marginBottom: 8 }}>
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <div className="muted" style={{ marginBottom: 4 }}>{d.description}</div>
+              <div className="muted">
+                {d.source ? <>来源: <Copyable text={d.source}>{d.source}</Copyable>{' · '}</> : null}
+                {d.dir ? <>目录: <Copyable text={d.dir}>{d.dir}</Copyable></> : null}
+                {d.stats?.lines
+                  ? <> · {d.stats.sections ?? d.outline.length} 节 · {d.stats.lines} 行 · {d.files.length} 个文件</>
+                  : null}
+              </div>
             </div>
-            <div className="list" style={{ maxHeight: 180, overflow: 'auto', marginBottom: 12 }}>
-              {s.outline.map((h, i) => (
-                <div key={i} className="row" style={{ paddingLeft: 12 + (h.level - 1) * 16 }}>
-                  <span className="name" style={{ fontWeight: h.level === 1 ? 700 : 500 }}>
-                    <span className="muted" style={{ marginRight: 6 }}>{'#'.repeat(h.level)}</span>
-                    {h.text}
-                  </span>
-                  <span className="acts muted">L{h.line}</span>
-                </div>
-              ))}
-            </div>
-          </>
-        ) : null}
+            <button className="btn small ghost" onClick={copySkillMd}>复制 SKILL.md</button>
+          </div>
 
-        <div className="colhead"><h3>平台落点与操作</h3></div>
-        <div className="list">
-          {cells.length ? cells.map((c) => (
-            <div key={c.scope + c.platform} className="row">
-              <span className="name">{SCOPE_SHORT[c.scope]}·{shortLabel(c.platform, adapters)}</span>
-              <Copyable className="desc" text={c.dir} title="点击复制落点路径">{c.dir}</Copyable>
+          {isOrphan ? (
+            <div style={{ marginBottom: 8 }}>
               <span
-                className={'tag' + (c.on ? (c.linkType ? '' : ' strong') : ' bad')}
-                title={c.on ? (c.linkType ? '软链接，随订阅源实时同步' : '实体副本') : '尚未迁移'}
+                className="tag bad"
+                title="订阅源里没有它；内容读的是平台目录里那份落点（链接就顺着链接读）"
               >
-                {c.on ? (c.linkType ? '链接' : '实体') : '未迁移'}
+                {d.origin === 'link' ? '不在订阅源（游离链接）' : '不在订阅源（未入 Hub）'}
               </span>
-              <span className="acts">
-                {c.on ? (
-                  <button className="btn small ghost" onClick={() => { closeModal(); toggleCell(s.name, c); }}>撤销</button>
-                ) : (
-                  <button className="btn small" onClick={() => { closeModal(); toggleCell(s.name, c); }}>迁移</button>
-                )}
+              {d.linkTarget ? (
+                <span className="muted" style={{ marginLeft: 8 }}>
+                  → <Copyable text={d.linkTarget}>{d.linkTarget}</Copyable>
+                </span>
+              ) : null}
+            </div>
+          ) : null}
+          {d.conflict && !d.conflict.same ? (
+            <div style={{ marginBottom: 8 }}>
+              <span className="tag bad" title={d.conflict.sources.map((x) => x.path).join('\n')}>
+                跨源冲突：同名实文件在多个订阅源且内容不同，迁移会被阻止（skill hub check）
               </span>
             </div>
-          )) : <div className="row muted">（当前启用的平台没有落点）</div>}
-        </div>
+          ) : null}
 
-        <div style={{ display: 'flex', gap: 8, marginTop: 12, flexWrap: 'wrap' }}>
-          {orphan ? (
-            <button className="btn" onClick={() => { closeModal(); submit(s.name); }}>提交到 Hub</button>
-          ) : (
-            <>
-              <button className="btn" onClick={() => { closeModal(); migrateScope(s.name, 'project'); }}>迁移 → 项目</button>
-              <button className="btn" onClick={() => { closeModal(); migrateScope(s.name, 'user'); }}>迁移 → 用户</button>
-              <button className="btn ghost" onClick={() => openEditor(s)}>编辑</button>
-              <button className="btn danger" onClick={() => doDelete(s)}>删除</button>
-            </>
-          )}
-          <button className="btn ghost" onClick={() => showContext(s.name)}>查看全文</button>
-        </div>
-      </>
-    );
-    setModal({ title: `skill · ${s.name}`, node });
-  };
+          {/* 断链没有内容可读，但这件事本身要说明白 —— 它是最该被清掉的那种残留 */}
+          {d.broken ? (
+            <div className="dlg-msg" style={{ marginBottom: 8 }}>
+              这是个断链：目标已经不存在，所以读不到内容。
+              {d.linkTarget ? `（指向 ${d.linkTarget}）` : ''}
+              {'\n'}留着它只会让 agent 以为这个 skill 还在——用下面的「彻底删除」可以把它清掉。
+            </div>
+          ) : null}
+
+          {/* 完整查看：文件树 + 全文。未入 Hub 的 skill 走的是同一条路 */}
+          {d.broken ? null : <SkillFiles name={s.name} files={d.files || []} />}
+
+          <div className="colhead" style={{ marginTop: 14, gap: 10 }}>
+            <h3>平台落点</h3>
+            <span className="muted">链接随订阅源实时变；实体副本是独立的一份</span>
+          </div>
+          <div className="list">
+            {cells.length ? cells.map((c) => (
+              <div key={c.scope + c.platform} className="row">
+                <span className="name">{SCOPE_SHORT[c.scope]}·{shortLabel(c.platform, adapters)}</span>
+                <Copyable className="desc" text={c.dir} title="点击复制落点路径">{c.dir}</Copyable>
+                <span
+                  className={'tag' + (c.on ? (c.linkType ? '' : ' strong') : ' bad')}
+                  title={c.on ? (c.linkType ? '软链接，随订阅源实时同步' : '实体副本') : '尚未迁移'}
+                >
+                  {c.on ? (c.linkType ? '链接' : '实体') : '未迁移'}
+                </span>
+                <span className="acts">
+                  <button
+                    className={'btn small' + (c.on ? ' ghost' : '')}
+                    onClick={() => { closeModal(); toggleCell(s.name, c); }}
+                  >
+                    {c.on ? '撤销' : '迁移'}
+                  </button>
+                </span>
+              </div>
+            )) : <div className="row muted">（当前启用的平台没有落点）</div>}
+          </div>
+
+          <div className="dlg-acts" style={{ flexWrap: 'wrap' }}>
+            {isOrphan ? (
+              <button className="btn" onClick={() => { closeModal(); submit(s.name, 'all'); }}>提交到订阅源</button>
+            ) : (
+              <>
+                <button className="btn" onClick={() => { closeModal(); migrateScope(s.name, 'project'); }}>迁移 → 项目</button>
+                <button className="btn" onClick={() => { closeModal(); migrateScope(s.name, 'user'); }}>迁移 → 用户</button>
+                <button className="btn ghost" onClick={() => openEditor(s)}>编辑</button>
+                <button className="btn ghost" title="只从订阅源下架，保留各平台落点" onClick={() => doDelete(s)}>从订阅源删除</button>
+              </>
+            )}
+            <button
+              className="btn danger"
+              title="所有平台落点 + 订阅源里的实文件一并删除"
+              onClick={() => doPurge(s.name)}
+            >
+              彻底删除…
+            </button>
+          </div>
+        </>
+      ),
+    });
+  });
 
   // 行上的状态只用**一个**标签表达：勋章按「平台 × 作用域」线性膨胀（2 平台 4 个、
   // 4 平台 8 个），行里根本放不下。逐落点的迁移 / 撤销归详情页的竖向列表。
@@ -567,6 +667,9 @@ export default function SkillsView() {
 
   return (
     <>
+      {/* 一屏一条工具栏，只留「浏览（搜索 / 筛选）」与最常用的两个动作。
+          订阅源 / 默认平台 / 迁移形态是**配置**——改一次管很久，却原来和搜索平铺了两行；
+          折进「设置」。批量是**操作**，选中之后才出现（它自己也携带「你现在选了什么」）。 */}
       <div className="toolbar">
         {/* 搜索放最前：48 个 skill，先能找再谈别的 */}
         <input
@@ -586,53 +689,86 @@ export default function SkillsView() {
           <option value="todo">未迁移</option>
           <option value="conflict">跨源冲突</option>
         </select>
-        <span className="sep"></span>
-        <label>订阅源</label>
-        <select
-          value={source}
-          title={hubPath ? '当前主源: ' + hubPath : '尚未订阅 Skill Hub'}
-          onChange={(e) => patchUi({ source: e.target.value })}
-        >
-          <option value="">（当前主源）</option>
-          {sources.map((s) => (
-            <option key={s.path} value={s.path}>{s.path.replace(/^.*[\\/]/, '')}  ({s.count})</option>
-          ))}
-        </select>
-        <button className="btn ghost" title="订阅 skill 目录" onClick={addSource}>＋</button>
-        <button className="btn ghost" title="取消订阅" onClick={removeSource}>－</button>
+        <button className="btn ghost" title="重新读取订阅源与各平台目录" onClick={() => guard(load)}>刷新</button>
+        <details className="tb-set">
+          <summary title="订阅源 / 默认平台 / 迁移形态 / 当前项目">
+            设置{data && !data.hub?.path ? ' · 尚未订阅' : ''}
+          </summary>
+          <div className="tb-set-box">
+            <div className="row-inline">
+              <label>订阅源</label>
+              <select
+                value={source}
+                title={hubPath ? '当前主源: ' + hubPath : '尚未订阅 Skill Hub'}
+                onChange={(e) => patchUi({ source: e.target.value })}
+              >
+                <option value="">（当前主源）</option>
+                {sources.map((s) => (
+                  <option key={s.path} value={s.path}>{s.path.replace(/^.*[\\/]/, '')}  ({s.count})</option>
+                ))}
+              </select>
+              <button className="btn small ghost" title="订阅 skill 目录" onClick={addSource}>＋</button>
+              <button className="btn small ghost" title="取消订阅（不动磁盘）" onClick={removeSource}>－</button>
+            </div>
+            <div className="row-inline">
+              <label>默认平台</label>
+              <select value={settings.defaultPlatform || platformOpts[0]}
+                onChange={(e) => setSetting({ defaultPlatform: e.target.value })}>
+                {platformOpts.map((id) => (
+                  <option key={id} value={id}>{(adapters.find((a) => a.id === id) || {}).name || id}</option>
+                ))}
+              </select>
+            </div>
+            <div className="row-inline">
+              <label>迁移形态</label>
+              <select value={settings.skillSyncMode === 'copy' ? 'copy' : 'symlink'}
+                onChange={(e) => setSetting({ skillSyncMode: e.target.value })}>
+                <option value="symlink">软链接（改订阅源即时生效）</option>
+                <option value="copy">复制（目标侧是独立副本）</option>
+              </select>
+            </div>
+            <div className="row-inline">
+              <label>当前项目</label>
+              <span
+                className="mono muted"
+                title={project ? '项目级信息只针对右上角激活的这个目录' : '右上角「最近目录」可切换项目'}
+              >
+                {project || '（跟随服务进程目录）'}
+              </span>
+            </div>
+          </div>
+        </details>
       </div>
-      <div className="toolbar">
-        <label>默认平台</label>
-        <select value={settings.defaultPlatform || platformOpts[0]}
-          onChange={(e) => setSetting({ defaultPlatform: e.target.value })}>
-          {platformOpts.map((id) => (
-            <option key={id} value={id}>{(adapters.find((a) => a.id === id) || {}).name || id}</option>
-          ))}
-        </select>
-        <span className="sep"></span>
-        <label>迁移形态</label>
-        <select value={settings.skillSyncMode === 'copy' ? 'copy' : 'symlink'}
-          onChange={(e) => setSetting({ skillSyncMode: e.target.value })}>
-          <option value="symlink">软链接</option>
-          <option value="copy">复制</option>
-        </select>
-        <span className="sep"></span>
-        <button className="btn ghost" onClick={() => guard(load)}>刷新</button>
-        <span className="muted" title={project ? '项目级信息只针对右上角激活的这个目录' : ''}>
-          {project ? '项目: ' + project.replace(/^.*[\\/]/, '') : ''}
-        </span>
-        {data?.hub && !data.hub.path ? <span className="muted">尚未订阅 Skill Hub</span> : null}
-      </div>
-      <div className="toolbar">
-        <label>批量</label>
-        <button className="btn" onClick={() => bulkMigrate('project')}>→项目</button>
-        <button className="btn" onClick={() => bulkMigrate('user')}>→用户</button>
-        <button className="btn ghost" onClick={bulkUnmigrate}>撤销勾选</button>
-        <button className="btn ghost" onClick={bulkSubmit}>提交未入 Hub</button>
-        <span className="muted">
-          已勾选 {selectedNames.length} 个{selectedNames.length ? '' : '（不勾选则「→项目/→用户」为全量）'}
-        </span>
-      </div>
+
+      {/* 操作条：选中之后才出现。它同时是「你现在选了什么」的可见凭据——
+          勾选是持久化的，没有这条就可能在下次打开时对着一个看不见的选择按下去。 */}
+      {selectedNames.length ? (
+        <div className="toolbar bulk">
+          <span className="muted">
+            已选 <b>{selectedNames.length}</b> 个（订阅源 {selectedHub.length} · 未入 Hub {selectedOrphans.length}）
+          </span>
+          <button
+            className="btn"
+            disabled={!selectedHub.length}
+            title={selectedHub.length ? undefined : '勾选里没有订阅源 skill'}
+            onClick={() => bulkMigrate('project')}
+          >→ 项目</button>
+          <button
+            className="btn"
+            disabled={!selectedHub.length}
+            title={selectedHub.length ? undefined : '勾选里没有订阅源 skill'}
+            onClick={() => bulkMigrate('user')}
+          >→ 用户</button>
+          <button className="btn ghost" onClick={bulkUnmigrate}>撤销迁移</button>
+          <button
+            className="btn ghost"
+            disabled={!selectedOrphans.length}
+            title={selectedOrphans.length ? undefined : '勾选里没有「未入 Hub」的 skill'}
+            onClick={bulkSubmit}
+          >提交到订阅源</button>
+          <button className="btn ghost" onClick={() => patchUi({ selSkills: [] })}>清除选择</button>
+        </div>
+      ) : null}
 
       <div className="card">
         <div className="colhead">
@@ -681,9 +817,22 @@ export default function SkillsView() {
               <span className="caret">{orphansOpen ? '▾' : '▸'}</span> 未入 Hub
             </button>
             <span className="muted">
-              {' '}{orphanCount} 个{orphanCount ? `（项目 ${orphanProjCount} · 用户 ${orphanUserCount}）` : ''}
+              {/* 只报非零的作用域：「项目 0」这种零值只是噪音，还会让人以为这里出错了 */}
+              {' '}{orphanCount} 个
+              {orphanProjCount ? ` · 项目 ${orphanProjCount}` : ''}
+              {orphanUserCount ? ` · 用户级 ${orphanUserCount}` : ''}
               {q && orphanCount ? ` · 匹配「${ui.q}」` : ''}
-              {orphansOpen ? ' —— 提交后收敛为「唯一实文件 = 订阅源」' : ''}
+              {orphanCount ? (
+                <span style={{ marginLeft: 10 }}>
+                  <input
+                    type="checkbox"
+                    checked={allOrphansSelected}
+                    title="全选 / 全不选「未入 Hub」——批量提交需要先勾选"
+                    onChange={toggleAllOrphans}
+                  />
+                  {' '}全选
+                </span>
+              ) : null}
             </span>
           </h3>
         </div>
@@ -704,11 +853,17 @@ export default function SkillsView() {
                   ? g.bucketList.map((b) => (
                       <Fragment key={b.platform}>
                         <div className="subhead">
-                          <span className="name">{b.platformName}</span>
+                          <button
+                            className="disclose"
+                            title="展开 / 收起这个平台组"
+                            onClick={() => toggleBucket(g, b)}
+                          >
+                            <span className="caret">{isBucketOpen(g, b) ? '▾' : '▸'}</span> {b.platformName}
+                          </button>
                           <Copyable className="path" text={b.dir} title="点击复制该平台的目录">{b.dir}</Copyable>
                           <span>{b.items.length} 个</span>
                         </div>
-                        {b.items.map((o) => renderRow(o, { orphan: true }))}
+                        {isBucketOpen(g, b) ? b.items.map((o) => renderRow(o, { orphan: true })) : null}
                       </Fragment>
                     ))
                   : null}

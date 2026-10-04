@@ -495,7 +495,91 @@ export async function listAllSkills({ project, source } = {}) {
   };
 }
 
-// 单个 skill 的详情（来源 + 完整描述 + 各平台落点形态）
+// ─── 解析一个 skill 的「可读目录」 ──────────────────────────────────
+//
+// 优先级：当前主源 → 其它订阅源 → 平台目录里的落点。
+// **链接照读**：读链接读到的就是它目标的内容——「这个游离链接到底是什么」的答案
+// 就在这里。只有断链（目标已被删）才读不到，那时如实标 broken，而不是装作不存在
+// （本机实测：42 个未入 Hub 的 skill 全是链接，其中就有指向已删除目录的）。
+export async function resolveSkillDir({ name, project } = {}) {
+  name = assertSafeName(name);
+  const entries = await sourceEntriesFor(name);
+  if (entries.length) {
+    const [hit, ...rest] = entries;
+    return {
+      name,
+      dir: hit.dir,
+      origin: 'source',
+      source: hit.source,
+      alsoIn: rest.map((e) => e.source),
+      broken: false,
+      linkType: '',
+      linkTarget: '',
+    };
+  }
+  let dead = null;
+  for (const t of await resolveTargets({ to: 'all', project })) {
+    const p = join(t.dir, name);
+    if (!(await pathExists(p))) continue; // lstat：悬空链接也算存在
+    const linkType = await detectLinkType(p);
+    const place = {
+      name,
+      dir: p,
+      origin: linkType ? 'link' : 'target',
+      source: '',
+      platform: t.platform,
+      platformName: t.platformName,
+      scope: t.scope,
+      linkType,
+      linkTarget: linkType ? await fsp.readlink(p).catch(() => '') : '',
+      broken: false,
+      alsoIn: [],
+    };
+    // exists 走 access（跟随链接）：能读才叫可读，读不到就是断链
+    if (await exists(join(p, 'SKILL.md'))) return place;
+    place.broken = true;
+    if (!dead) dead = place;
+  }
+  if (dead) return dead; // 全是断链：返回它，让上层说明「链接已失效」
+  throw notFound(`未找到 skill: ${name}（订阅源与各平台目录里都没有）`);
+}
+
+// 一个 skill 目录下的文件清单（相对路径）。
+// 跳过噪音目录、**不跟随**目录内的链接——跟随会把别处整棵树读进来。
+const SKIP_DIRS = new Set(['.git', 'node_modules', '.turbo', 'dist', '.next', '__pycache__', '.venv']);
+const FILE_LIST_MAX = 500;
+
+async function listSkillFiles(root) {
+  const out = [];
+  async function walk(dir, prefix) {
+    if (out.length >= FILE_LIST_MAX) return;
+    let entries;
+    try { entries = await fsp.readdir(dir, { withFileTypes: true }); } catch { return; }
+    entries.sort((a, b) => a.name.localeCompare(b.name));
+    for (const e of entries) {
+      if (out.length >= FILE_LIST_MAX) return;
+      if (e.isSymbolicLink() || SKIP_DIRS.has(e.name)) continue;
+      const rel = prefix ? `${prefix}/${e.name}` : e.name;
+      if (e.isDirectory()) { await walk(join(dir, e.name), rel); continue; }
+      if (!e.isFile()) continue;
+      const st = await fsp.stat(join(dir, e.name)).catch(() => null);
+      out.push({ path: rel, bytes: st ? st.size : 0 });
+    }
+  }
+  await walk(root, '');
+  // SKILL.md 永远排第一：它是入口，其余文件都是它的附属。
+  // 比较**不区分大小写**——Windows 上确实存在写成 skill.md 的 skill（实测遇到过一个），
+  // 那边文件系统不区分大小写所以照样能读，但排序按字面比就会把它排到 references/ 后面。
+  out.sort((a, b) => {
+    const am = a.path.toLowerCase() === 'skill.md';
+    const bm = b.path.toLowerCase() === 'skill.md';
+    if (am !== bm) return am ? -1 : 1;
+    return a.path.localeCompare(b.path);
+  });
+  return out;
+}
+
+// 单个 skill 的详情（来源 + 完整描述 + 落点形态 + **文件清单**）
 export async function skillInfo({ name, project } = {}) {
   name = assertSafeName(name);
   const found = await findSourceSkill(name);
@@ -513,9 +597,16 @@ export async function skillInfo({ name, project } = {}) {
       linkType: on ? await detectLinkType(p) : '',
     });
   }
-  // 源里没有、但目标里有的（可提交）
-  const inTargets = cells.filter((c) => c.on);
-  if (!found && !inTargets.length) throw notFound('未找到 skill: ' + name);
+  if (!found && !cells.some((c) => c.on)) throw notFound('未找到 skill: ' + name);
+
+  // 内容从哪读：订阅源优先，否则退到平台目录里的落点（链接照读）。断链没有内容，
+  // 但要如实标出来——对未入 Hub 的 skill 来说，那正是用户最需要知道的一件事。
+  const place = await resolveSkillDir({ name, project }).catch(() => null);
+  const dir = place?.dir || '';
+  const broken = !!place?.broken;
+  const raw = dir && !broken ? await fsp.readFile(join(dir, 'SKILL.md'), 'utf8').catch(() => '') : '';
+  const outline = mdOutline(raw, 3);
+  const local = dir && !found && !broken ? await readSkill(dir) : null;
   // 跨源冲突（只看订阅源之间；目的仓库直接被覆盖，不参与冲突检测）
   const entries = await sourceEntriesFor(name);
   const conflict = entries.length > 1
@@ -524,38 +615,46 @@ export async function skillInfo({ name, project } = {}) {
         sources: entries.map((e) => ({ path: e.source, dir: e.dir, md5: e.md5 })),
       }
     : null;
-  // 结构预览：SKILL.md 的前 3 级标题 + 规模（大纲一眼看清这个 skill 讲什么、有多大）
-  const raw = found ? await fsp.readFile(join(found.dir, 'SKILL.md'), 'utf8').catch(() => '') : '';
-  const outline = mdOutline(raw, 3);
   return {
     name,
-    description: found ? found.description : (await readSkill(inTargets[0].dir))?.description || '(无描述)',
+    description: found ? found.description : (local?.description || '(无描述)'),
     source: found ? found.source : '',
-    dir: found ? found.dir : '',
+    origin: place?.origin || '',
+    dir: broken ? place.dir : dir,
+    linkTarget: place?.linkTarget || '',
+    broken,
     alsoIn: found ? found.alsoIn || [] : [],
-    md5: found ? found.md5 : '',
+    md5: found ? found.md5 : (local?.md5 || ''),
     conflict,
     outline,
     stats: mdStats(raw, outline),
+    files: dir && !broken ? await listSkillFiles(dir) : [],
     cells,
   };
 }
 
-// `skill get`：把 SKILL.md（或某个 reference）全文交给外部 agent，
+// `skill cat`：把 SKILL.md（或某个 reference）全文交给外部 agent，
 // 让它在自己环境里也能获得完整上下文。ref 为空时取 SKILL.md。
-export async function skillContent({ name, ref } = {}) {
-  name = assertSafeName(name);
-  const found = await findSourceSkill(name);
-  if (!found) throw notFound('订阅源里没有该 skill: ' + name);
+// **未入 Hub 的 skill 同样读得到**（落到平台目录里的落点，链接照读）——
+// 面板的「完整查看」对它就靠这条；以前这里只查订阅源，点进去必然 NOT_FOUND。
+export async function skillContent({ name, ref, project } = {}) {
+  const place = await resolveSkillDir({ name, project });
+  if (place.broken) {
+    throw notFound(
+      `skill ${name} 的落点是断链：${place.dir}${place.linkTarget ? ` → ${place.linkTarget}` : ''}（目标已不存在）`
+    );
+  }
   const file = ref ? assertSafeRelPath(ref, { label: 'ref 路径' }) : 'SKILL.md';
-  const abs = join(found.dir, file);
+  const abs = join(place.dir, file);
   const content = await fsp.readFile(abs, 'utf8').catch(() => null);
   if (content === null) throw notFound(`skill ${name} 里没有文件: ${file}`);
   const outline = mdOutline(content, 3);
   return {
     skillName: name,
-    source: found.source,
-    dir: found.dir,
+    source: place.source,
+    origin: place.origin,
+    dir: place.dir,
+    linkType: place.linkType || '',
     ref: file,
     content,
     contentBytes: Buffer.byteLength(content, 'utf8'),
@@ -651,6 +750,62 @@ export async function removeSkill({ name, force, project } = {}) {
   }
   await fsp.rm(found.dir, { recursive: true, force: true });
   return { status: 'ok', name, removed: found.dir, dangling: refs };
+}
+
+// 彻底删除一个 skill：**所有平台落点 + 订阅源里的实文件**。
+//
+// 与 skill remove 的分工：remove 只动订阅源那份（目标侧还引用就 blocked），
+// 用来「下架，但保留各平台落点」；purge 是「这个名字不该存在了」。两件事分开，
+// 因为后果不同，而且**未入 Hub 的 skill 只有 purge 这一条路**（订阅源里根本没有它，
+// remove 对它只会 NOT_FOUND）。
+//
+// 实体副本仍要 --force：它可能含本地改动、删了不可逆；链接没有这个问题。
+export async function purgeSkill({ name, project, force, dryRun } = {}) {
+  name = assertSafeName(name);
+
+  const entries = await sourceEntriesFor(name);
+  const sources = entries.map((e) => ({ source: e.source, dir: e.dir }));
+  const targets = [];
+  for (const t of await resolveTargets({ to: 'all', project })) {
+    const p = join(t.dir, name);
+    if (!(await pathExists(p))) continue;
+    targets.push({
+      platform: t.platform,
+      platformName: t.platformName,
+      scope: t.scope,
+      path: p,
+      linkType: await detectLinkType(p),
+    });
+  }
+  if (!sources.length && !targets.length) {
+    throw notFound(`未找到 skill: ${name}（订阅源与各平台目录里都没有）`);
+  }
+
+  const plan = { name, sources, targets, copies: targets.filter((c) => !c.linkType).length };
+  if (dryRun) return { status: 'ok', dryRun: true, name, plan, removed: [] };
+
+  if (plan.copies && !force) {
+    return {
+      status: 'blocked',
+      dryRun: false,
+      name,
+      plan,
+      removed: [],
+      reason: `${plan.copies} 处是实体副本（可能含本地改动），删除不可逆，加 --force 确认`,
+    };
+  }
+
+  const removed = [];
+  // 先删落点再删订阅源：反过来的话，链接会先悬空，再删链接时读到的形态已经不对
+  for (const c of targets) {
+    await fsp.rm(c.path, { recursive: true, force: true });
+    removed.push({ kind: 'target', ...c });
+  }
+  for (const s of sources) {
+    await fsp.rm(s.dir, { recursive: true, force: true });
+    removed.push({ kind: 'source', path: s.dir, source: s.source });
+  }
+  return { status: 'ok', dryRun: false, name, plan, removed };
 }
 
 // ─── 迁移（source → target） ────────────────────────────────────────

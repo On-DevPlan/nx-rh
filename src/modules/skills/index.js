@@ -200,6 +200,21 @@ function renderShow(d) {
   return lines.join('\n');
 }
 
+function renderPurge(d) {
+  const lines = [];
+  if (d.status === 'blocked') lines.push(`已阻止: ${d.reason}`);
+  else if (d.dryRun) lines.push(`预演（--dry-run，未改动磁盘）: 将彻底删除 ${d.plan.name}`);
+  else lines.push(`已彻底删除 ${d.name}（${d.removed.length} 处）`);
+  lines.push(d.dryRun || d.status === 'blocked' ? '  将删除:' : '  已删除:');
+  for (const s of d.plan.sources) lines.push(`    订阅源  ${s.source}  →  ${s.dir}`);
+  for (const c of d.plan.targets) {
+    lines.push(`    落点    ${SCOPE_MARK[c.scope] || c.scope}·${c.platform}  ${c.path}${c.linkType ? '（链接）' : '（实体副本）'}`);
+  }
+  if (!d.plan.sources.length && !d.plan.targets.length) lines.push('    （无）');
+  if (d.status === 'blocked') lines.push('', '确认无误后加 --force 执行。');
+  return lines.join('\n');
+}
+
 // 适配器总表：每个平台的两个落点都打绝对路径——「把 skill 变成 .claude / .workbuddy / .cursor」
 // 在终端里直接可抄，不需要先起面板。
 function renderAdapters(list) {
@@ -324,21 +339,23 @@ export default {
       render: renderShow,
     },
     {
-      // 订阅源 skill 的全文导出。注意与 bundled 的 `skill get` 分工：
+      // skill 的全文导出。注意与 bundled 的 `skill get` 分工：
       // get = 内置手册（repo-hub 之外的「本工具说明书」，三段拼接 + 顺手安装）；
-      // cat = 订阅源里任意 skill 的全文（给外部 agent 当业务上下文）。
+      // cat = 任意 skill 的全文（给外部 agent 当业务上下文）。
+      // 订阅源与**未入 Hub 的平台副本**都读得到 —— 后者从前只查订阅源，必然 NOT_FOUND。
       id: 'skill.cat',
       cli: ['skill', 'cat'],
       http: ['GET', '/api/skills/content'],
-      summary: '输出订阅源 skill 全文（SKILL.md 或某个 ref），供外部 agent 获取上下文',
+      summary: '输出 skill 全文（SKILL.md 或 --ref <相对路径>），订阅源与未入 Hub 的平台副本都能读',
       args: ['name'],
-      flags: { ref: { type: 'string' } },
-      run: (ctx) => service.skillContent({ name: ctx.name, ref: ctx.ref }),
+      flags: { ref: { type: 'string', hint: 'skill 内相对路径，如 references/api.md' }, project: { type: 'string' } },
+      run: (ctx) => service.skillContent({ name: ctx.name, ref: ctx.ref, project: projectOf(ctx) }),
       // 三段拼接：引导语 → 正文 → 后续动作提示。--json 走纯数据，不打这些。
       render: (d) => {
         const bar = '─'.repeat(60);
+        const where = d.source ? `来源: ${d.source}` : `落点: ${d.dir}`;
         return [
-          `# skill: ${d.skillName}   来源: ${d.source}`,
+          `# skill: ${d.skillName}   ${where}`,
           bar,
           d.content.replace(/\s*$/, ''),
           bar,
@@ -382,6 +399,28 @@ export default {
         }
         return `已删除: ${d.removed}${d.dangling.length ? `（${d.dangling.length} 个目标现为悬空，可用迁移重建）` : ''}`;
       },
+    },
+    {
+      // 与 skill remove 分开：remove 只下架订阅源那份（目标侧还引用就 blocked），
+      // purge 是「这个名字不该存在了」——连各平台落点一起删。
+      // **未入 Hub 的 skill 只有这一条路能删**（订阅源里根本没有它，remove 是 NOT_FOUND）。
+      id: 'skill.purge',
+      cli: ['skill', 'purge'],
+      http: ['POST', '/api/skills/purge'],
+      summary: '彻底删除 skill：所有平台落点 + 订阅源里的实文件（--dry-run 先看清单）',
+      args: ['name'],
+      flags: {
+        force: { type: 'boolean', hint: '落点里有实体副本时必须加（可能含本地改动）' },
+        project: { type: 'string' },
+        'dry-run': { type: 'boolean', hint: '只列出将删除的路径，不落盘' },
+      },
+      run: (ctx) => service.purgeSkill({
+        name: ctx.name,
+        force: ctx.force,
+        project: projectOf(ctx),
+        dryRun: ctx['dry-run'] === true,
+      }),
+      render: renderPurge,
     },
 
     // ---- 迁移 / 撤销 / 提交 / 物化 ----
@@ -434,7 +473,9 @@ export default {
       summary: '平台副本 → 订阅源（<name...> | --all 取「未入 Hub」那批；提交后删除目标实文件）',
       args: [{ name: 'name', rest: true, required: false }],
       flags: {
-        to: TO,
+        // 缺省 all（而不是全局的 project）：未入 Hub 的 skill 常常落在**用户级**平台目录里，
+        // 只扫项目级会直接报「目标目录里没有该 skill」——`skill submit --all` 正是主推用法。
+        to: { ...TO, default: 'all' },
         platform: { type: 'string' },
         project: { type: 'string' },
         force: { type: 'boolean' },

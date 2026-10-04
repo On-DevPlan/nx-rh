@@ -43,7 +43,7 @@ agent_created: true
 ```
 1. 定位：nx-rh repo list  ·  nx-rh skill list [--source <路径>] [--project <项目根>]
 2. 诊断：nx-rh repo get <id>  ·  nx-rh skill show <name>
-3. 行动：nx-rh repo add|scan|update  ·  nx-rh skill migrate|unmigrate|submit|materialize ...
+3. 行动：nx-rh repo add|scan|update  ·  nx-rh skill migrate|unmigrate|submit|materialize|purge ...
 4. 复核：重跑第 2 步，确认状态已按预期变化
 5. 汇报：说明实际执行了什么 + 剩余风险（尤其冲突未处理项）
 ```

@@ -138,6 +138,100 @@ main { padding: 8px 20px 28px; max-width: 1240px; margin: 0 auto; }
 /* 搜索框：列表的主要入口，允许比普通输入更宽 */
 .toolbar .search { max-width: 460px; }
 
+/* 选中之后才出现的操作条：它自己承担「你现在选了什么」的可见性，
+   所以给一层浅底，把它从常驻工具栏里区分出来（只是底色，不是岛屿） */
+.toolbar.bulk {
+  background: var(--soft);
+  border-radius: var(--radius-btn);
+  padding: 4px 8px;
+  margin: 4px 0 8px;
+}
+
+/* 工具栏里的「设置」：折叠起来的**配置**（订阅源 / 默认平台 / 迁移形态）。
+   与 header 的最近目录同族——绝对定位浮层，不进首屏。 */
+.tb-set { position: relative; font-size: 12px; }
+.tb-set > summary {
+  cursor: pointer;
+  user-select: none;
+  list-style: none;
+  color: var(--mid);
+  height: var(--btn-h);
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 0 10px;
+  border-radius: var(--radius-btn);
+}
+.tb-set > summary::-webkit-details-marker { display: none; }
+.tb-set > summary::after { content: '▸'; font-size: 10px; }
+.tb-set[open] > summary::after { content: '▾'; }
+.tb-set > summary:hover { color: var(--ink); background: var(--soft); }
+.tb-set[open] > summary { color: var(--ink); background: var(--soft); }
+.tb-set-box {
+  position: absolute;
+  right: 0;
+  top: calc(100% + 6px);
+  z-index: 30;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-width: 400px;
+  padding: 10px 12px;
+  background: var(--paper);
+  border: 1px solid var(--soft-2);
+  border-radius: 8px;
+  box-shadow: var(--shadow-relief);
+}
+.tb-set-box .row-inline > label { flex: 0 0 66px; color: var(--mid); }
+.tb-set-box .row-inline > select { flex: 1; min-width: 0; }
+
+/* ---------- skill 查看器：左文件树 / 右内容 ----------
+   「完整查看」——一个 skill 不止 SKILL.md，scripts/ 与 references/ 往往才是
+   决定「它到底干什么」的部分。内容按需拉，目录再大也只读当前这一个文件。 */
+.skl-files {
+  display: grid;
+  grid-template-columns: 220px 1fr;
+  min-height: 240px;
+  max-height: 46vh;
+  border: var(--border);
+  border-radius: var(--radius-flat);
+  overflow: hidden;
+}
+.skl-tree {
+  overflow: auto;
+  padding: 4px;
+  background: var(--soft);
+  border-right: var(--border);
+}
+.skl-file {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  width: 100%;
+  padding: 4px 6px;
+  border: 0;
+  border-radius: 4px;
+  background: none;
+  font: inherit;
+  font-size: 11px;
+  text-align: left;
+  color: var(--mid);
+  cursor: pointer;
+}
+.skl-file:hover { background: var(--soft-2); color: var(--ink); }
+/* 选中态沿用「立体感只给交互件」：白底 + 单层浮雕 */
+.skl-file.on { background: var(--paper); color: var(--ink); font-weight: 600; box-shadow: var(--shadow-relief); }
+.skl-file .p {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-family: ui-monospace, Consolas, monospace;
+}
+.skl-file .b { flex: 0 0 auto; font-size: 10px; }
+.skl-body { overflow: auto; padding: 10px 12px; background: var(--paper); }
+
 /* ---------- 输入框：核心显示密度（与行同高） ---------- */
 input, select {
   font: inherit;
@@ -284,6 +378,9 @@ h3 { font-size: 13px; margin: 0; font-weight: 700; }
 .subhead .name { font-weight: 600; color: var(--ink); flex-shrink: 0; }
 .subhead .path { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .subhead > :last-child { margin-left: auto; flex-shrink: 0; }
+/* 平台子表头本身就是折叠按钮（Claude Code / WorkBuddy）：
+   颜色与字重沿用原来的 .subhead .name，只是从静态文字变成可点 */
+.subhead .disclose { flex-shrink: 0; color: var(--ink); font-weight: 600; }
 
 /* 收起/展开：次要区块（未入 Hub）的表头本身就是按钮——不加边框不加底色，
    只有三角指示状态，避免把「次要信息」做得比正文还抢眼 */
@@ -502,3 +599,82 @@ pre {
 .d-add { color: #1a7f37; background: rgba(46,160,67,.08); }
 .d-del { color: #b3261e; background: rgba(179,38,30,.08); text-decoration: line-through; }
 .conflict-file { background: rgba(179,38,30,.10); font-weight: 600; }
+
+/* ---------- env 页：变量表行 + 展开后的作用域字段 ----------
+   一行 = 一个变量名；展开后并列显示两个 scope 的值。
+   关系的表达（覆盖 / 拼接 / 相同）收进行尾那一枚 tag，
+   于是「生效值」这一列永远只承载值——列才对得齐、扫得动。 */
+.row.vrow { gap: 8px; }
+.row.vrow .name { flex: 0 0 190px; }
+.row.vrow .desc { font-size: 11px; }
+/* 展开中的行不再画自己的底线，交给下面的 .vsub——否则行与它的展开体之间会横一道线 */
+.row.vrow.open { background: var(--soft); border-bottom: 0; }
+
+.vcaret {
+  flex: 0 0 12px;
+  width: 12px;
+  padding: 0;
+  border: 0;
+  background: none;
+  font: inherit;
+  font-size: 10px;
+  line-height: 1;
+  color: var(--mid);
+  cursor: pointer;
+}
+.vcaret:hover { color: var(--ink); }
+
+/* 展开体：缩进 + 浅底，与 .subhead 同族（「我从属于上面那一行」） */
+.vsub {
+  padding: 4px 12px 8px 30px;
+  background: var(--soft);
+  border-bottom: var(--border);
+}
+.vsub .vnote { font-size: 11px; margin-bottom: 2px; }
+.vsub .vadd { margin-top: 8px; }
+.vsub .vadd input { font-size: 11px; }
+
+/* 说明行（图例 / 弹窗里的提示）：替掉旧版那三行符号密码 */
+.vlegend { padding: 6px 12px 2px; font-size: 11px; line-height: 1.6; }
+
+/* 作用域字段：值可换行（PATH 上千字符），操作贴右 */
+.vfield {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  min-height: 22px;
+  padding: 3px 0;
+}
+.vfield .idx { flex: 0 0 auto; color: var(--mid); font-size: 11px; }
+.vfield .kind { flex: 0 0 auto; font-size: 11px; }
+.vfield .val {
+  flex: 1;
+  min-width: 0;
+  font-size: 11px;
+  white-space: pre-wrap;
+  word-break: break-all;
+}
+.vfield .acts { margin-left: auto; display: flex; gap: 6px; flex-shrink: 0; align-self: center; }
+
+/* 快照 id：定宽，右列的时间与来源才对得齐 */
+.row .name.snpid { flex: 0 0 220px; }
+
+/* 只读行（只在系统级存在、且当前进程未提权）整体退到次要层：
+   54 行里有一半在当前身份下改不了，和可改的行一样重就没法扫。
+   这是「当前不可改」而不是「不重要」，所以只降字重与色，不隐藏、也不改排序。 */
+.row.vrow.readonly .name { font-weight: 400; color: var(--mid); }
+.row.vrow.readonly .desc { opacity: 0.75; }
+
+/* 弹窗里的多行值输入（单行 input 装不下 PATH） */
+textarea.dlg-input {
+  height: auto;
+  min-height: 62px;
+  padding: 6px 10px;
+  border: var(--border);
+  border-radius: var(--radius-flat);
+  background: var(--paper);
+  color: var(--ink);
+  line-height: 1.5;
+  resize: vertical;
+}
+textarea.dlg-input:focus { outline: none; border-color: var(--soft-2); box-shadow: var(--shadow-relief-inset); }
