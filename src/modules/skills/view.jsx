@@ -299,36 +299,39 @@ export default function SkillsView() {
 
   const hubPath = data?.hub?.path || boot?.hub?.path || '';
 
-  // 「未入 Hub」按平台目录分组：用户级 / 项目级 / 不同平台不再混在一行里
+  // 「未入 Hub」两组：当前项目一组（按项目目录收拢，不看平台），用户级一组。
+  // 一个 skill 同时在项目与用户级存在时归项目组——那是更该处理的一侧，
+  // 用户级形态仍能在详情弹窗里看到并单独操作。
   const orphanGroups = useMemo(() => {
-    const groups = new Map();
+    const projName = String(project || '').replace(/^.*[\\/]/, '');
+    const mk = (key, scope, label) => ({ key, scope, label, dirs: new Set(), items: [] });
+    const proj = mk('project', 'project', projName ? `项目 · ${projName}` : '项目');
+    const user = mk('user', 'user', '用户级');
     for (const o of data?.orphans || []) {
-      for (const c of o.cells || []) {
-        if (!platformOpts.includes(c.platform)) continue;
-        const key = c.scope + ':' + c.platform;
-        const g = groups.get(key) || {
-          key,
-          scope: c.scope,
-          platform: c.platform,
-          dir: String(c.dir || '').replace(/[\\/][^\\/]+$/, ''),
-          items: [],
-        };
-        g.items.push(o);
-        groups.set(key, g);
+      const cells = (o.cells || []).filter((c) => platformOpts.includes(c.platform));
+      if (!cells.length) continue;
+      const hasProj = cells.some((c) => c.scope === 'project');
+      const g = hasProj ? proj : user;
+      g.items.push(o);
+      for (const c of cells) {
+        if ((c.scope === 'project') === hasProj) g.dirs.add(String(c.dir || '').replace(/[\\/][^\\/]+$/, ''));
       }
     }
-    // 项目级在前：用户级游离大多是本机常驻的旧副本，优先级低（次要信息）
-    return [...groups.values()].sort((a, b) =>
-      (a.scope === b.scope ? 0 : a.scope === 'project' ? -1 : 1) || a.key.localeCompare(b.key)
-    );
-  }, [data, platformOpts]);
+    // 项目组在前；用户级游离大多是本机常驻旧副本，属于次要信息
+    return [proj, user].filter((g) => g.items.length);
+  }, [data, platformOpts, project]);
+
+  // 分组各自的展开状态（会话级，不持久化）：默认项目组展开、用户组收起
+  const [groupOpen, setGroupOpen] = useState({});
+  const isGroupOpen = (g) => groupOpen[g.key] ?? g.scope === 'project';
+  const toggleGroup = (g) => setGroupOpen((m) => ({ ...m, [g.key]: !isGroupOpen(g) }));
 
   // 未入 Hub 默认收起（ui.orphansOpen）：它只是「待收敛」的提示，不是日常要看的信息。
   // 收起时表头仍给出数量与作用域分布，不至于完全丢信息。
   const orphansOpen = !!ui.orphansOpen;
-  const orphanCount = orphanGroups.reduce((n, g) => n + g.items.length, 0);
-  const orphanProjCount = orphanGroups.filter((g) => g.scope === 'project').reduce((n, g) => n + g.items.length, 0);
-  const orphanUserCount = orphanCount - orphanProjCount;
+  const orphanProjCount = orphanGroups.find((g) => g.scope === 'project')?.items.length || 0;
+  const orphanUserCount = orphanGroups.find((g) => g.scope === 'user')?.items.length || 0;
+  const orphanCount = orphanProjCount + orphanUserCount;
 
   // ---- 详情弹窗：查看 + 操作都收进来，行上只留一个入口（轻量） ----
   const closeModal = () => setModal(null);
@@ -606,12 +609,20 @@ export default function SkillsView() {
               <Fragment key={g.key}>
                 <div className="colhead" style={{ padding: '0 12px' }}>
                   <h3 style={{ fontSize: 12, fontWeight: 600 }}>
-                    {SCOPE_SHORT[g.scope]}·{shortLabel(g.platform, adapters)}
+                    <button className="disclose" title="展开 / 收起这一组" onClick={() => toggleGroup(g)}>
+                      <span className="caret">{isGroupOpen(g) ? '▾' : '▸'}</span> {g.label}
+                    </button>
                     <span className="muted" style={{ fontWeight: 400 }}>  {g.items.length} 个</span>
                   </h3>
-                  <Copyable className="muted" text={g.dir} title="点击复制该平台目录路径">{g.dir}</Copyable>
+                  <Copyable
+                    className="muted"
+                    text={[...g.dirs].join('\n')}
+                    title="点击复制这一组涉及的平台目录"
+                  >
+                    {[...g.dirs][0]}{g.dirs.size > 1 ? ` 等 ${g.dirs.size} 个目录` : ''}
+                  </Copyable>
                 </div>
-                {g.items.map((o) => renderRow(o, { orphan: true }))}
+                {isGroupOpen(g) ? g.items.map((o) => renderRow(o, { orphan: true })) : null}
               </Fragment>
             ))
           ) : (
