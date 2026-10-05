@@ -2,6 +2,29 @@
 
 本文件记录对外可见的变更。格式参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)。
 
+## [Unreleased] 工程化：模块内文件拆分 + 尺寸护栏（零行为变化）
+
+### Changed
+
+- **按单一关注点拆分 skills / worktrees 两个最大模块**（对外入口与 import 路径全部不变）：
+  - `service.js` 变 barrel，业务进 `svc/*.js`（skills 七文件、worktrees 九文件），
+    依赖单向无环；`export *` 的重名静默丢弃风险以「一个导出一个文件」约定排除。
+  - action 声明与 CLI 人读渲染分层：`index.js` 只剩声明，`renders.js` 承接 renderX；
+    skills 顺带收编 `sourceLabel` 的 index↔view 双份实现为 `shared.js` 一份。
+  - `view.jsx` 变路由入口（skills 987→75 行，worktrees 594→216 行），
+    页面/弹窗进 `parts/*.jsx`；原 478 行的工作树单组件（14 handler、8 弹窗）消解；
+    三份重复的过滤谓词收敛为 `makeHit`。懒加载 chunk 不变（仍 5 个 view-*.js）。
+- **lint 尺寸护栏**：`max-lines` 500 / `max-lines-per-function` 450（有效行计，
+  跳过空行注释；tests/ 不限）。阈值卡在拆分后最大值上方——env 模块（EnvView 420）
+  是下一个被棘轮盯上的。
+- **分层规则补洞**：前端禁 node:* / 禁引 service / 禁跨模块的规则此前只覆盖
+  `view.jsx`，拆出的 `parts/*.jsx` 落在所有规则之外；glob 扩为
+  `src/modules/**/*.jsx` + `*/shared.js`，跨模块禁令在视图层重复声明
+  （flat config 同文件多块匹配整条替换）。
+- registry 一致性测试的 /api 路由对齐扫描扩展到 `view.jsx + parts/*`，
+  视图拆分后接口调用仍然全量受检。
+- README 新增「模块内的文件布局与何时拆」；模块目录结构注释同步。
+
 ## [0.13.0] - 2026-10-05 新增工作树模块 `wt`；Skill 页第二轮：hub 中心化、当前项目子页、术语平实化
 
 ### Added

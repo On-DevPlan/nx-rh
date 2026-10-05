@@ -120,10 +120,14 @@ src/
     envvars.js           # 环境变量平台驱动（PowerShell ↔ Windows 注册表；posix 位置已预留）
   modules/               # 功能域，每个自包含
     system/              # bootstrap / health（聚合模块，无视图）
-    repos/  skills/  settings/  env/  bundled/
-      index.js           #   action 声明（CLI + HTTP + help）
-      service.js         #   业务逻辑
-      view.jsx           #   面板视图
+    repos/  skills/  settings/  env/  bundled/  worktrees/
+      index.js           #   action 声明（CLI + HTTP + help）；渲染多了拆 renders.js
+      renders.js         #   CLI 人读渲染（render* 函数，只做数据→文本）
+      service.js         #   service barrel：export * from './svc/*.js'
+      svc/*.js           #   单一关注点的业务文件（模块长大后的布局，见下）
+      shared.js          #   前后端共用纯函数（禁 node:*，会被打进浏览器包）
+      view.jsx           #   面板视图入口（路由分发 + 懒加载 chunk 唯一入口）
+      parts/*.jsx        #   一个文件一个页面或一组弹窗（模块长大后的布局，见下）
   runtime/               # 装配层
     registry.js          # 模块注册表 + 装载期自检
     spec.js              # action 规格：校验、强转、路由编译、用法串生成
@@ -144,6 +148,23 @@ tests/
 前端约定：无 emoji、黑白清晰、正常圆角；不用浏览器原生弹窗（alert/confirm/prompt
 一律页内 toast/dialog）；用户选择（当前视图、订阅源/项目路径、多选勾选）全部
 localStorage 持久化，刷新不丢。
+
+### 模块内的文件布局与何时拆
+
+小模块从三件套（`index.js / service.js / view.jsx`）起步；长大到阈值再按下面的布局拆。
+**护栏是 lint 强制的**：文件 ≤ **500 有效行**（跳过空行与注释）、单函数 ≤ **450 有效行**
+（`eslint max-lines` / `max-lines-per-function`，超标即 `pnpm test` 失败）。
+
+- `service.js` 变 **barrel**：只写 `export * from './svc/*.js'`。依赖单向
+  （如 skills：`scan ← sources/targets ← queries ← select ← transfer`），**不许成环**；
+  一个导出名只允许活在一个 svc 文件里——`export *` 对重名会**静默丢弃**。
+- `index.js` 只剩 action 声明；人读渲染进 `renders.js`。
+- `view.jsx` 只剩路由分发 + 懒加载入口（`web/frontend/registry.js` 只认它，
+  parts 静态 import 并入同一 chunk，不会裂成多个文件）；一个页面或一组弹窗 =
+  一个 `parts/*.jsx`，只准向上引 shared/routes，禁止反向。
+- `tests/unit/registry.test.mjs` 会把视图里（view.jsx + parts/*）的每个 `/api` 字面量
+  对齐到路由表，写错路径 lint/测试当场红。
+- `tests/smoke.mjs` 不受尺寸护栏约束：它是有意的单文件状态化 E2E，拆了反而难读。
 
 ## 存储
 
@@ -305,6 +326,9 @@ pnpm test      # 漏登记会被 tests/unit/registry.test.mjs 断言拦下
 
 **不需要改**：CLI 分发、help 文本、HTTP 路由表、参数解析。
 新增一条操作只需在所属模块的 `actions` 数组里加一项。
+
+> 从三件套起步即可；文件逼近 500 有效行 / 单函数逼近 450 有效行时，
+> 按上面的「模块内的文件布局与何时拆」拆分——lint 护栏会强制。
 
 ## 启动目录与作用域
 
