@@ -18,5 +18,4 @@ export * from './svc/config.js';
 export * from './svc/wt.js';
 export * from './svc/context.js';
 export * from './svc/ext.js';
-export * from './svc/sync.js';
 export * from './svc/rebase.js';

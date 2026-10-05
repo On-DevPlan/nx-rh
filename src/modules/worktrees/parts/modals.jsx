@@ -63,7 +63,6 @@ export function ConfigModal({ cfg, onClose, onDone }) {
           branchPrefix: String(f.get('branchPrefix') || ''),
           baseBranch: String(f.get('baseBranch') || ''),
           worktreeRoot: String(f.get('worktreeRoot') || ''),
-          syncMode: String(f.get('syncMode') || 'copy'),
         },
       });
       onDone(null);
@@ -82,13 +81,6 @@ export function ConfigModal({ cfg, onClose, onDone }) {
         <div className="form-field">
           <label htmlFor="cfg-root">工作树根（绝对路径；相对路径按主仓库解析）</label>
           <input id="cfg-root" name="worktreeRoot" defaultValue={cfg.worktreeRoot} spellCheck="false" />
-        </div>
-        <div className="form-field">
-          <label htmlFor="cfg-mode">扩展文件默认同步方式</label>
-          <select id="cfg-mode" name="syncMode" defaultValue={cfg.syncMode}>
-            <option value="copy">copy（复制，跨平台最稳）</option>
-            <option value="symlink">symlink（链接；Windows 目录用 junction）</option>
-          </select>
         </div>
         <div className="form-acts">
           <button type="button" className="btn ghost" onClick={onClose}>取消</button>

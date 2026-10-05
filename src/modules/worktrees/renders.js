@@ -48,7 +48,14 @@ export function renderWt(w) {
 }
 
 export const cdLine = (r) =>
-  [`已${r.branch ? '创建' : '挂载'}: ${r.branch || r.name}`, `  路径: ${r.path}`, '', `cd "${r.path}"`].join('\n');
+  [
+    `已${r.branch ? '创建' : '挂载'}: ${r.branch || r.name}`,
+    `  路径: ${r.path}`,
+    '',
+    `cd "${r.path}"`,
+    '',
+    '进入后查看主项目变更与只读参考文档: nx-rh wt context',
+  ].join('\n');
 
 export function renderRemove(r) {
   if (r.status === 'blocked') return `未删除: ${r.name} —— ${r.reason}`;
@@ -65,7 +72,6 @@ export function renderConfig(c) {
     `  分支前缀:   ${c.branchPrefix}`,
     `  基础分支:   ${c.baseBranch}`,
     `  工作树根:   ${c.worktreeRoot}`,
-    `  扩展同步:   ${c.syncMode}`,
   ].filter(Boolean);
   return lines.join('\n');
 }
@@ -157,17 +163,6 @@ export function renderExtUpdated(r) {
 
 export function renderExtRemoved(r) {
   return `已移除扩展文件登记: ${r.removed}（磁盘文件未动）`;
-}
-
-export function renderSync(d) {
-  const lines = [`同步到工作树: ${d.target}（方式: ${d.mode}）`];
-  for (const r of d.results) {
-    lines.push(`  ${r.action.padEnd(9)} ${r.rel}${r.detail ? '  ' + r.detail : ''}`);
-  }
-  const s = d.summary;
-  lines.push('', `复制 ${s.copied}，链接 ${s.linked}，跳过 ${s.skipped}，冲突 ${s.conflict}，缺失 ${s.missing}，错误 ${s.error}`);
-  if (s.conflict) lines.push('有冲突：确认覆盖加 --force 后重跑');
-  return lines.join('\n');
 }
 
 // ---- rebase / fanout 渲染 ----

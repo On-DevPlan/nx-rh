@@ -3,7 +3,7 @@
 import { Copyable } from '../../../web/frontend/components/ui.jsx';
 import { sh, WtTags, ExtState } from './cards.jsx';
 
-export function WorktreeTable({ worktrees, onOpen, onSync, onRebase, onRemove }) {
+export function WorktreeTable({ worktrees, onOpen, onRebase, onRemove }) {
   return (
     <table className="card-table">
       <thead><tr>
@@ -28,8 +28,6 @@ export function WorktreeTable({ worktrees, onOpen, onSync, onRebase, onRemove })
               <button className="btn small ghost" onClick={() => onOpen(w)}>打开</button>
               {!w.isMain ? (
                 <>
-                  <button className="btn small ghost" title="把扩展文件同步进这个工作树"
-                    onClick={() => onSync(w)}>同步扩展</button>
                   <button className="btn small ghost" onClick={() => onRebase(w)}>rebase</button>
                   <button className="btn small ghost" onClick={() => onRemove(w)}>删除</button>
                 </>
@@ -56,7 +54,8 @@ export function ExtTable({ items, isMain, onRemove }) {
           <tr key={it.id}>
             <td className="cell-name" data-label="路径">
               <span className="nm">{it.rel}</span>
-              {it.outside ? <div className="sub-desc">主仓库外（不可按相对路径同步）</div> : null}
+              {it.attention ? <span className="tag strong" style={{ marginLeft: 6 }}>关注</span> : null}
+              {it.outside ? <div className="sub-desc">主仓库外（只读参考）</div> : null}
             </td>
             <td data-label="状态"><ExtState item={it} isMain={isMain} /></td>
             <td className="muted" data-label="标签/时间" style={{ fontSize: 11 }}>

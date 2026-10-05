@@ -2,6 +2,53 @@
 
 本文件记录对外可见的变更。格式参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)。
 
+## [0.15.0] - 2026-10-06 工作树只做「登记 + 提醒」：移除全部复制/链接能力
+
+### Changed
+
+- **nx-rh 不再复制、链接任何文件**。工作树模块的职责收敛为**登记 + 提醒**：
+  - 非 git（被 `.gitignore` 屏蔽）的文件/目录按全路径登记为扩展文件；
+  - 在工作树里 `wt context` 显示主项目变更，以及每个扩展/关注项的**主项目全路径**，
+    只读打开即可（非 git 文件多为文档）。
+- 关注项（如 `.tool` 本地工具目录）的辅助操作由「取得指令」改为「复制主项目路径」。
+- 模块配置移除 `syncMode`（不再有 copy/symlink 之分）。
+
+### Removed
+
+- 移除命令 `wt ext take`（按需取得单个）与 `wt ext sync`（批量同步）及其 HTTP 路由
+  （`POST /api/wt/ext/take`、`POST /api/wt/ext/sync`）；Web 面板移除「取得」「同步扩展」
+  「全部同步」按钮与同步结果弹窗。需要文件内容时由 **agent 自行复制**（`Copy-Item` / `cp`）。
+
+## [0.14.0] - 2026-10-06 工作树改为轻量信息收集：新增 `wt ext take`、关注项与 rh-worktree skill
+
+### Added
+
+- **新内置 skill `rh-worktree`**（`skill install rh-worktree` / `--group=rh-worktree`）：
+  自动适配当前状态，把规范的工作树流程交给 agent——
+  - 主仓库（`role=main`）：先 `wt context` 记录上下文，再 `wt ext discover --apply`
+    登记被 ignore 文件的全路径，然后 `wt add <需求>` 创建工作树并显示主项目变更；
+  - 工作树（`role=worktree`）：显示主项目地址、本工作树信息，以及主项目被 ignore、
+    需要特殊关注的文件/文件夹，附取得指令。
+- **`wt ext take <ref>`**：按需把**单个**扩展文件取得进当前工作树（id / 相对路径 / 名称定位），
+  比 `sync --ids` 更短；支持 `--target / --mode / --force / --dry-run`，冲突安全。
+- **关注项（attention）**：主项目根下的点目录（如 `.tool` 本地工具/测试目录）及一组常见
+  本地工具名会被自动标「关注」，在 `wt context`、`wt ext list` 与 Web 面板突出显示并附
+  `takeCmd`，方便按需参考/取得。
+- `wt context --json` 新增 `role`、`attention[]`、`extItems[]`（含 attention / takeCmd），
+  一条命令拿齐，不必再分别查询。
+
+### Changed
+
+- **工作树默认不复制文件**：定位从「扩展文件一键同步」改为**必要信息收集**——工作树里用
+  `wt context` 看主项目变更与参考路径，需要哪个再 `wt ext take`；只有工作树要**运行**
+  项目级脚本时才复制。批量 `wt ext sync` 保留但降为可选项（Web 上改为 ghost「全部同步（可选）」）。
+- `wt add` 输出在 cd 之后直接提示 `wt context`；扩展表新增「取得」按钮、批量同步弱化。
+
+### Fixed
+
+- `wt ext take` 判定为 `skipped` 时仍执行了复制、并被重新标成 `copied`；skipped 现在
+  立即短路返回，不再触发 cp。
+
 ## [0.13.3] - 2026-10-05 迁移形态就地可选：实体复制按钮 + 批量形态下拉
 
 ### Added

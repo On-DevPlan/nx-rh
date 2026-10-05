@@ -1,8 +1,8 @@
 // 应用壳：顶栏 + tab 导航（注册表驱动）+ hash 路由。
 // 路由即持久化：当前视图写进 location.hash 与 store，刷新/分享链接都停在原页面。
-import { Suspense, useEffect } from 'react';
+import { Suspense, useCallback, useEffect, useRef } from 'react';
 import { useStore } from './store.jsx';
-import { ErrorBoundary, useDialog, useToast } from './components/ui.jsx';
+import { ErrorBoundary, useClickOutside, useDialog, useToast } from './components/ui.jsx';
 import { VIEWS } from './registry.js';
 
 function viewFromHash() {
@@ -71,6 +71,14 @@ export default function App() {
 
   const recents = boot?.recents || [];
 
+  // 右上角「最近目录」下拉：原生 <details> 点开后点别处不会自动收起——
+  // 用 useClickOutside 收口（点外部 / Esc），选中某个目录后也立即收起。
+  const recentsRef = useRef(null);
+  const closeRecents = useCallback(() => {
+    if (recentsRef.current) recentsRef.current.open = false;
+  }, []);
+  useClickOutside(recentsRef, closeRecents);
+
   return (
     <>
       <header>
@@ -87,7 +95,7 @@ export default function App() {
           ))}
         </nav>
         <div className="meta" title={activePath}>{activeLabel}</div>
-        <details className="recents">
+        <details className="recents" ref={recentsRef}>
           <summary title="最近的项目目录。每个目录启动 serve 时自动登记；点击切换后，项目级信息只针对该目录">
             最近目录 {recents.length}
           </summary>
@@ -96,7 +104,7 @@ export default function App() {
               <button
                 className={'muted' + (!ui.activeScope ? ' active' : '')}
                 title={boot?.projectRoot ? `服务进程目录：${boot.projectRoot}\n点击切回（取消激活）` : '点击切回服务进程目录'}
-                onClick={() => switchScope(null)}
+                onClick={() => { closeRecents(); switchScope(null); }}
               >
                 （服务进程目录）{!ui.activeScope ? ' ✓' : ''}
               </button>
@@ -106,7 +114,7 @@ export default function App() {
                 <button
                   className={'muted' + (ui.activeScope?.scope === r.scope ? ' active' : '')}
                   title={`${r.path}\n点击切换：之后的查看 / 迁移都落到这个目录`}
-                  onClick={() => switchScope(ui.activeScope?.scope === r.scope ? null : r)}
+                  onClick={() => { closeRecents(); switchScope(ui.activeScope?.scope === r.scope ? null : r); }}
                 >
                   {String(r.path).split(/[\\/]/).filter(Boolean).pop()}
                   {ui.activeScope?.scope === r.scope ? ' ✓' : ''}
@@ -114,7 +122,7 @@ export default function App() {
               </li>
             ))}
             <li>
-              <button className="muted" title="主动登记一个目录（登记即切换）" onClick={addDir}>＋ 注册其他目录…</button>
+              <button className="muted" title="主动登记一个目录（登记即切换）" onClick={() => { closeRecents(); addDir(); }}>＋ 注册其他目录…</button>
             </li>
           </ul>
         </details>

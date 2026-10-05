@@ -13,7 +13,7 @@ import { extIsMainEval } from './parts/cards.jsx';
 import { WorktreeTable, ExtTable } from './parts/tables.jsx';
 import { NewWtModal, ConfigModal, ExtAddModal, ResultModal } from './parts/modals.jsx';
 import {
-  ContextModal, FanoutModal, DiscoverModal, SyncModal, rebaseText, fanoutText,
+  ContextModal, FanoutModal, DiscoverModal, rebaseText, fanoutText,
 } from './parts/flows.jsx';
 
 export default function WorktreesView() {
@@ -114,21 +114,14 @@ export default function WorktreesView() {
       await refreshBoot();
     });
 
-  const doSync = (extra = {}) =>
-    guard(async () => {
-      const body = { ...extra };
-      const r = await api('/api/wt/ext/sync', { method: 'POST', body });
-      setModal({ kind: 'sync', payload: { ...r, req: body } });
-      await refreshBoot();
-    });
-
   const head = (
     <div className="page-head">
       <div className="title-block">
         <h2>工作树</h2>
         <div className="page-desc">
           用 git worktree 为每件事开一个独立工作目录：分支互不干扰，共享同一个仓库。
-          被 .gitignore 忽略、不会自动带进工作树的文件，登记为扩展文件后一键同步。
+          本模块只做「登记 + 提醒」，不复制文件——用「主项目上下文」查看主项目变更；
+          被 .gitignore 忽略的本地工具/文档登记为扩展文件（只读参考），需要内容时 agent 自行复制。
         </div>
       </div>
       <div className="acts">
@@ -171,7 +164,7 @@ export default function WorktreesView() {
           </div>
         ) : null}
         <div className="muted" style={{ marginTop: 8, fontSize: 11, lineHeight: 1.7 }}>
-          分支前缀 {cfg.branchPrefix} · 基础分支 {cfg.baseBranch} · 同步方式 {cfg.syncMode}
+          分支前缀 {cfg.branchPrefix} · 基础分支 {cfg.baseBranch}
           <br />
           工作树根 {cfg.worktreeRoot}
         </div>
@@ -179,7 +172,7 @@ export default function WorktreesView() {
 
       {/* 工作树清单 */}
       <div className="card">
-        <WorktreeTable worktrees={worktrees} onOpen={doOpen} onSync={(w) => doSync({ target: w.name })} onRebase={doRebase} onRemove={doRemove} />
+        <WorktreeTable worktrees={worktrees} onOpen={doOpen} onRebase={doRebase} onRemove={doRemove} />
       </div>
 
       {/* 扩展文件 */}
@@ -192,7 +185,6 @@ export default function WorktreesView() {
           <span style={{ marginLeft: 'auto', display: 'flex', gap: 6 }}>
             <button className="btn small ghost" onClick={openDiscover}>发现</button>
             <button className="btn small ghost" onClick={() => setModal({ kind: 'extAdd' })}>登记</button>
-            <button className="btn small" onClick={() => doSync({})}>同步到当前树</button>
           </span>
         </div>
         <ExtTable items={extItems} isMain={extIsMain} onRemove={doExtRemove} />
@@ -207,7 +199,6 @@ export default function WorktreesView() {
       {modal?.kind === 'context' ? <ContextModal c={modal.payload} onClose={() => setModal(null)} /> : null}
       {modal?.kind === 'fanout' ? <FanoutModal payload={modal.payload} onClose={() => setModal(null)} onRun={runFanout} /> : null}
       {modal?.kind === 'discover' ? <DiscoverModal payload={modal.payload} onClose={() => setModal(null)} onApply={applyDiscover} /> : null}
-      {modal?.kind === 'sync' ? <SyncModal payload={modal.payload} onClose={() => setModal(null)} onForce={() => doSync({ ...modal.payload.req, force: true })} /> : null}
       {modal?.kind === 'result' ? <ResultModal payload={modal.payload} onClose={() => setModal(null)} /> : null}
 
       {dialogNode}

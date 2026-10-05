@@ -27,10 +27,13 @@ git 的事交给 git 自己。登记表是 git 给不了的东西——它跨仓
 让 agent 不必每次重新问「这个是哪个项目」。
 
 > **唯一例外：工作树模块 `wt`**。它独占 git-worktree 操作——开/删工作树、
-> rebase / fanout、把 `.gitignore` 里不进工作树的文件登记为**扩展文件**并同步。
+> rebase / fanout、把 `.gitignore` 里不进工作树的文件/目录登记为**扩展文件**。
+> **nx-rh 只做「登记 + 提醒」，不复制、不链接任何文件**——工作树里用 `wt context`
+> 看主项目变更与扩展文件的主项目全路径（如 `.tool` 本地工具目录），只读参考；
+> 需要内容时 agent 自己复制（`Copy-Item` / `cp`）。
 > 即便如此，它仍不做通用 status/diff/pull/push 与远端协作；`repo` 模块继续不碰 git。
 > 设计上工作树清单的真相始终在 git（`git worktree list` 现查），store 只存 git 不知道的
-> 扩展文件全路径与模块配置。
+> 扩展文件全路径与模块配置。配套 skill **`rh-worktree`** 把这套标准流程交给 agent 自动执行。
 
 ## 快速开始
 
@@ -265,14 +268,15 @@ localStorage 持久化，刷新不丢。
 | `nx-rh wt checkout <branch> [--name N] [--root R] [--force]` | 已存在分支挂成工作树 |
 | `nx-rh wt remove <ref> [--branch] [--force]` | 移除工作树（`--branch` 连分支删；主树不可删） |
 | `nx-rh wt switch <ref>` / `wt open <ref>` | 打印 cd 指令 / 文件管理器打开 |
-| `nx-rh wt context [--log N]` | 主项目上下文弹窗：主项目现状 + 领先落后 + 扩展状态 + 建议指令 |
+| `nx-rh wt context [--log N]` | 主项目上下文：主项目现状 + 领先落后 + 关注项（如 .tool）+ 扩展状态 + 建议指令；`--json` 含 `role/attention/extItems` |
 | `nx-rh wt rebase [ref] [--base B] [--message M]` | 把工作树 rebase 到主项目分支（冲突自动 abort） |
 | `nx-rh wt fanout [--base B] [--yes]` | 计划 / 执行：全部工作树 rebase（脏、领先目标拦下） |
-| `nx-rh wt ext list [--target T]` | 扩展文件表（主仓库看变更，工作树看一致/缺失） |
+| `nx-rh wt ext list [--target T]` | 扩展文件表（主仓库看变更，工作树看一致/缺失；关注项标「关注」） |
 | `nx-rh wt ext add <abspath> [--label L] [--force]` | 按全路径登记扩展文件（须被忽略） |
 | `nx-rh wt ext discover [--apply]` | 发现被忽略文件（默认只建议，`--apply` 登记） |
 | `nx-rh wt ext get <ref>` / `update <ref> [--label L]` / `remove <ref>` | 扩展文件查看 / 改标签 / 注销 |
-| `nx-rh wt ext sync [target] [--mode copy\|symlink] [--ids a,b] [--force] [--dry-run]` | 同步扩展文件进工作树（冲突不覆盖） |
+
+> nx-rh **没有复制/同步命令**：扩展文件只读提醒，需要内容时 agent 自行 `Copy-Item` / `cp`。
 
 > `env` 模块是唯一改**操作系统状态**而非本仓库状态的模块：它读写 Windows 注册表里的
 > 持久化环境变量（用户级 `HKCU\Environment` / 系统级 `HKLM\...\Session Manager\Environment`）。
@@ -377,6 +381,12 @@ nx-rh skill get nx-rh skill-hub     # 裸名 ref → references/skill-hub.md
   `~/.claude/skills` 的外部 agent**一键拿全上下文；`get` 永远给文档，目标端 conflict 只作为附带信息返回
 - 旧名 `repo-hub` 仍可作为 `--name` 别名使用
 - Web 面板「Skill」页底部「内置手册」区块：导出上下文 / 安装到本机
+
+包内另有两个面向特定任务的配套 skill（同样可 `skill install <名>`）：
+
+- **rh-collect**：把发现的 git 仓库先问过用户再登记进仓库清单。
+- **rh-worktree**：自动适配主仓库/工作树——主仓库里按需求登记扩展文件并创建工作树（不复制），
+  工作树里显示主项目地址、本树信息与被 ignore 的关注项（如 `.tool` 本地工具目录）的主项目全路径，只读参考。
 
 ## Skill 订阅与迁移
 

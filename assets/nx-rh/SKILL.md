@@ -21,7 +21,7 @@ agent_created: true
 - 需要把 skill 的完整文档交给外部 agent（`skill cat`），让它获得上下文并自行迁移
 - 需要查看 / 修改 Windows 的持久化环境变量或 PATH（命令找不到、找到旧版本、改了不生效）
 - 需要为一件事开独立的 git worktree，在工作树里快速获取主项目最新上下文
-- 需要把 `.gitignore` 里不进工作树的文件登记为扩展文件，并同步（复制/链接）进工作树
+- 需要把 `.gitignore` 里不进工作树的文件/目录登记为扩展文件，只读提醒（nx-rh 不代复制）
 
 ## 核心原则
 
@@ -59,6 +59,11 @@ agent_created: true
 >
 > 另有配套 skill **`rh-collect`**（`skill install rh-collect` 或 `skill install --group=rh-collect`）：
 > 把 agent 发现的 git 仓库**先问过用户**再登记进仓库清单。
+>
+> 还有配套 skill **`rh-worktree`**（`skill install rh-worktree` 或 `skill install --group=rh-worktree`）：
+> 自动适配主仓库/工作树，规范创建工作树并显示主项目变更；工作树内可查看主项目被 ignore 的
+> 关注项（如 `.tool` 本地工具目录）的主项目全路径、只读参考——**nx-rh 不复制文件**，
+> 需要内容时 agent 自行复制。
 
 ## 场景路由（ref-map）
 

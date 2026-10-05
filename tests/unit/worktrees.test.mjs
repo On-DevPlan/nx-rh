@@ -85,6 +85,15 @@ test('parseGitignore：取反/目录/glob/锚定分类正确', () => {
   assert.deepEqual(concrete, ['node_modules', 'config/x.txt']);
 });
 
+test('attentionOf：本地工具目录 / 主仓库根点目录识别', () => {
+  assert.equal(svc.attentionOf('.tool', 'dir'), true);
+  assert.equal(svc.attentionOf('.tool', 'file'), true); // 命中清单，与 kind 无关
+  assert.equal(svc.attentionOf('.foo', 'dir'), true); // 根下点目录
+  assert.equal(svc.attentionOf('a/.foo', 'dir'), false); // 嵌套点目录不算
+  assert.equal(svc.attentionOf('src', 'dir'), false);
+  assert.equal(svc.attentionOf('.git', 'dir'), false);
+});
+
 // ---- 非 git 目录安全降级 ----
 
 test('非 git 目录：overview 降级且不抛', async () => {
@@ -173,35 +182,15 @@ test('主项目扩展文件变更可被检出', async () => {
   assert.equal(env.changed, true);
 });
 
-// ---- 同步进工作树（含冲突与强制覆盖） ----
+// ---- 工作树视角：只读状态评估（nx-rh 不复制、不写盘） ----
 
-test('wt ext sync：首次复制；主项目再变更则冲突，--force 覆盖；随后跳过', async () => {
-  // 首次：工作树里没有这些文件 → 复制主项目当前内容（.env 此时已是 KEY=2）
-  const first = await svc.syncExtensions({ target: 'add-login-captcha' });
-  assert.equal(first.status, 'ok');
-  assert.ok(first.summary.copied >= 2);
-
-  // 主项目 .env 再次变更
-  writeFileSync(join(root, '.env'), 'KEY=3\n');
-  const blockedSync = await svc.syncExtensions({ target: 'add-login-captcha' });
-  assert.equal(blockedSync.status, 'conflict');
-  assert.ok(blockedSync.summary.conflict >= 1);
-
-  const forced = await svc.syncExtensions({ target: 'add-login-captcha', force: true });
-  assert.ok(forced.summary.copied >= 1);
-
-  const again = await svc.syncExtensions({ target: 'add-login-captcha' });
-  assert.equal(again.summary.conflict, 0);
-  assert.ok(again.summary.skipped >= 1);
-
-  // 从工作树视角：.env 与主项目当前内容一致
+test('工作树视角：扩展默认缺失，只给主项目全路径', async () => {
   const inWt = await svc.listExtensions({ target: 'add-login-captcha' });
   assert.equal(inWt.isMain, false);
-  assert.equal(inWt.items.find((i) => i.rel === '.env').upToDate, true);
-});
-
-test('非工作树内且无 --target：给出可分类 BLOCKED', async () => {
-  await assert.rejects(svc.syncExtensions({}), { code: 'BLOCKED' });
+  const env = inWt.items.find((i) => i.rel === '.env');
+  assert.equal(env.present, false); // 从未复制
+  assert.ok(String(env.mainPath || '').replace(/\\/g, '/').endsWith('/.env'));
+  assert.ok(inWt.summary.missing >= 2);
 });
 
 // ---- rebase / fanout ----
@@ -255,6 +244,34 @@ test('wt context：主项目 + 当前工作树 + 建议指令一次拿齐', asyn
   assert.equal(c.main.branch, 'main');
   assert.ok(Array.isArray(c.suggested));
   assert.ok(c.main.log.length > 0);
+});
+
+// ---- 关注项登记（只读提醒，不复制） ----
+
+test('关注项 .tool：登记后标关注、给主项目全路径；工作树视角仅提醒缺失', async () => {
+  // 主项目建 .tool 本地工具目录并登记忽略
+  mkdirSync(join(root, '.tool'));
+  writeFileSync(join(root, '.tool', 'run.sh'), 'echo 1');
+  const gi = readFileSync(join(root, '.gitignore'), 'utf8');
+  writeFileSync(join(root, '.gitignore'), gi + '.tool/\n');
+
+  const reg = await svc.addExtension({ abspath: join(root, '.tool'), label: '本地工具' });
+  assert.equal(reg.status, 'ok');
+
+  const mainList = await svc.listExtensions();
+  const tool = mainList.items.find((i) => i.rel === '.tool');
+  assert.equal(tool.attention, true);
+  assert.ok(String(tool.mainPath || '').replace(/\\/g, '/').endsWith('/.tool'));
+  assert.equal(tool.takeCmd, undefined); // nx-rh 不再提供取得指令
+
+  // 工作树视角：只提醒缺失，不复制
+  const inWt = await svc.listExtensions({ target: 'add-login-captcha' });
+  const toolInWt = inWt.items.find((i) => i.rel === '.tool');
+  assert.equal(toolInWt.present, false);
+  assert.equal(toolInWt.attention, true);
+
+  // 未登记项定位仍报 NOT_FOUND（由 getExtension 表达）
+  await assert.rejects(svc.getExtension('nope'), { code: 'NOT_FOUND' });
 });
 
 // ---- 移除 ----

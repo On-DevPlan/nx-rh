@@ -82,7 +82,7 @@ export async function discoverExtensions(input = {}) {
   if (!bucket.main.git) throw blocked('当前目录不是 git 仓库: ' + bucket.main.path);
 
   const proposals = new Map();
-  // 工作树根（若在主仓库内）绝不能被当成扩展文件——否则同步会把根递归复制进工作树
+  // 工作树根（若在主仓库内）绝不能被当成扩展文件——它不是要登记的参考项
   const rootRel0 = relative(bucket.main.path, bucket.config.worktreeRoot);
   const wtRootRel =
     !isAbsolute(rootRel0) && !rootRel0.startsWith('..')
@@ -159,7 +159,7 @@ export async function discoverExtensions(input = {}) {
   };
 }
 
-function matchExtension(list, ref) {
+export function matchExtension(list, ref) {
   const r = String(ref || '').trim();
   let target;
   try {

@@ -1,11 +1,11 @@
-// 初始化与模块配置：分支前缀 / 工作树根 / 基础分支 / 同步方式。
+// 初始化与模块配置：分支前缀 / 工作树根 / 基础分支。
 import { isAbsolute, join, relative, resolve } from 'node:path';
 import fsp from 'node:fs/promises';
-import { badInput, blocked } from '../../../core/errors.js';
+import { blocked } from '../../../core/errors.js';
 import { ignoreKey, parseGitignore } from '../../../core/gitignore.js';
 import { getBucket, patchBucket, resolveMainRepoInfo } from './bucket.js';
 
-const CONFIG_FIELDS = ['branchPrefix', 'baseBranch', 'worktreeRoot', 'syncMode'];
+const CONFIG_FIELDS = ['branchPrefix', 'baseBranch', 'worktreeRoot'];
 
 export async function getConfig() {
   const { main, config } = await getBucket();
@@ -24,9 +24,6 @@ export async function setConfig(patch) {
   await patchBucket(main.path, (b) => {
     for (const f of CONFIG_FIELDS) {
       if (patch[f] !== undefined && patch[f] !== '') b.config[f] = String(patch[f]);
-    }
-    if (b.config.syncMode && !['copy', 'symlink'].includes(b.config.syncMode)) {
-      throw badInput('syncMode 只能是 copy | symlink');
     }
     if (b.config.worktreeRoot && !isAbsolute(b.config.worktreeRoot)) {
       b.config.worktreeRoot = resolve(main.path, b.config.worktreeRoot);

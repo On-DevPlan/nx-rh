@@ -9,6 +9,10 @@
     "rh-collect": {
       "skills": ["rh-collect"],
       "summary": "把 agent 发现的 git 仓库收进 nx-rh 登记表（先问再入）"
+    },
+    "rh-worktree": {
+      "skills": ["rh-worktree"],
+      "summary": "自动适配主仓库/工作树，规范创建工作树并只读提醒被 ignore 的关注项（nx-rh 不代复制）"
     }
   }
 }

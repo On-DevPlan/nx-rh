@@ -38,6 +38,26 @@ export function useGuard() {
   }, [toast]);
 }
 
+// 点击「元素外部」或按 Esc 时触发回调——下拉 / 弹层的统一收口方式。
+// 原生 <details> 只会在点 summary 时开合，点开后点页面别处不会收起（这是常见的小 bug）；
+// 给它挂这个钩子即可。用 pointerdown 而非 click：在 mouseup 之前就触发，点别处立即收起。
+export function useClickOutside(ref, onOutside, { enabled = true } = {}) {
+  useEffect(() => {
+    if (!enabled) return undefined;
+    const onPointer = (e) => {
+      const el = ref.current;
+      if (el && !el.contains(e.target)) onOutside(e);
+    };
+    const onKey = (e) => { if (e.key === 'Escape') onOutside(e); };
+    document.addEventListener('pointerdown', onPointer);
+    document.addEventListener('keydown', onKey);
+    return () => {
+      document.removeEventListener('pointerdown', onPointer);
+      document.removeEventListener('keydown', onKey);
+    };
+  }, [ref, onOutside, enabled]);
+}
+
 // ---- 点击即复制：所有路径/长标识的展示标准 ----
 // 点一下复制全文；hover 显示「点击复制」提示；复制成功 toast 确认。
 export function Copyable({ text, className = '', title, children }) {

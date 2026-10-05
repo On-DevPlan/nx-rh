@@ -23,15 +23,6 @@ export function fanoutText(r) {
   return '';
 }
 
-export function syncText(r) {
-  const s = r.summary;
-  return (
-    `同步到 ${r.target}（${r.mode}）\n` +
-    `复制 ${s.copied}，链接 ${s.linked}，跳过 ${s.skipped}，冲突 ${s.conflict}，缺失 ${s.missing}，错误 ${s.error}\n\n` +
-    r.results.map((x) => `  ${x.action.padEnd(9)} ${x.rel}${x.detail ? '  ' + x.detail : ''}`).join('\n')
-  );
-}
-
 export function ContextModal({ c, onClose }) {
   const m = c.main;
   return (
@@ -69,6 +60,27 @@ export function ContextModal({ c, onClose }) {
           当前树：一致 {c.extensions.here.upToDate}，差异 {c.extensions.here.differs}，
           缺失 {c.extensions.here.missing}
         </div>
+      ) : null}
+
+      {c.attention?.length ? (
+        <>
+          <div className="muted" style={{ fontSize: 11, margin: '12px 0 6px' }}>
+            需要关注（主项目本地工具/文档目录，被 ignore、不进工作树，只读参考）
+          </div>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+            {c.attention.map((a) => (
+              <div key={a.rel} style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                <span className="tag strong">关注</span>
+                <span className="nm">{a.rel}</span>
+                {a.mainPath ? (
+                  <span style={{ marginLeft: 'auto' }}>
+                    <Copyable text={a.mainPath} className="btn small ghost">复制主项目路径</Copyable>
+                  </span>
+                ) : null}
+              </div>
+            ))}
+          </div>
+        </>
       ) : null}
 
       {c.suggested.length ? (
@@ -142,19 +154,6 @@ export function DiscoverModal({ payload, onClose, onApply }) {
           登记全部候选
         </button>
       </div>
-    </Modal>
-  );
-}
-
-export function SyncModal({ payload, onClose, onForce }) {
-  return (
-    <Modal title="同步结果" onClose={onClose}>
-      <pre>{syncText(payload)}</pre>
-      {payload.summary.conflict ? (
-        <div className="form-acts">
-          <button className="btn danger" onClick={onForce}>强制覆盖重跑</button>
-        </div>
-      ) : null}
     </Modal>
   );
 }

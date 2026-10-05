@@ -27,7 +27,6 @@ export function defaultConfig(mainPath) {
     baseBranch: 'main',
     // 默认集中存放（ccswitch 形态）：主项目目录保持干净
     worktreeRoot: join(homedir(), '.nx-rh', 'worktrees', slug(basename(mainPath))),
-    syncMode: 'copy', // 跨平台最稳；symlink 在 Windows 文件链接需权限
   };
 }
 

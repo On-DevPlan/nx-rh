@@ -37,22 +37,39 @@ export async function getContext(opts = {}) {
   const mainExt = await inspectAt(main.path, bucket);
   const hereExt = main.linked ? await inspectAt(main.top, bucket) : null;
 
+  // 需要特殊关注的本地工具/测试目录（如 .tool）：主项目里有、但不进工作树。
+  const attentionItems = mainExt.items.filter((i) => i.attention);
+  const attention = attentionItems.map((i) => ({
+    rel: i.rel,
+    present: i.present,
+    mainPath: i.mainPath || null,
+  }));
+
   const suggested = [];
   if (mainDirty) suggested.push(`主工作树有未提交改动：git -C "${main.path}" status -sb`);
   if (currentWorktree) {
     const { ahead, behind } = currentWorktree.divergence;
     if (behind) suggested.push(`当前工作树落后 ${behind} 个提交：nx-rh wt rebase`);
-    if (ahead) suggested.push(`当前工作树领先 ${ahead} 个提交：nx-rh wt fanout 或提 PR`);
+    if (ahead) suggested.push(`当前工作树领先 ${ahead} 个提交：提 PR 或自行合并`);
   }
   if (hereExt && hereExt.summary.missing) {
-    suggested.push(`当前工作树缺 ${hereExt.summary.missing} 个扩展文件：nx-rh wt ext sync`);
+    // nx-rh 只登记/提醒、不复制：缺的是「只读参考项」，需要内容时 agent 自行从主项目路径复制。
+    const attMissing = hereExt.items.filter((i) => !i.present && i.attention).map((i) => i.rel);
+    suggested.push(
+      `当前工作树缺 ${hereExt.summary.missing} 个参考项（只读文档，nx-rh 不代复制）；需要时从主项目路径自行复制` +
+        (attMissing.length ? `；值得关注: ${attMissing.join(', ')}` : '')
+    );
   }
   if (mainExt.summary.changed) {
-    suggested.push(`主项目有 ${mainExt.summary.changed} 个扩展文件已变更：nx-rh wt ext list`);
+    suggested.push(`主项目有 ${mainExt.summary.changed} 个登记项已变更：nx-rh wt ext list`);
+  }
+  if (!main.linked && attention.length) {
+    suggested.push(`主项目有本地工具目录可只读参考: ${attention.map((a) => a.rel).join(', ')}（被 ignore，不进工作树）`);
   }
 
   return {
     git: true,
+    role: main.linked ? 'worktree' : 'main',
     main: {
       path: main.path,
       branch: mainBranch,
@@ -63,7 +80,10 @@ export async function getContext(opts = {}) {
     },
     currentWorktree,
     baseBranch: config.baseBranch,
+    attention,
     extensions: { main: mainExt.summary, here: hereExt ? hereExt.summary : null },
+    // 当前所在位置的扩展项明细（含 attention / takeCmd），一次拿齐不必再查
+    extItems: (hereExt || mainExt).items,
     suggested,
   };
 }

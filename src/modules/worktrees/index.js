@@ -9,7 +9,7 @@ import * as service from './service.js';
 import {
   renderWtList, renderWt, cdLine, renderRemove, renderConfig, renderInit,
   renderContext, renderExtList, renderDiscover, renderExtAdded, renderExtUpdated,
-  renderExtRemoved, renderSync, renderRebase, renderFanout,
+  renderExtRemoved, renderRebase, renderFanout,
 } from './renders.js';
 export default {
   id: 'worktrees',
@@ -27,14 +27,12 @@ export default {
         root: { type: 'string', hint: '工作树根目录' },
         'branch-prefix': { type: 'string' },
         'base-branch': { type: 'string' },
-        'sync-mode': { type: 'string', hint: 'copy|symlink' },
       },
       run: (ctx) =>
         service.initWorktree({
           worktreeRoot: ctx.root,
           branchPrefix: ctx['branch-prefix'],
           baseBranch: ctx['base-branch'],
-          syncMode: ctx['sync-mode'],
         }),
       render: renderInit,
     },
@@ -50,19 +48,17 @@ export default {
       id: 'wt.config.set',
       cli: ['wt', 'config', 'set'],
       http: ['PATCH', '/api/wt/config'],
-      summary: '修改分支前缀 / 基础分支 / 工作树根 / 同步方式',
+      summary: '修改分支前缀 / 基础分支 / 工作树根',
       flags: {
         root: { type: 'string', hint: '工作树根目录' },
         'branch-prefix': { type: 'string' },
         'base-branch': { type: 'string' },
-        'sync-mode': { type: 'string', hint: 'copy|symlink' },
       },
       run: (ctx) =>
         service.setConfig({
           worktreeRoot: ctx.root,
           branchPrefix: ctx['branch-prefix'],
           baseBranch: ctx['base-branch'],
-          syncMode: ctx['sync-mode'],
         }),
       render: renderConfig,
     },
@@ -230,21 +226,6 @@ export default {
       args: ['ref'],
       run: (ctx) => service.removeExtension(ctx.ref),
       render: renderExtRemoved,
-    },
-    {
-      id: 'wt.ext.sync',
-      cli: ['wt', 'ext', 'sync'],
-      http: ['POST', '/api/wt/ext/sync'],
-      summary: '把扩展文件复制/链接进工作树；默认当前所在工作树',
-      args: [{ name: 'target', required: false }],
-      flags: {
-        mode: { type: 'string', hint: 'copy|symlink' },
-        ids: { type: 'array', hint: '只同步指定 id/路径' },
-        force: { type: 'boolean' },
-        'dry-run': { type: 'boolean' },
-      },
-      run: (ctx) => service.syncExtensions(ctx),
-      render: renderSync,
     },
   ],
 };
