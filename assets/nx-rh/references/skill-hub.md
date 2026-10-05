@@ -13,7 +13,7 @@
 
 ```
 订阅源（Skill Hub）  <src>/<name>/SKILL.md              ← 唯一可信源（目录下直接是各 skill）
-目标（迁移落点）      user:    ~/<platform.globalDir>/<name>
+目标（安装位置）      user:    ~/<platform.globalDir>/<name>
                      project: <启动目录>/<platform.dir>/<name>
 ```
 
@@ -21,7 +21,7 @@
 - 目标 = 平台 × 作用域：`--platform` 选平台，`--to global|user|project|all` 选作用域
   （`global` 与 `user` 同义，都指 `~/`；缺省 `project`）
 - 平台既可用 id，也可用自然别名：`--platform claude` / `wb` / `cursor` / `gemini` / `universal`
-  （`nx-rh skill adapters` 会列出各自的绝对落点）
+  （`nx-rh skill adapters` 会列出各自的绝对安装位置）
 - `nx-rh skill adapters [--project <目录>]` 列出每个平台的**项目级与用户级绝对路径**——
   「把一个 skill 变成 .claude / .workbuddy / .cursor」在终端里直接可抄，无需先起面板
 - **不做项目之间互迁**——项目目录只是落地副本，真相永远在订阅源里
@@ -50,25 +50,27 @@ nx-rh skill hub list [--source <路径>] [--project <项目根>] [--long] [--jso
 - 默认一行一个：`名称 · 描述（截断）`；多订阅源时额外标出来源短名（如 `sl/skills`）
 - `--long`：完整描述 + skill 目录 + 迁移现状（一个 skill 一块），不必起面板就能读清
 - `--json`：每项含 `name / dir / description（不截断）/ source / cells[]`
-  （`cells` = 每个平台 × 作用域的落点绝对路径与当前形态）——跨平台/跨机器复用时按它落地
-- 另单列「未入 Hub」——平台目录里有、订阅源没有的 skill
+  （`cells` = 每个平台 × 作用域的安装位置绝对路径与当前形态）——跨平台/跨机器复用时按它落地
+- 另单列「不在订阅源」——平台目录里有、订阅源没有的 skill
+- `nx-rh skill hub project skills [--project <项目根>]`：当前项目目录里**实际存在**的 skill
+  （扫全部适配器的项目级目录，未启用平台只标注不裁剪；每项标 `inHub`）
 
 ### 2. 单 skill 详情与上下文
 
 ```bash
-nx-rh skill show <name> [--project <项目根>]      # 完整描述 + 目录 + 文件清单 + 各平台落点矩阵
+nx-rh skill show <name> [--project <项目根>]      # 完整描述 + 目录 + 文件清单 + 各平台安装状态矩阵
 nx-rh skill cat  <name> [--ref <相对路径>]        # 全文（SKILL.md，或 skill 目录里任意一个文件）
 ```
 
 `skill show` 是最快的「这个 skill 能不能在 X 平台上用」判断入口：它把
-`平台 × 作用域 → 落点绝对路径 → 当前形态（链接/实体/未迁移）` 一条条列出来，并给出该
+`平台 × 作用域 → 安装位置绝对路径 → 当前形态（链接/实体/未安装）` 一条条列出来，并给出该
 skill 目录下的**文件清单**——不止 SKILL.md，`scripts/` 与 `references/` 往往才是关键。
 
 `skill cat` 把 skill 全文交给外部 agent，让它在自己环境里也能获得完整上下文并自行迁移。
 
-**两个命令都认「未入 Hub」的 skill**（订阅源里没有、只躺在平台目录里的那些）：
-落点是链接就**顺着链接读**，读到的是链接目标的内容；断链（目标已被删）会明确报
-`… 的落点是断链：<落点> → <目标>（目标已不存在）`，而不是含糊地说「订阅源里没有」。
+**两个命令都认「不在订阅源」的 skill**（订阅源里没有、只躺在平台目录里的那些）：
+安装位置是链接就**顺着链接读**，读到的是链接目标的内容；断链（目标已被删）会明确报
+`… 的安装位置是断链：<位置> → <目标>（目标已不存在）`，而不是含糊地说「订阅源里没有」。
 
 ### 3. 迁移（订阅源 → 目标）——可逆
 
@@ -106,14 +108,18 @@ nx-rh skill unmigrate --all --dry-run --to project            # 先看要移除�
 ### 5. 提交（目标副本 → 订阅源）
 
 ```bash
-nx-rh skill submit <name...> [--to user|global|project|all] [--platform P] [--force]
-nx-rh skill submit --all --dry-run                              # 预演：把「未入 Hub」那批一次收进订阅源
+nx-rh skill submit <name...> [--to user|global|project|all] [--platform P] [--force] [--into <订阅源>]
+nx-rh skill submit --all --dry-run                              # 预演：把「不在订阅源」那批一次收进订阅源
 ```
 
-把平台目录里的实体 skill 收进当前订阅源，随后**删除目标实文件**、改回指向订阅源的链接。
+把平台目录里的实体 skill 收进订阅源，随后**删除目标实文件**、改回指向订阅源的链接。
 这是「唯一实文件 = 订阅源」这条规范的落地动作。目标已是链接时返回 `skipped`（无需提交）。
 
-**`--to` 缺省 `all`**：未入 Hub 的 skill 常常落在**用户级**平台目录里（如 `~/.claude/skills`），
+**`--into <订阅源>`**：收进哪个已订阅的源（须在 `skill hub sources` 清单里；缺省当前主源）。
+未订阅的路径报 `INVALID_INPUT` 并列出已订阅清单。与 migrate 的 `--source` 刻意区分：
+`source` = 来源冲突时用哪个源的内容；`into` = 提交时落到哪个源。
+
+**`--to` 缺省 `all`**：不在订阅源的 skill 常常落在**用户级**平台目录里（如 `~/.claude/skills`），
 只扫项目级会报「目标目录里没有该 skill」——而 `--all` 正是主推用法。要只收某一侧时再显式写
 `--to project` / `--to user`。
 
@@ -157,7 +163,7 @@ nx-rh skill migrate --all --dry-run --to project           # 预演：只列计�
 | `--match <关键词>` | 按 **description** 过滤——「按业务需求挑」的那一条 |
 | `--dry-run` | 只判定不落盘，输出计划（将创建 / 将覆盖 / 已是最新） |
 
-> 批量前先 `--dry-run` 看一眼：它把每个 skill 在每个落点上的动作都列出来，
+> 批量前先 `--dry-run` 看一眼：它把每个 skill 在每个安装位置上的动作都列出来，
 > 既避免误操作，也方便 agent 先给出方案再执行。`--exclude` 是一等参数——
 > 「全都要，除了某几个」才是全量迁移的真实需求。
 
@@ -169,19 +175,20 @@ nx-rh skill migrate --all --dry-run --to project           # 预演：只列计�
 nx-rh skill add <name> --description "一句话描述"     # 新建；已存在同名 → CONFLICT
 nx-rh skill update <name> --content "$(cat SKILL.md)"  # 改写全文（须含 name/description frontmatter）
 nx-rh skill remove <name>                              # 只从订阅源删；目标侧还有引用时 blocked，--force 继续
-nx-rh skill purge <name> [--dry-run] [--force]         # 彻底删除：所有平台落点 + 订阅源里的实文件
+nx-rh skill purge <name> [--dry-run] [--force]         # 彻底删除：所有平台安装位置 + 订阅源里的实文件
 ```
 
 - `update` 校验 frontmatter：缺 name/description、或 name 与目录名不一致 → `INVALID_INPUT`
 - **`remove` 与 `purge` 的分工**（后果不同，所以是两个命令）：
-  - `remove` = 「下架，但保留各平台落点」。目标侧还有副本/链接 → `blocked` 并列出（删了会悬空）；
+  - `remove` = 「下架，但保留各平台安装位置」。目标侧还有副本/链接 → `blocked` 并列出（删了会悬空）；
     `--force` 只删订阅源这份，悬空目标之后用迁移重建
-  - `purge` = 「这个名字不该存在了」。落点（链接也含）与订阅源那份一起删；
-    先 `--dry-run` 看清单，落点里有**实体副本**时需要 `--force`（可能含本地改动）
-- **未入 Hub 的 skill 只有 `purge` 能删**：订阅源里根本没有它，`remove` 只会 `NOT_FOUND`
+  - `purge` = 「这个名字不该存在了」。安装位置（链接也含）与订阅源那份一起删；
+    先 `--dry-run` 看清单，安装位置里有**实体副本**时需要 `--force`（可能含本地改动）
+- **不在订阅源的 skill 只有 `purge` 能删**：订阅源里根本没有它，`remove` 只会 `NOT_FOUND`
 - `purge` **删链接不会碰它的目标**——链接只是指向别处的一个指针，所以清掉一批失效的游离链接是安全的
-- 面板：详情弹窗本身就是查看器（描述 / 文件树 + 全文 / 落点 / 操作）；
-  「从订阅源删除」与「彻底删除…」是两个按钮，后者先弹 dry-run 清单再确认
+- 面板：详情页本身就是查看器（描述 / 平台安装状态 / 操作，文件预览折叠在最后）；
+  「从订阅源删除」与「彻底删除…」是两个按钮，后者先弹 dry-run 清单再确认；
+  **不在订阅源的 skill 详情页没有迁移按钮**——主操作是「收进订阅源…」（弹窗选源）+ 彻底删除
 
 ## 来源冲突检测（只在订阅源之间）
 
@@ -204,10 +211,10 @@ nx-rh skill hub check          # 来源健康：目录缺失 / 空源 / 嵌套�
 | 同名且内容不同 | `conflict` | 两个真相源打架 | 保留一份，迁移时 `--source` 指定 |
 | 同名且内容一致 | `duplicate` | 重复订阅（无害） | 清理多余订阅 |
 
-## 平台与落点
+## 平台与安装位置
 
 ```bash
-nx-rh skill adapters [--project <目录>]                       # 每平台的项目级 / 用户级绝对落点
+nx-rh skill adapters [--project <目录>]                       # 每平台的项目级 / 用户级绝对安装位置
 nx-rh skill platform [claude-code workbuddy ...]               # 启用哪些平台（首个为默认平台）
 ```
 
@@ -217,6 +224,7 @@ nx-rh skill platform [claude-code workbuddy ...]               # 启用哪些平
 | --- | --- | --- | --- |
 | claude-code | claude · cc | `.claude/skills` | `~/.claude/skills` |
 | workbuddy | wb | `.workbuddy/skills` | `~/.workbuddy/skills` |
+| doubao | doubao | `.doubao/skills` | `~/Doubao/skills` |
 | agents | universal | `.agents/skills` | `~/.agents/skills` |
 | codebuddy | cb | `.codebuddy/skills` | `~/.codebuddy/skills` |
 | cursor | — | `.cursor/skills` | `~/.cursor/skills` |
@@ -241,8 +249,8 @@ nx-rh skill platform [claude-code workbuddy ...]               # 启用哪些平
 | --- | --- | --- |
 | `未设置 Skill Hub 订阅源` | 没有设置主源 | `nx-rh skill hub subscribe <路径>` |
 | `订阅源里没有该 skill` | 主源缺该 skill，且各平台目录里也没有 | 换主源；或从平台目录 `skill submit <name>` 收进源 |
-| `目标目录里没有该 skill` | `--to` 选的那一侧没有它（未入 Hub 的 skill 多半在**用户级**） | `skill submit` 缺省已是 `--to all`；核对 `skill show <name>` 的落点矩阵 |
-| `… 的落点是断链：<落点> → <目标>（目标已不存在）` | 链接指向的目标被删/被移走了（常见于订阅源目录改名后留下的残留） | `skill purge <name>` 清掉；`skill show` 里 `broken: true` 就是这个原因 |
+| `目标目录里没有该 skill` | `--to` 选的那一侧没有它（不在订阅源的 skill 多半在**用户级**） | `skill submit` 缺省已是 `--to all`；核对 `skill show <name>` 的安装状态矩阵 |
+| `… 的安装位置是断链：<位置> → <目标>（目标已不存在）` | 链接指向的目标被删/被移走了（常见于订阅源目录改名后留下的残留） | `skill purge <name>` 清掉；`skill show` 里 `broken: true` 就是这个原因 |
 | `未知平台: xxx（可用: …）` | `--platform` 写了不存在的平台 | 用 `nx-rh skill adapters` 看 id 与别名（claude / wb / cursor…） |
 | 迁移后仍是复制而非链接 | 创建链接失败（权限/文件系统） | 结果里 `degraded` + `degradedReason` 已说明；可改用 `--mode copy` 明确意图 |
 | 描述显示「(无描述)」 | SKILL.md frontmatter 解析异常 | 检查 frontmatter 是否闭合；CRLF/引号/块标量自 v0.2.2 起已支持 |

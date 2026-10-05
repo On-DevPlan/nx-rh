@@ -5,7 +5,7 @@
 import { spawn, spawnSync } from 'node:child_process';
 import { existsSync, lstatSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { dirname, join } from 'node:path';
+import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 
 const ROOT = dirname(fileURLToPath(import.meta.url));
@@ -350,6 +350,31 @@ try {
   const bulkDir = join(tmp, 'bulk-proj');
   mkdirSync(bulkDir, { recursive: true });
 
+  // ---- 16c-2. 当前项目子页数据（listProjectSkills）+ submit --into 选源 ----
+  const projSk = cliJson(['skill', 'hub', 'project', 'skills', '--project', project]);
+  check(
+    'skill hub project skills 盘点项目目录并标注 inHub',
+    Array.isArray(projSk.skills) && projSk.skills.some((s) => s.name === 'demo-skill' && s.inHub === true)
+      && Array.isArray(projSk.dirs) && projSk.dirs.some((d) => d.platform === 'claude-code' && d.skills.length >= 1),
+    JSON.stringify(projSk).slice(0, 200)
+  );
+
+  mkdirSync(join(project, '.claude', 'skills', 'into-skill'), { recursive: true });
+  writeFileSync(
+    join(project, '.claude', 'skills', 'into-skill', 'SKILL.md'),
+    '---\nname: into-skill\ndescription: 收进指定订阅源\n---\n\n# I\n'
+  );
+  const intoRes = cliJson(['skill', 'submit', 'into-skill', '--to', 'project', '--project', project, '--into', crlfSource]);
+  check(
+    'submit --into 收进指定订阅源（而非主源）',
+    intoRes.status === 'ok' && intoRes.into === resolve(crlfSource)
+      && existsSync(join(crlfSource, 'into-skill', 'SKILL.md'))
+      && !existsSync(join(hub, 'into-skill')),
+    JSON.stringify(intoRes).slice(0, 200)
+  );
+  const intoBad = cli(['skill', 'submit', 'into-skill', '--to', 'project', '--project', project, '--into', join(tmp, 'scan-root'), '--json']);
+  check('--into 未订阅的目录被拒并列出已订阅', intoBad.status === 1 && (intoBad.stdout + intoBad.stderr).includes('已订阅'));
+
   const dry = cliJson(['skill', 'migrate', '--all', '--dry-run', '--platform', 'claude-code', '--to', 'project', '--project', bulkDir]);
   check('批量 dry-run 列出计划且不落盘',
     dry.dryRun === true && dry.selected.length === 2 && !existsSync(join(bulkDir, '.claude')),
@@ -452,6 +477,32 @@ try {
 
   const sourcesRes = await (await fetch(base + '/api/skills/sources')).json();
   check('api skills sources', sourcesRes.ok && sourcesRes.data.sources.length >= 2);
+
+  const projSkRes = await (await fetch(base + '/api/skills/project-skills?project=' + encodeURIComponent(project))).json();
+  check(
+    'api skills project-skills',
+    projSkRes.ok && Array.isArray(projSkRes.data.skills) && Array.isArray(projSkRes.data.dirs)
+      && projSkRes.data.skills.some((s) => s.name === 'into-skill' && s.inHub === true),
+    JSON.stringify(projSkRes).slice(0, 160)
+  );
+
+  mkdirSync(join(project, '.claude', 'skills', 'into-skill2'), { recursive: true });
+  writeFileSync(
+    join(project, '.claude', 'skills', 'into-skill2', 'SKILL.md'),
+    '---\nname: into-skill2\ndescription: HTTP 侧 into\n---\n\n# I2\n'
+  );
+  const httpInto = await (
+    await fetch(base + '/api/skills/submit', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ name: 'into-skill2', to: 'project', project, into: crlfSource }),
+    })
+  ).json();
+  check(
+    'HTTP submit 带 into 收进指定源',
+    httpInto.ok && httpInto.data.status === 'ok' && existsSync(join(crlfSource, 'into-skill2', 'SKILL.md')),
+    JSON.stringify(httpInto).slice(0, 160)
+  );
 
   // 面板走 HTTP 迁移：必须与 CLI 同源生效（用项目级目标，避免碰真实 home）
   const httpMig = await (

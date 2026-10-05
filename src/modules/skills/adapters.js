@@ -12,6 +12,9 @@ export const ADAPTERS = [
   // 默认聚焦的两个平台排在最前
   { id: 'claude-code', name: 'Claude Code', dir: '.claude/skills', globalDir: '.claude/skills' },
   { id: 'workbuddy', name: 'WorkBuddy', dir: '.workbuddy/skills', globalDir: '.workbuddy/skills' },
+  // 豆包：用户级落点是「非隐藏 + 首字母大写」的 ~/Doubao/skills（与 ~/Doubao/chats 同级），
+  // 不同于其它平台的 ~/.<id>/skills 隐藏目录约定；项目级仍走隐藏目录 .doubao/skills。
+  { id: 'doubao', name: 'Doubao（豆包）', dir: '.doubao/skills', globalDir: 'Doubao/skills' },
   // 其余平台保留，可按需在“平台范围”里启用
   { id: 'agents', name: 'Universal (.agents)', dir: '.agents/skills', globalDir: '.agents/skills', universal: true },
   { id: 'codebuddy', name: 'CodeBuddy', dir: '.codebuddy/skills', globalDir: '.codebuddy/skills' },
@@ -38,6 +41,7 @@ const PLATFORM_ALIASES = {
   cc: 'claude-code',
   workbuddy: 'workbuddy',
   wb: 'workbuddy',
+  doubao: 'doubao',
   codebuddy: 'codebuddy',
   cb: 'codebuddy',
   cursor: 'cursor',

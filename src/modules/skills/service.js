@@ -398,7 +398,10 @@ function hubProblemsFor(sources) {
 }
 
 // 每行 = 一个订阅源 skill（**只统计实文件**），带各目标迁移状态与跨源冲突。
-export async function listAllSkills({ project, source } = {}) {
+//
+// platform（可选）：只看某一个平台（即使它不在「启用平台」范围里也照样扫描），
+// 供 Skill 三级结构里的「平台子页」使用；不传则按启用平台。
+export async function listAllSkills({ project, source, platform } = {}) {
   const s = await getSettings();
   const { current, sources } = await listSources();
   const chosen = source ? sources.find((x) => resolve(x.path).toLowerCase() === resolve(source).toLowerCase()) : null;
@@ -440,7 +443,7 @@ export async function listAllSkills({ project, source } = {}) {
   }
   conflicts.sort((a, b) => a.name.localeCompare(b.name));
 
-  const targets = await resolveTargets({ to: 'all', project });
+  const targets = await resolveTargets({ to: 'all', project, platform: platform || undefined });
   const rows = [];
   for (const sk of [...byName.values()].sort((a, b) => a.name.localeCompare(b.name))) {
     const cells = [];
@@ -484,6 +487,33 @@ export async function listAllSkills({ project, source } = {}) {
     }
   }
 
+  // 全平台汇总（总览页用）：扫描每个适配器的用户级 / 项目级目录，
+  // 按「是否在订阅源」分 managed / orphan，按形态分 links / copies。
+  // 一次请求拿全 11 个平台，避免前端逐个平台探测。
+  const projRoot = project || projectRoot();
+  const platformSummary = [];
+  const projNames = new Set();
+  for (const a of ADAPTERS) {
+    const rec = {
+      id: a.id, name: a.name,
+      enabled: s.platforms.includes(a.id), isDefault: s.defaultPlatform === a.id,
+      managed: 0, orphan: 0, copies: 0, links: 0, user: 0, project: 0,
+    };
+    for (const sc of SCOPE_IDS) {
+      const dir = targetDirFor(a.id, sc, projRoot);
+      const found = await scanSkillsRoot(dir);
+      if (found.length) rec[sc] = found.length;
+      if (sc === 'project') for (const x of found) projNames.add(x.name);
+      for (const x of found) {
+        if (sourceNames.has(x.name)) rec.managed += 1;
+        else rec.orphan += 1;
+        if (x.linkType) rec.links += 1;
+        else rec.copies += 1;
+      }
+    }
+    platformSummary.push(rec);
+  }
+
   return {
     hub: { path: current, ...(await hubInfo()) },
     settings: { platforms: s.platforms, defaultPlatform: s.defaultPlatform, syncMode: s.skillSyncMode },
@@ -492,6 +522,60 @@ export async function listAllSkills({ project, source } = {}) {
     conflicts,
     skills: rows,
     orphans: [...orphanMap.values()].sort((a, b) => a.name.localeCompare(b.name)),
+    platformSummary,
+    // 当前项目目录（cwd 作用域）里实际存在的 skill：总览页「当前项目」入口的数据源
+    projectSummary: {
+      root: projRoot,
+      count: projNames.size,
+      orphan: [...projNames].filter((n) => !sourceNames.has(n)).length,
+    },
+  };
+}
+
+// ─── 当前项目目录里的 skill ─────────────────────────────────────────
+//
+// 扫**全部**适配器的项目级目录，不只启用的平台——「项目里物理上有什么」
+// 不该被启用范围裁剪；未启用平台只标 enabled=false，照常列出。
+// 每个 skill 标注 inHub（是否已在订阅源），为「收进订阅源」提供候选集。
+export async function listProjectSkills({ project } = {}) {
+  const s = await getSettings();
+  const projRoot = project || projectRoot();
+  const sourceNames = new Set((await listAllSourceSkills()).map((x) => x.name));
+  const dirs = [];
+  const byName = new Map();
+  for (const a of ADAPTERS) {
+    const dir = targetDirFor(a.id, 'project', projRoot);
+    const found = await scanSkillsRoot(dir);
+    if (!found.length && !(await pathExists(dir))) continue;
+    dirs.push({
+      platform: a.id,
+      platformName: a.name,
+      dir,
+      enabled: s.platforms.includes(a.id),
+      isDefault: s.defaultPlatform === a.id,
+      skills: found.map((x) => ({ ...x, inHub: sourceNames.has(x.name) })),
+    });
+    for (const sk of found) {
+      const e = byName.get(sk.name) || {
+        name: sk.name,
+        description: sk.description,
+        inHub: sourceNames.has(sk.name),
+        cells: [],
+      };
+      e.cells.push({
+        platform: a.id,
+        platformName: a.name,
+        dir: sk.dir,
+        linkType: sk.linkType,
+        enabled: s.platforms.includes(a.id),
+      });
+      byName.set(sk.name, e);
+    }
+  }
+  return {
+    projectRoot: projRoot,
+    dirs,
+    skills: [...byName.values()].sort((x, y) => x.name.localeCompare(y.name)),
   };
 }
 
@@ -1035,12 +1119,25 @@ async function submitOne(name, { targets, hubRoot, force, keepTarget, dryRun }) 
   return { status: 'ok', name, sourceDir: dst, target: picked.path, relinked, keepTarget: !!keepTarget };
 }
 
-// 提交：<name...> 点名；或 --all / --include 取「未入 Hub」那一批（--exclude 排掉个别）
+// 提交：<name...> 点名；或 --all / --include 取「未入 Hub」那一批（--exclude 排掉个别）。
+// into：收进**哪个**订阅源（须已订阅；缺省当前主源）。与 migrate 的 --source 刻意区分——
+// source = 用哪个源的内容（来源侧冲突），into = 落到哪个源（提交方向）。
 export async function submitSkill({
   name, names, all, include, exclude, match,
-  to, platform, project, force, keepTarget, dryRun,
+  to, platform, project, force, keepTarget, dryRun, into,
 } = {}) {
-  const hub = await requireHubPath();
+  const { sources } = await listSources();
+  let hub;
+  if (into) {
+    const hit = sources.find((x) => samePath(x.path, resolve(String(into))));
+    if (!hit) {
+      throw badInput(`--into 不是已订阅的订阅源: ${into}（已订阅: ${sources.map((x) => x.path).join(' , ') || '无'}）`);
+    }
+    if (!hit.exists) throw notFound('--into 指定的订阅源目录不存在: ' + hit.path);
+    hub = hit.path;
+  } else {
+    hub = await requireHubPath();
+  }
   const targets = await resolveTargets({ to, platform, project });
   const hubRoot = await resolveSkillsRoot(hub);
   const wanted = nameList(names ?? name);
@@ -1066,6 +1163,7 @@ export async function submitSkill({
     status: conflicts.length ? 'conflict' : 'ok',
     dryRun: !!dryRun,
     selected: chosen.map((x) => x.name),
+    into: hub,
     count: results.length,
     submitted: results.filter((r) => r.status === 'ok' && !r.dryRun).length,
     wouldSubmit: results.filter((r) => r.status === 'ok').length,

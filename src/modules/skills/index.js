@@ -36,7 +36,7 @@ const SCOPE_MARK = { user: '用户', project: '项目' };
 function cellText(cells) {
   if (!cells?.length) return '';
   const on = cells.filter((c) => c.on);
-  if (!on.length) return '未迁移';
+  if (!on.length) return '未安装';
   return on
     .map((c) => `${SCOPE_MARK[c.scope] || c.scope}·${c.platform}${c.linkType ? '(链接)' : '(副本)'}`)
     .join(' ');
@@ -114,7 +114,7 @@ function renderSkillList(d, ctx) {
       lines.push(`  来源: ${s.source}`);
       if (s.alsoIn?.length) lines.push(`  同时存在于: ${s.alsoIn.join(', ')}`);
       lines.push(`  描述: ${s.description}`);
-      lines.push(`  迁移: ${cellText(s.cells) || '未迁移'}`);
+      lines.push(`  安装: ${cellText(s.cells) || '未安装'}`);
       lines.push('');
       continue;
     }
@@ -123,12 +123,12 @@ function renderSkillList(d, ctx) {
   }
   if (d.orphans?.length) {
     lines.push('');
-    lines.push(`未入 Hub（${d.orphans.length} 个，可 skill submit 提交）:`);
+    lines.push(`不在订阅源（${d.orphans.length} 个，可 skill submit 收进）:`);
     for (const o of d.orphans) lines.push(`  ${o.name.padEnd(26)} ${cellText(o.cells)}`);
   }
   if (!ctx || !ctx.long) {
     lines.push('');
-    lines.push('（--long 看完整描述与目录；skill hub show <name> 看各平台落点）');
+    lines.push('（--long 看完整描述与目录；skill hub show <name> 看各平台安装状态）');
   }
   return lines.join('\n');
 }
@@ -136,6 +136,23 @@ function renderSkillList(d, ctx) {
 function renderSources(d) {
   if (!d.sources.length) return '（暂无订阅源，用 nx-rh skill hub subscribe <path> 添加）';
   return d.sources.map((s) => `${s.current ? '*' : ' '} ${s.path}  (${s.count} 个)${s.exists ? '' : '  [目录不存在]'}`).join('\n');
+}
+
+// 当前项目目录里的 skill：目录清单 + 每 skill 一行（· 前缀 = 不在订阅源）
+function renderProjectList(d) {
+  const lines = [`项目目录: ${d.projectRoot}`];
+  for (const dir of d.dirs) {
+    lines.push(`  ${dir.enabled ? '*' : ' '} ${dir.dir}  (${dir.skills.length} 个${dir.enabled ? '' : '，平台未启用'})`);
+  }
+  if (!d.skills.length) lines.push('', '（项目目录里没有 skill）');
+  for (const s of d.skills) {
+    lines.push(`${s.inHub ? '  ' : '· '}${s.name.padEnd(28)} ${(s.description || '').slice(0, 48)}`.trimEnd());
+    lines.push(`    安装于: ${s.cells.map((c) => c.platformName || c.platform).join(' / ')}`);
+  }
+  if (d.skills.some((s) => !s.inHub)) {
+    lines.push('', '（· 开头 = 不在订阅源，可用 nx-rh skill submit <name> 收进）');
+  }
+  return lines.join('\n');
 }
 
 function renderMigrate(d) {
@@ -227,10 +244,10 @@ function renderShow(d) {
   } else if (d.conflict) {
     lines.push(`  · 重复订阅（内容一致）: ${sourceLabels(d.conflict.sources)}`);
   }
-  lines.push('  平台落点（skill hub migrate <name> --platform <id> --to user|global|project）：');
+  lines.push('  平台安装状态（skill hub migrate <name> --platform <id> --to user|global|project）：');
   for (const c of d.cells) {
     const head = `${SCOPE_MARK[c.scope] || c.scope}·${c.platformName || c.platform}`;
-    lines.push(`    ${head.padEnd(22)} ${c.on ? c.linkType || '实体副本' : '未迁移'}  ${c.dir}`);
+    lines.push(`    ${head.padEnd(22)} ${c.on ? c.linkType || '实体副本' : '未安装'}  ${c.dir}`);
   }
   if (d.alsoIn?.length) {
     lines.push('');
@@ -247,14 +264,14 @@ function renderPurge(d) {
   lines.push(d.dryRun || d.status === 'blocked' ? '  将删除:' : '  已删除:');
   for (const s of d.plan.sources) lines.push(`    订阅源  ${s.source}  →  ${s.dir}`);
   for (const c of d.plan.targets) {
-    lines.push(`    落点    ${SCOPE_MARK[c.scope] || c.scope}·${c.platform}  ${c.path}${c.linkType ? '（链接）' : '（实体副本）'}`);
+    lines.push(`    安装位置  ${SCOPE_MARK[c.scope] || c.scope}·${c.platform}  ${c.path}${c.linkType ? '（链接）' : '（实体副本）'}`);
   }
   if (!d.plan.sources.length && !d.plan.targets.length) lines.push('    （无）');
   if (d.status === 'blocked') lines.push('', '确认无误后加 --force 执行。');
   return lines.join('\n');
 }
 
-// 适配器总表：每个平台的两个落点都打绝对路径——「把 skill 变成 .claude / .workbuddy / .cursor」
+// 适配器总表：每个平台的两个安装位置都打绝对路径——「把 skill 变成 .claude / .workbuddy / .cursor」
 // 在终端里直接可抄，不需要先起面板。
 function renderAdapters(list) {
   const w = Math.max(...list.map((a) => a.id.length));
@@ -282,7 +299,7 @@ export default {
       id: 'skill.adapters',
       cli: [['skill', 'hub', 'adapters'], ['skill', 'adapters']],
       http: ['GET', '/api/skills/adapters'],
-      summary: '平台适配器清单（每平台的项目级 / 用户级绝对落点）',
+      summary: '平台适配器清单（每平台的项目级 / 用户级绝对安装位置）',
       flags: { project: { type: 'string' } },
       run: (ctx) => service.adaptersInfo({ project: projectOf(ctx) }),
       render: renderAdapters,
@@ -364,15 +381,20 @@ export default {
       cli: [['skill', 'hub', 'list'], ['skill', 'scan']],
       http: ['GET', '/api/skills'],
       summary: '列出订阅源 skill（名称 / 来源目录 / 描述 + 各目标迁移状态）',
-      flags: { project: { type: 'string' }, source: { type: 'string' }, long: { type: 'boolean' } },
-      run: (ctx) => service.listAllSkills({ project: projectOf(ctx), source: ctx.source }),
+      flags: {
+        project: { type: 'string' }, source: { type: 'string' },
+        platform: { type: 'string' }, long: { type: 'boolean' },
+      },
+      run: (ctx) => service.listAllSkills({
+        project: projectOf(ctx), source: ctx.source, platform: ctx.platform,
+      }),
       render: renderSkillList,
     },
     {
       id: 'skill.show',
       cli: [['skill', 'hub', 'show'], ['skill', 'show'], ['skill', 'describe']],
       http: ['GET', '/api/skills/detail'],
-      summary: '查看单个 skill：完整描述 + 来源目录 + 各平台落点与当前形态',
+      summary: '查看单个 skill：完整描述 + 来源目录 + 各平台安装状态与当前形态',
       args: ['name'],
       flags: { project: { type: 'string' } },
       run: (ctx) => service.skillInfo({ name: ctx.name, project: projectOf(ctx) }),
@@ -382,24 +404,24 @@ export default {
       // skill 的全文导出。注意与 bundled 的 `skill get` 分工：
       // get = 内置手册（repo-hub 之外的「本工具说明书」，三段拼接 + 顺手安装）；
       // cat = 任意 skill 的全文（给外部 agent 当业务上下文）。
-      // 订阅源与**未入 Hub 的平台副本**都读得到 —— 后者从前只查订阅源，必然 NOT_FOUND。
+      // 订阅源与**不在订阅源的平台副本**都读得到 —— 后者从前只查订阅源，必然 NOT_FOUND。
       id: 'skill.cat',
       cli: [['skill', 'hub', 'cat'], ['skill', 'cat']],
       http: ['GET', '/api/skills/content'],
-      summary: '输出 skill 全文（SKILL.md 或 --ref <相对路径>），订阅源与未入 Hub 的平台副本都能读',
+      summary: '输出 skill 全文（SKILL.md 或 --ref <相对路径>），订阅源与不在订阅源的平台副本都能读',
       args: ['name'],
       flags: { ref: { type: 'string', hint: 'skill 内相对路径，如 references/api.md' }, project: { type: 'string' } },
       run: (ctx) => service.skillContent({ name: ctx.name, ref: ctx.ref, project: projectOf(ctx) }),
       // 三段拼接：引导语 → 正文 → 后续动作提示。--json 走纯数据，不打这些。
       render: (d) => {
         const bar = '─'.repeat(60);
-        const where = d.source ? `来源: ${d.source}` : `落点: ${d.dir}`;
+        const where = d.source ? `来源: ${d.source}` : `目录: ${d.dir}`;
         return [
           `# skill: ${d.skillName}   ${where}`,
           bar,
           d.content.replace(/\s*$/, ''),
           bar,
-          `# 需要迁移到本机？nx-rh skill hub migrate ${d.skillName} --to user`,
+          `# 需要安装到本机？nx-rh skill hub migrate ${d.skillName} --to user`,
         ].join('\n');
       },
     },
@@ -442,15 +464,15 @@ export default {
     },
     {
       // 与 skill remove 分开：remove 只下架订阅源那份（目标侧还引用就 blocked），
-      // purge 是「这个名字不该存在了」——连各平台落点一起删。
-      // **未入 Hub 的 skill 只有这一条路能删**（订阅源里根本没有它，remove 是 NOT_FOUND）。
+      // purge 是「这个名字不该存在了」——连各平台安装位置一起删。
+      // **不在订阅源的 skill 只有这一条路能删**（订阅源里根本没有它，remove 是 NOT_FOUND）。
       id: 'skill.purge',
       cli: [['skill', 'hub', 'purge'], ['skill', 'purge']],
       http: ['POST', '/api/skills/purge'],
-      summary: '彻底删除 skill：所有平台落点 + 订阅源里的实文件（--dry-run 先看清单）',
+      summary: '彻底删除 skill：所有平台安装位置 + 订阅源里的实文件（--dry-run 先看清单）',
       args: ['name'],
       flags: {
-        force: { type: 'boolean', hint: '落点里有实体副本时必须加（可能含本地改动）' },
+        force: { type: 'boolean', hint: '安装位置里有实体副本时必须加（可能含本地改动）' },
         project: { type: 'string' },
         'dry-run': { type: 'boolean', hint: '只列出将删除的路径，不落盘' },
       },
@@ -510,16 +532,19 @@ export default {
       id: 'skill.submit',
       cli: [['skill', 'hub', 'submit'], ['skill', 'submit']],
       http: ['POST', '/api/skills/submit'],
-      summary: '平台副本 → 订阅源（<name...> | --all 取「未入 Hub」那批；提交后删除目标实文件）',
+      summary: '平台副本 → 订阅源（<name...> | --all 取「不在订阅源」那批；提交后删除目标实文件）',
       args: [{ name: 'name', rest: true, required: false }],
       flags: {
-        // 缺省 all（而不是全局的 project）：未入 Hub 的 skill 常常落在**用户级**平台目录里，
+        // 缺省 all（而不是全局的 project）：不在订阅源的 skill 常常落在**用户级**平台目录里，
         // 只扫项目级会直接报「目标目录里没有该 skill」——`skill submit --all` 正是主推用法。
         to: { ...TO, default: 'all' },
         platform: { type: 'string' },
         project: { type: 'string' },
         force: { type: 'boolean' },
         keepTarget: { type: 'boolean' },
+        // 收进**哪个**订阅源（须已订阅；缺省当前主源）。与 migrate 的 --source 刻意区分：
+        // source = 用哪个源的内容（来源侧冲突），into = 落到哪个源（提交方向）。
+        into: { type: 'string', hint: '收进哪个订阅源（须已订阅；缺省当前主源）' },
         ...SELECT,
       },
       run: (ctx) => {
@@ -563,6 +588,17 @@ export default {
       summary: '项目目录候选清单',
       run: async () => (await import('../settings/service.js')).listCandidates('project'),
       render: (l) => (l.length ? l.join('\n') : '（暂无项目目录候选，用 skill hub project add <path> 添加）'),
+    },
+    {
+      // cwd 作用域的实体盘点：项目目录里各平台目录下**实际存在**的 skill，
+      // 不受「启用平台」裁剪（未启用平台只标注）；inHub 标注是否已在订阅源。
+      id: 'skill.project.skills',
+      cli: [['skill', 'hub', 'project', 'skills'], ['skill', 'project', 'skills']],
+      http: ['GET', '/api/skills/project-skills'],
+      summary: '当前项目目录里的 skill（扫全部适配器项目级目录，标注是否已在订阅源）',
+      flags: { project: { type: 'string' } },
+      run: (ctx) => service.listProjectSkills({ project: projectOf(ctx) }),
+      render: renderProjectList,
     },
     {
       id: 'skill.project.add',
