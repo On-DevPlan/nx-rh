@@ -13,6 +13,8 @@ export function HubPage({ hubPath, tick }) {
   const guard = useGuard();
   const { dialog, node: dialogNode } = useDialog();
   const [q, setQ] = useState('');
+  // 批量迁移形态：auto = 跟随全局设置（快捷设置里的「迁移形态」）
+  const [batchMode, setBatchMode] = useState('auto');
 
   const settings = boot?.settings || {};
   const sel = useSel();
@@ -31,11 +33,14 @@ export function HubPage({ hubPath, tick }) {
   const bulkMigrate = (to) => guard(async () => {
     const names = skills.map((s) => s.name).filter((n) => sel.has(n));
     if (!names.length) { toast('勾选要迁移的 skill'); return; }
-    const ok = await dialog({ message: `将勾选的 ${names.length} 个 skill 迁移到${SCOPE_SHORT[to]}？\n形态: ${settings.skillSyncMode === 'copy' ? '复制' : '软链接'}` });
+    // mode：跟随设置（缺省）/ 软链接 / 复制——按次覆盖，不改全局设置
+    const mode = batchMode === 'auto' ? undefined : batchMode;
+    const how = mode === 'copy' ? '复制' : mode === 'symlink' ? '软链接' : (settings.skillSyncMode === 'copy' ? '复制' : '软链接');
+    const ok = await dialog({ message: `将勾选的 ${names.length} 个 skill 迁移到${SCOPE_SHORT[to]}？\n形态: ${how}` });
     if (!ok) return;
     const r = await api('/api/skills/migrate', {
       method: 'POST',
-      body: { name: names, to, platform: 'all', mode: settings.skillSyncMode },
+      body: { name: names, to, platform: 'all', ...(mode ? { mode } : {}) },
     });
     if (r.status === 'blocked') toast(`${r.blocked.length} 处被阻止（跨源冲突，先解决订阅）`);
     else toast(`已迁移 ${r.migrated} 处（跳过 ${r.skipped}）`);
@@ -54,6 +59,11 @@ export function HubPage({ hubPath, tick }) {
         <div className="acts">
           {!isCurrent ? <button className="btn ghost" onClick={makeMain}>设为主源</button> : <span className="tag strong">主源</span>}
           {[...sel].length ? <>
+            <select aria-label="迁移形态" title="本次批量迁移的形态" value={batchMode} onChange={(e) => setBatchMode(e.target.value)} style={{ maxWidth: 120 }}>
+              <option value="auto">形态: 跟随设置</option>
+              <option value="symlink">形态: 软链接</option>
+              <option value="copy">形态: 实体复制</option>
+            </select>
             <button className="btn" onClick={() => bulkMigrate('project')}>迁移勾选 → 项目</button>
             <button className="btn" onClick={() => bulkMigrate('user')}>迁移勾选 → 用户</button>
           </> : null}

@@ -85,12 +85,33 @@ export function SkillDetail({ name, tick }) {
         if (!ok) return;
         r = await api('/api/skills/unmigrate', { method: 'POST', body: { ...base, force: true } });
       }
-      toast(r.removed?.length ? `已撤销 ${SCOPE_SHORT[cell.scope]}·${cell.platform}` : '该目标本就没有');
+      toast(r.removed?.length ? (cell.linkType ? `已撤销 ${SCOPE_SHORT[cell.scope]}·${cell.platform}` : `已删除 ${SCOPE_SHORT[cell.scope]}·${cell.platform} 的实体副本`) : '该目标本就没有');
     } else {
       const r = await api('/api/skills/migrate', { method: 'POST', body: { ...base, mode: settings.skillSyncMode } });
       if (r.status === 'blocked') { toast('跨源冲突，先解决订阅'); await load(); return; }
       toast(`已迁移到 ${SCOPE_SHORT[cell.scope]}·${cell.platform}`);
     }
+    await load();
+  });
+
+  // 单格按实体副本迁移（绕过全局「迁移形态」设置）：方便在平台之间互拷、
+  // 或想要一份不随 Hub 变动的独立副本。
+  const migrateCellCopy = (cell) => guard(async () => {
+    const r = await api('/api/skills/migrate', { method: 'POST', body: { name, to: cell.scope, platform: cell.platform, mode: 'copy' } });
+    if (r.status === 'blocked') { toast('跨源冲突，先解决订阅'); await load(); return; }
+    toast(`已复制实体到 ${SCOPE_SHORT[cell.scope]}·${cell.platform}`);
+    await load();
+  });
+
+  // 链接 → 实体副本（物化）：断开与订阅源的实时同步，之后这里的内容独立演进。
+  const materializeCell = (cell) => guard(async () => {
+    const ok = await dialog({
+      message: `把 ${SCOPE_SHORT[cell.scope]}·${cell.platformName} 的链接转成实体副本？\n之后这里的内容不再随订阅源变化（撤销需删掉重迁）。`,
+      okText: '转实体',
+    });
+    if (!ok) return;
+    const r = await api('/api/skills/materialize', { method: 'POST', body: { name, to: cell.scope, platform: cell.platform } });
+    toast(r.converted ? '已转为实体副本' : '（这里本就是实体）');
     await load();
   });
 
@@ -190,7 +211,22 @@ export function SkillDetail({ name, tick }) {
                 </span>
                 {!isOrphan ? (
                   <span className="acts">
-                    <button className={'btn small' + (c.on ? ' ghost' : '')} onClick={() => toggleCell(c)}>{c.on ? '撤销' : '迁移'}</button>
+                    {c.on
+                      ? <>
+                          {/* 链接行：撤销 = 摘掉指针，Hub 真相不受影响；实体行：删除 = 连本地改动一起删，语义不同，按钮分开 */}
+                          {!c.linkType ? <button className="btn small ghost" title="转成实体副本，不再随订阅源变化" onClick={() => materializeCell(c)}>转实体</button> : null}
+                          <button
+                            className="btn small ghost"
+                            title={c.linkType ? '撤销安装（订阅源不受影响）' : '删除这份实体副本——可能含本地改动，删除后不可恢复（Hub 里那份仍在）'}
+                            onClick={() => toggleCell(c)}
+                          >
+                            {c.linkType ? '撤销' : '删除'}
+                          </button>
+                        </>
+                      : <>
+                          <button className={'btn small'} onClick={() => toggleCell(c)}>迁移</button>
+                          <button className="btn small ghost" title="以实体副本安装（独立一份，不随订阅源变化）" onClick={() => migrateCellCopy(c)}>实体</button>
+                        </>}
                   </span>
                 ) : null}
               </div>
