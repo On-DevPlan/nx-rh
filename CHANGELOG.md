@@ -2,7 +2,7 @@
 
 本文件记录对外可见的变更。格式参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)。
 
-## [Unreleased] 工程化：模块内文件拆分 + 尺寸护栏（零行为变化）
+## [0.13.1] - 2026-10-05 工程化：模块内文件拆分 + 尺寸护栏（零行为变化）
 
 ### Changed
 
