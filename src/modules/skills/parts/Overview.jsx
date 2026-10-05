@@ -1,76 +1,16 @@
-// ① 总览页：订阅源入口 + 当前项目入口 + 全部平台入口 + 快捷设置。
+// ① 总览页：订阅源入口 + 当前项目入口 + 全部平台入口 + Skill 设置。
+import { useState } from 'react';
 import { api } from '../../../web/frontend/api/client.js';
-import { useStore } from '../../../web/frontend/store.jsx';
-import { useToast, useGuard, useDialog } from '../../../web/frontend/components/ui.jsx';
+import { useGuard, useDialog } from '../../../web/frontend/components/ui.jsx';
 import { CliHints } from '../../../web/frontend/components/CliHints.jsx';
-import { sourceLabel, lastSeg, shortLabel } from './shared.jsx';
+import { sourceLabel, lastSeg } from './shared.jsx';
 import { goOverview, goPlatform, goHub, goProject } from './routes.js';
-
-// 快捷设置浮层：迁移形态 / 默认平台 / 平台范围——Skill 域的高频设置就地可改，
-// 不必跳去「设置」页（设置页保留完整形态，两边写同一个 POST /api/settings）。
-function QuickSettings() {
-  const { boot, refreshBoot } = useStore();
-  const toast = useToast();
-  const guard = useGuard();
-  const s = boot?.settings || {};
-  const adapters = boot?.adapters || [];
-  const scope = new Set(s.platforms || []);
-
-  const patch = (body) => guard(async () => {
-    await api('/api/settings', { method: 'POST', body });
-    await refreshBoot();
-    toast('已保存');
-  });
-
-  const togglePlatform = (id) => {
-    const next = scope.has(id) ? [...scope].filter((x) => x !== id) : [...scope, id];
-    if (!next.length) { toast('平台范围至少保留一个'); return; }
-    let def = s.defaultPlatform;
-    if (!next.includes(def)) def = next[0];
-    patch({ platforms: next, defaultPlatform: def });
-  };
-
-  return (
-    <details className="tb-set">
-      <summary>快捷设置</summary>
-      <div className="tb-set-box">
-        <div className="row-inline">
-          <label>迁移形态</label>
-          <select aria-label="迁移形态" value={s.skillSyncMode === 'copy' ? 'copy' : 'symlink'} onChange={(e) => patch({ skillSyncMode: e.target.value })}>
-            <option value="symlink">软链接</option>
-            <option value="copy">复制</option>
-          </select>
-        </div>
-        <div className="row-inline">
-          <label>默认平台</label>
-          <select
-            aria-label="默认平台"
-            value={s.defaultPlatform || 'claude-code'}
-            onChange={(e) => patch({ defaultPlatform: e.target.value, platforms: [e.target.value, ...[...scope].filter((x) => x !== e.target.value)] })}
-          >
-            {[...(scope.size ? scope : ['claude-code'])].map((id) => (
-              <option key={id} value={id}>{(adapters.find((a) => a.id === id) || {}).name || id}</option>
-            ))}
-          </select>
-        </div>
-        <div className="row-inline">
-          <label>平台范围</label>
-          <span className="plats">
-            {adapters.map((a) => (
-              <button key={a.id} type="button" className={'pill' + (scope.has(a.id) ? ' on' : '')} onClick={() => togglePlatform(a.id)}>
-                {shortLabel(a.id, adapters)}
-              </button>
-            ))}
-          </span>
-        </div>
-      </div>
-    </details>
-  );
-}
+import { SkillSettingsDialog } from './dialogs.jsx';
 
 export function Overview({ data, openCreate }) {
   const guard = useGuard();
   const { dialog, node: dialogNode } = useDialog();
+  const [settingsOpen, setSettingsOpen] = useState(false);
   const sources = data?.sources || [];
   const srcPaths = sources.map((s) => s.path);
   const summary = data?.platformSummary || [];
@@ -92,7 +32,7 @@ export function Overview({ data, openCreate }) {
           </div>
         </div>
         <div className="acts">
-          <QuickSettings />
+          <button className="btn ghost" onClick={() => setSettingsOpen(true)}>Skill 设置</button>
           {data?.hub?.path ? <button className="btn" onClick={openCreate}>＋ 新建</button> : null}
         </div>
       </div>
@@ -167,6 +107,7 @@ export function Overview({ data, openCreate }) {
       </div>
 
       <CliHints module="skills" />
+      {settingsOpen ? <SkillSettingsDialog onClose={() => setSettingsOpen(false)} /> : null}
       {dialogNode}
     </>
   );

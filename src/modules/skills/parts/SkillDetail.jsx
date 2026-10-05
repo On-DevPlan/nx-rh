@@ -5,7 +5,7 @@ import { api } from '../../../web/frontend/api/client.js';
 import { useStore } from '../../../web/frontend/store.jsx';
 import { useToast, useGuard, useDialog, Copyable } from '../../../web/frontend/components/ui.jsx';
 import { Crumbs, SCOPE_SHORT, shortLabel } from './shared.jsx';
-import { SubmitIntoDialog } from './dialogs.jsx';
+import { SubmitIntoDialog, MigrateToDialog } from './dialogs.jsx';
 import { goOverview } from './routes.js';
 
 // skill 文件查看器：左树右内容，SKILL.md 默认选中。
@@ -66,6 +66,7 @@ export function SkillDetail({ name, tick }) {
   const { dialog, node: dialogNode } = useDialog();
   const [d, setD] = useState(null);
   const [submitOpen, setSubmitOpen] = useState(false);
+  const [migrateTo, setMigrateTo] = useState(null); // 'project' | 'user' | null
   const adapters = boot?.adapters || [];
   const settings = boot?.settings || {};
 
@@ -115,11 +116,9 @@ export function SkillDetail({ name, tick }) {
     await load();
   });
 
-  const migrateScope = (to) => guard(async () => {
-    const r = await api('/api/skills/migrate', { method: 'POST', body: { name, to, platform: 'all', mode: settings.skillSyncMode } });
-    toast(r.status === 'blocked' ? '跨源冲突，先解决订阅' : `已迁移到${SCOPE_SHORT[to]}`);
-    await load();
-  });
+  // 批量到某作用域：弹窗显式选平台（可多选启用中的平台，缺省勾默认平台）+ 形态。
+  // 刻意不提供「全部平台一键铺」——误伤面最大；细粒度在安装矩阵逐行做。
+  const migrateScope = (to) => setMigrateTo(to);
 
   const openEdit = () => guard(async () => {
     const c = await api('/api/skills/content?name=' + encodeURIComponent(name));
@@ -261,6 +260,15 @@ export function SkillDetail({ name, tick }) {
           names={[name]}
           onClose={() => setSubmitOpen(false)}
           onDone={async () => { setSubmitOpen(false); await load(); await refreshBoot(); }}
+        />
+      ) : null}
+      {migrateTo ? (
+        <MigrateToDialog
+          name={name}
+          to={migrateTo}
+          boot={boot}
+          onClose={() => setMigrateTo(null)}
+          onDone={async () => { setMigrateTo(null); await load(); }}
         />
       ) : null}
       {dialogNode}

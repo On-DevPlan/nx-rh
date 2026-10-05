@@ -1,4 +1,4 @@
-// Skill 页的两个弹窗：新建/编辑器（订阅源侧写）与「收进订阅源」选源弹窗。
+// Skill 页的弹窗：编辑器、「收进订阅源」选源、迁移选平台、Skill 域设置。
 import { useEffect, useState } from 'react';
 import { api } from '../../../web/frontend/api/client.js';
 import { useStore } from '../../../web/frontend/store.jsx';
@@ -121,6 +121,193 @@ export function SubmitIntoDialog({ names, onClose, onDone }) {
         <button className="btn" disabled={busy || !sources.length} onClick={ok}>{busy ? '提交中…' : '收进'}</button>
       </div>
       {dlgNode}
+    </Modal>
+  );
+}
+
+// 迁移到某作用域：显式选平台（复选，缺省勾默认平台）+ 形态（跟随设置/软链接/实体复制）。
+// 刻意不提供「全部平台一键铺」——那是误伤面最大的操作；细粒度在安装矩阵逐行做。
+export function MigrateToDialog({ name, to, boot, onClose, onDone }) {
+  const toast = useToast();
+  const guard = useGuard();
+  const settings = boot?.settings || {};
+  const adapters = boot?.adapters || [];
+  const enabledIds = settings.platforms?.length ? settings.platforms : ['claude-code'];
+  const [ids, setIds] = useState(() => new Set([settings.defaultPlatform || enabledIds[0]]));
+  const [mode, setMode] = useState('auto');
+  const [busy, setBusy] = useState(false);
+
+  const platName = (id) => (adapters.find((a) => a.id === id) || {}).name || id;
+  const toggle = (id) => setIds((s) => {
+    const next = new Set(s);
+    if (next.has(id)) next.delete(id); else next.add(id);
+    return next;
+  });
+
+  const ok = () => guard(async () => {
+    if (!ids.size) { toast('至少勾选一个平台'); return; }
+    setBusy(true);
+    try {
+      const effMode = mode === 'auto' ? undefined : mode;
+      const done = [];
+      for (const pid of enabledIds.filter((id) => ids.has(id))) {
+        const r = await api('/api/skills/migrate', { method: 'POST', body: { name, to, platform: pid, ...(effMode ? { mode: effMode } : {}) } });
+        if (r.status === 'blocked') { toast(`${platName(pid)}：跨源冲突，先解决订阅`); continue; }
+        done.push(platName(pid));
+      }
+      if (done.length) toast(`已迁移到${to === 'user' ? '用户' : '项目'}级：${done.join('、')}`);
+      onDone();
+    } finally {
+      setBusy(false);
+    }
+  });
+
+  const how = mode === 'copy' ? '实体复制' : mode === 'symlink' ? '软链接' : `跟随设置（${settings.skillSyncMode === 'copy' ? '复制' : '软链接'}）`;
+  return (
+    <Modal title={`迁移到${to === 'user' ? '用户' : '项目'}级 · ${name}`} onClose={onClose}>
+      <div className="vlegend">勾选目标平台（可多选）；形态: {how}。</div>
+      <div className="list">
+        {enabledIds.map((id) => (
+          <label key={id} className="row src-row">
+            <input type="checkbox" checked={ids.has(id)} onChange={() => toggle(id)} />
+            <span className="name">{platName(id)}{id === settings.defaultPlatform ? '（默认）' : ''}</span>
+            <span className="desc mono">{id}</span>
+          </label>
+        ))}
+      </div>
+      <div className="row-inline" style={{ marginTop: 10 }}>
+        <label style={{ color: 'var(--mid)' }}>形态</label>
+        <select aria-label="迁移形态" value={mode} onChange={(e) => setMode(e.target.value)}>
+          <option value="auto">跟随设置</option>
+          <option value="symlink">软链接</option>
+          <option value="copy">实体复制</option>
+        </select>
+      </div>
+      <div className="dlg-acts">
+        <button className="btn ghost" onClick={onClose}>取消</button>
+        <button className="btn" disabled={busy || !ids.size} onClick={ok}>{busy ? '迁移中…' : '迁移'}</button>
+      </div>
+    </Modal>
+  );
+}
+
+// Skill 域设置的完整弹窗：订阅源 / 项目目录候选 / 迁移形态 / 默认平台 / 平台范围。
+// 从「设置」页整体迁入——这些项只在 Skill 页里被用到，就地可改才是它们的场景；
+// 设置页不再保留重复块（flat 单一入口，避免两处漂移）。
+export function SkillSettingsDialog({ onClose }) {
+  const { boot, patchUi, refreshBoot } = useStore();
+  const toast = useToast();
+  const guard = useGuard();
+  const { dialog, node: dlgNode } = useDialog();
+  const [hubInput, setHubInput] = useState('');
+  const [projectInput, setProjectInput] = useState('');
+
+  const s = boot?.settings || {};
+  const adapters = boot?.adapters || [];
+  const scope = new Set(s.platforms || []);
+
+  const patch = (body) => guard(async () => {
+    await api('/api/settings', { method: 'POST', body });
+    await refreshBoot();
+  });
+
+  const addSource = () => guard(async () => {
+    const p = hubInput.trim();
+    if (!p) { toast('请输入订阅源目录'); return; }
+    await api('/api/skills/sources', { method: 'POST', body: { path: p } });
+    setHubInput('');
+    patchUi({ source: '' });
+    await refreshBoot();
+  });
+
+  const addProject = () => guard(async () => {
+    const p = projectInput.trim();
+    if (!p) { toast('请输入项目根目录'); return; }
+    await api('/api/skills/project', { method: 'POST', body: { path: p } });
+    setProjectInput('');
+    await refreshBoot();
+  });
+
+  const removeCandidate = (kind, p) => guard(async () => {
+    const ok = await dialog({ message: `移除${kind === 'hub' ? '订阅源' : '项目目录候选'}？\n${p}`, danger: true });
+    if (!ok) return;
+    await api(kind === 'hub' ? '/api/skills/sources' : '/api/skills/project', { method: 'DELETE', body: { path: p } });
+    if (kind === 'hub' && s.skillHubPath === p) patchUi({ source: '' });
+    await refreshBoot();
+  });
+
+  const togglePlatform = (id) => {
+    const next = scope.has(id) ? [...scope].filter((x) => x !== id) : [...scope, id];
+    if (!next.length) { toast('平台范围至少保留一个'); return; }
+    let def = s.defaultPlatform;
+    if (!next.includes(def)) def = next[0];
+    patch({ platforms: next, defaultPlatform: def }).then(() => toast('已保存'));
+  };
+
+  const setDefaultPlatform = (id) => patch({
+    defaultPlatform: id,
+    platforms: [id, ...[...scope].filter((x) => x !== id)],
+  }).then(() => toast('已保存'));
+
+  const candidateRows = (list, kind) => (list || []).length ? list.map((p) => (
+    <div key={p} className="row">
+      <span className="name mono" title={p} style={{ maxWidth: 260, overflow: 'hidden', textOverflow: 'ellipsis' }}>{p}</span>
+      {kind === 'hub' && s.skillHubPath === p ? <span className="tag strong">主源</span> : null}
+      <span className="acts">
+        <button className="btn small ghost" onClick={() => removeCandidate(kind, p)}>移除</button>
+      </span>
+    </div>
+  )) : <div className="row muted">（暂无）</div>;
+
+  return (
+    <Modal title="Skill 设置" onClose={onClose}>
+      <div className="section-label">订阅源<span className="hint">目录下直接是各 skill；订阅源是唯一可信源（新增即设为主源）</span></div>
+      <div className="list" style={{ border: '1px solid var(--soft-2)', borderRadius: 6 }}>
+        {candidateRows(s.skillHubSources, 'hub')}
+        <div className="row-inline" style={{ padding: 8 }}>
+          <input aria-label="skill 目录绝对路径" placeholder="skill 目录绝对路径" spellCheck="false" value={hubInput} onChange={(e) => setHubInput(e.target.value)} />
+          <button className="btn small" onClick={addSource}>订阅</button>
+        </div>
+      </div>
+
+      <div className="section-label">项目目录候选<span className="hint">迁移目标所在的仓库根</span></div>
+      <div className="list" style={{ border: '1px solid var(--soft-2)', borderRadius: 6 }}>
+        {candidateRows(s.skillProjectCandidates, 'project')}
+        <div className="row-inline" style={{ padding: 8 }}>
+          <input aria-label="项目根目录" placeholder="项目根目录" spellCheck="false" value={projectInput} onChange={(e) => setProjectInput(e.target.value)} />
+          <button className="btn small" onClick={addProject}>添加</button>
+        </div>
+      </div>
+
+      <div className="section-label">平台与迁移<span className="hint">默认平台必须留在范围内</span></div>
+      <div className="row-inline">
+        <label style={{ color: 'var(--mid)', flex: '0 0 66px' }}>迁移形态</label>
+        <select aria-label="迁移形态" value={s.skillSyncMode === 'copy' ? 'copy' : 'symlink'} onChange={(e) => patch({ skillSyncMode: e.target.value }).then(() => toast('已保存'))}>
+          <option value="symlink">软链接（随订阅源实时变）</option>
+          <option value="copy">复制（独立副本）</option>
+        </select>
+      </div>
+      <div className="row-inline">
+        <label style={{ color: 'var(--mid)', flex: '0 0 66px' }}>默认平台</label>
+        <select aria-label="默认平台" value={s.defaultPlatform || 'claude-code'} onChange={(e) => setDefaultPlatform(e.target.value)}>
+          {[...(scope.size ? scope : ['claude-code'])].map((id) => (
+            <option key={id} value={id}>{(adapters.find((a) => a.id === id) || {}).name || id}</option>
+          ))}
+        </select>
+      </div>
+      <div className="row-inline">
+        <label style={{ color: 'var(--mid)', flex: '0 0 66px' }}>平台范围</label>
+        <span className="plats">
+          {adapters.map((a) => (
+            <button key={a.id} type="button" className={'pill' + (scope.has(a.id) ? ' on' : '')} onClick={() => togglePlatform(a.id)}>
+              {(a.name || a.id).replace(/\s*\(.*\)$/, '').split(/[\s-]/)[0].toLowerCase()}
+            </button>
+          ))}
+        </span>
+      </div>
+
+      {dlgNode}
+      <div className="dlg-acts"><button className="btn ghost" onClick={onClose}>关闭</button></div>
     </Modal>
   );
 }

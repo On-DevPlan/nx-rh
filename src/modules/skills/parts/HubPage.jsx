@@ -15,8 +15,14 @@ export function HubPage({ hubPath, tick }) {
   const [q, setQ] = useState('');
   // 批量迁移形态：auto = 跟随全局设置（快捷设置里的「迁移形态」）
   const [batchMode, setBatchMode] = useState('auto');
-
   const settings = boot?.settings || {};
+  // 批量迁移平台：必选，缺省打在「默认平台」上。刻意不提供「全部平台」——
+  // 一次性往所有平台铺 N 个 skill 是误伤面最大的操作，想铺去平台子页逐个来。
+  const adapters = boot?.adapters || [];
+  const enabledIds = settings.platforms?.length ? settings.platforms : ['claude-code'];
+  const [batchPlatform, setBatchPlatform] = useState('');
+  const platNameOf = (id) => (adapters.find((a) => a.id === id) || {}).name || id;
+
   const sel = useSel();
   const skills = data?.skills || [];
   const srcPaths = (data?.sources || []).map((s) => s.path);
@@ -33,17 +39,18 @@ export function HubPage({ hubPath, tick }) {
   const bulkMigrate = (to) => guard(async () => {
     const names = skills.map((s) => s.name).filter((n) => sel.has(n));
     if (!names.length) { toast('勾选要迁移的 skill'); return; }
+    if (!batchPlatform) { toast('先选目标平台（不提供一键全平台）'); return; }
     // mode：跟随设置（缺省）/ 软链接 / 复制——按次覆盖，不改全局设置
     const mode = batchMode === 'auto' ? undefined : batchMode;
-    const how = mode === 'copy' ? '复制' : mode === 'symlink' ? '软链接' : (settings.skillSyncMode === 'copy' ? '复制' : '软链接');
-    const ok = await dialog({ message: `将勾选的 ${names.length} 个 skill 迁移到${SCOPE_SHORT[to]}？\n形态: ${how}` });
+    const how = mode === 'copy' ? '实体复制' : mode === 'symlink' ? '软链接' : `跟随设置（${settings.skillSyncMode === 'copy' ? '复制' : '软链接'}）`;
+    const ok = await dialog({ message: `将勾选的 ${names.length} 个 skill 迁移到 ${SCOPE_SHORT[to]} · ${platNameOf(batchPlatform)}？\n形态: ${how}` });
     if (!ok) return;
     const r = await api('/api/skills/migrate', {
       method: 'POST',
-      body: { name: names, to, platform: 'all', ...(mode ? { mode } : {}) },
+      body: { name: names, to, platform: batchPlatform, ...(mode ? { mode } : {}) },
     });
     if (r.status === 'blocked') toast(`${r.blocked.length} 处被阻止（跨源冲突，先解决订阅）`);
-    else toast(`已迁移 ${r.migrated} 处（跳过 ${r.skipped}）`);
+    else toast(`已迁移到 ${SCOPE_SHORT[to]}·${platNameOf(batchPlatform)}（${r.migrated} 处，跳过 ${r.skipped}）`);
     patchUi({ selSkills: [] });
     await reload();
   });
@@ -59,7 +66,11 @@ export function HubPage({ hubPath, tick }) {
         <div className="acts">
           {!isCurrent ? <button className="btn ghost" onClick={makeMain}>设为主源</button> : <span className="tag strong">主源</span>}
           {[...sel].length ? <>
-            <select aria-label="迁移形态" title="本次批量迁移的形态" value={batchMode} onChange={(e) => setBatchMode(e.target.value)} style={{ maxWidth: 120 }}>
+            <select aria-label="目标平台" title="本次批量迁移的目标平台（必选）" value={batchPlatform} onChange={(e) => setBatchPlatform(e.target.value)} style={{ maxWidth: 150 }}>
+              <option value="">平台: 选择…</option>
+              {enabledIds.map((id) => <option key={id} value={id}>{platNameOf(id)}{id === settings.defaultPlatform ? '（默认）' : ''}</option>)}
+            </select>
+            <select aria-label="迁移形态" title="本次批量迁移的形态" value={batchMode} onChange={(e) => setBatchMode(e.target.value)} style={{ maxWidth: 130 }}>
               <option value="auto">形态: 跟随设置</option>
               <option value="symlink">形态: 软链接</option>
               <option value="copy">形态: 实体复制</option>
