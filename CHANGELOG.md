@@ -2,6 +2,57 @@
 
 本文件记录对外可见的变更。格式参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)。
 
+## [0.13.0] - 2026-10-05 新增工作树模块 `wt`；Skill 页第二轮：hub 中心化、当前项目子页、术语平实化
+
+### Added
+
+- **新功能域「工作树」（CLI 根 `wt`，Web「工作树」标签）**：一条 action 同时暴露
+  CLI / HTTP / 面板。参考 ccswitch 的工作树机制，让 agent 能用 skill+cli 快速生成准确的
+  worktree 工作流。
+  - `wt init`：建集中式工作树根（默认 `~/.nx-rh/worktrees/<repo>`）；根若在主仓库内，
+    自动把根登记进 `.gitignore`（幂等）。
+  - `wt add <描述>`：描述 → `feature/<会话名>` 分支 + `git worktree add`，秒级创建；
+    `wt checkout <branch>` 挂已存在分支；`wt remove` / `wt switch` / `wt open`。
+  - `wt context`：**一条命令**在工作树内拿齐主项目最新 git 上下文（分支 / HEAD / 改动 /
+    最近提交、当前树领先落后、扩展文件状态、可直接复制的建议指令），解决上下文不及时。
+  - `wt rebase` / `wt fanout`：把工作树 rebase 到主项目分支；fanout 先出安全计划
+    （脏树、领先树拦下），`--yes` 顺序执行，冲突自动 abort 并停在该树。
+- **扩展文件机制（`wt ext ...`）**：`.gitignore` 里不进工作树的文件按**绝对路径全路径登记**。
+  - `wt ext discover [--apply]`：从 `.gitignore` 具体条目 + `git ls-files` 发现候选
+    （默认只建议、零副作用）；`wt ext add <abspath>` 手工登记（被跟踪文件默认阻止）。
+  - `wt ext sync [target]`：以主项目**当前**内容为准复制 / 链接进工作树——缺文件→复制，
+    已一致→skipped，工作树内有本地差异→conflict 不覆盖（`--force` 才覆盖）；
+    支持 `--mode symlink`（Windows 目录用 junction、文件软链失败自动降级复制）、
+    `--ids` 挑条目、`--dry-run` 出计划。
+  - 内容指纹：小文件 sha256，大文件 size+mtime，目录对清单哈希；工作树根自身自动排除，
+    防止同步递归自复制。
+- **Skill 页「当前项目」子页**（`#/skills/project` ⇔ `nx-rh skill hub project skills`）：
+  扫描全部适配器的项目级目录（不只启用的平台），列出当前项目目录里实际存在的 skill，
+  每项标注是否已在订阅源；勾选「不在订阅源」的项可批量收进。总览页相应多一张
+  「当前项目」入口卡片（数据随 `/api/skills` 的 `projectSummary` 一次下发）。
+- **`skill hub submit --into <订阅源>`**：收进哪个已订阅的源（缺省仍是当前主源）。
+  与 `migrate --source` 刻意区分：`source` = 来源冲突时用哪份内容；`into` = 提交落到哪个源。
+  面板上「收进订阅源…」弹窗列出全部已订阅源（radio 单选，缺省主源）。
+- **Skill 总览页「快捷设置」浮层**：迁移形态 / 默认平台 / 平台范围三项就地可改，
+  不必跳去设置页（两端写同一个 `POST /api/settings`）。
+
+### Changed
+
+- **git 边界开了一个明确例外**：此前「本工具不做任何 git 操作」；现在 `wt` 模块独占
+  git-worktree 操作，但仍不做通用 status/diff/pull/push 与远端协作，`repo` 模块继续不碰 git。
+  工作树清单真相始终在 git（`git worktree list` 现查），store 只存 git 不知道的扩展文件与配置。
+- store 新增顶层键 `worktreeState`，按主仓库路径分桶；无论从主仓库还是链接工作树启动，
+  都先用 `git rev-parse` 解析出主仓库再定位桶，在工作树内操作不会产生不同桶。
+- **不在订阅源的 skill 详情页改为 hub 中心操作集**：不再显示逐平台的迁移 / 撤销按钮
+  （那套逻辑只对已在订阅源的 skill 有意义），主操作是「收进订阅源…」（选源弹窗）+
+  彻底删除；安装位置矩阵只读列出实际存在的位置。
+- **详情页文件预览移到最后并默认折叠**（`文件与 SKILL.md 预览（N 个文件）`）：
+  页面主体先给安装状态与操作，长正文不再把操作区顶下去。
+- **术语平实化**：面板与 CLI 文案里的「落点」改为「安装位置 / 安装状态」，
+  「未入 Hub / 已入 Hub」改为「不在订阅源 / 已在订阅源」，「未迁移」改为「未安装」；
+  `skill cat` 的非源侧前缀由 `落点:` 改为 `目录:`。断链错误文案同步改为
+  `… 的安装位置是断链：…`。
+
 ## [0.12.0] - 2026-10-04 多 skill 包：`skill hub` 归位、内置 skill 可分组、新增 rh-collect
 
 ### Added

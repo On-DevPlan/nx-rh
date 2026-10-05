@@ -26,6 +26,12 @@ submodule / worktree / 未跟踪目录的实现。「看着像知道，实际不
 git 的事交给 git 自己。登记表是 git 给不了的东西——它跨仓库、带标签与描述，
 让 agent 不必每次重新问「这个是哪个项目」。
 
+> **唯一例外：工作树模块 `wt`**。它独占 git-worktree 操作——开/删工作树、
+> rebase / fanout、把 `.gitignore` 里不进工作树的文件登记为**扩展文件**并同步。
+> 即便如此，它仍不做通用 status/diff/pull/push 与远端协作；`repo` 模块继续不碰 git。
+> 设计上工作树清单的真相始终在 git（`git worktree list` 现查），store 只存 git 不知道的
+> 扩展文件全路径与模块配置。
+
 ## 快速开始
 
 ```bash
@@ -196,14 +202,14 @@ localStorage 持久化，刷新不丢。
 | `nx-rh repo remove <id>` | 删除登记（不动磁盘） |
 | `nx-rh repo scan [root] [--depth 3] [--dry-run]` | 扫描发现 git 仓库；**`--dry-run` 只列出**（发现模式，零副作用），不带则全部登记。`root` 缺省当前目录 |
 | `nx-rh repo open <id>` | 在文件管理器中打开 |
-| `nx-rh skill hub adapters [--project <目录>]` | 平台清单 + 每平台的**项目级 / 用户级绝对落点** |
-| `nx-rh skill hub list [--source <路径>] [--project <项目根>] [--long]` | 零启动盘点：名称 / 来源目录 / 描述（`--long` 完整）+ 迁移状态 + 未入 Hub |
-| `nx-rh skill hub show <name> [--project <项目根>]` | 完整描述 + 目录 + 各平台落点与形态 |
-| `nx-rh skill hub cat <name> [--ref <相对路径>]` | 输出 skill 全文（订阅源与未入 Hub 的平台副本都读得到） |
+| `nx-rh skill hub adapters [--project <目录>]` | 平台清单 + 每平台的**项目级 / 用户级绝对安装位置** |
+| `nx-rh skill hub list [--source <路径>] [--project <项目根>] [--long]` | 零启动盘点：名称 / 来源目录 / 描述（`--long` 完整）+ 迁移状态 + 不在订阅源的 skill |
+| `nx-rh skill hub show <name> [--project <项目根>]` | 完整描述 + 目录 + 各平台安装状态与形态 |
+| `nx-rh skill hub cat <name> [--ref <相对路径>]` | 输出 skill 全文（订阅源与不在订阅源的平台副本都读得到） |
 | `nx-rh skill hub add <name> [--description 文本] [--content 全文]` | 新建 skill（写入当前订阅源；同名 → CONFLICT） |
 | `nx-rh skill hub update <name> --content <全文>` | 改写 SKILL.md（须含 name/description frontmatter） |
 | `nx-rh skill hub remove <name> [--force]` | 只从订阅源删除（目标侧还有引用时 blocked） |
-| `nx-rh skill hub purge <name> [--dry-run] [--force]` | **彻底删除**：所有平台落点 + 订阅源实文件（未入 Hub 的 skill 只有这条能删） |
+| `nx-rh skill hub purge <name> [--dry-run] [--force]` | **彻底删除**：所有平台安装位置 + 订阅源实文件（不在订阅源的 skill 只有这条能删） |
 | `nx-rh skill list` | **包内**可装的 skill + 默认装哪个 + 有哪些 group（注意与 `skill hub list` 的区别） |
 | `nx-rh skill install [name] [--group <key>] [--to DIR] [--force]` | 安装内置 skill；`--group` 一键装一组（`groups.json` 分组） |
 | `nx-rh skill groups` | 可装的 group → 它包含哪些 skill |
@@ -211,13 +217,14 @@ localStorage 持久化，刷新不丢。
 | `nx-rh skill hub migrate\|adapt <name...> --to global\|user\|project\|all [--platform P] [--mode symlink\|copy]` | 订阅源 → 平台目录（目的仓库直接覆盖；`--platform` 可用别名 `claude` / `wb` / `cursor`） |
 | `nx-rh skill hub migrate --all [--include 模式] [--exclude 模式] [--match 描述词] [--dry-run]` | 批量迁移：全量 / 取子集 / 排除个别 / 按描述挑；`--dry-run` 只出计划不落盘 |
 | `nx-rh skill hub unmigrate <name...> --to global\|user\|project\|all [--platform P] [--force]` | 撤销迁移（迁移可逆；实体副本需 `--force`）；同样支持 `--all/--exclude/--dry-run` |
-| `nx-rh skill hub submit <name...> [--exclude 模式] [--dry-run]` | 平台副本 → 订阅源；`--to` 缺省 `all`（未入 Hub 的 skill 多在**用户级**目录里） |
+| `nx-rh skill hub submit <name...> [--exclude 模式] [--dry-run] [--into <订阅源>]` | 平台副本 → 订阅源（`--into` 指定收进哪个已订阅源，缺省主源）；`--to` 缺省 `all`（不在订阅源的 skill 多在**用户级**目录里） |
 | `nx-rh skill hub submit <name> [--to user\|project] [--platform P] [--force]` | 平台副本 → 订阅源，随后删除目标实文件 |
 | `nx-rh skill hub materialize <name> --to user\|project [--platform P]` | 链接转实体 |
 | `nx-rh skill hub merge --base F --a F --b F` | diff3 合并原语 |
 | `nx-rh skill hub sources\|subscribe\|unsubscribe\|main` | 订阅源清单 / 订阅 / 取消订阅 / 切主源 |
 | `nx-rh skill hub check` | 来源健康诊断：目录缺失 / 空源 / 嵌套订阅 / 重复根 / 跨源同名冲突 |
 | `nx-rh skill hub project list\|add\|remove <path>` | 项目目录候选 |
+| `nx-rh skill hub project skills` | 当前项目目录里实际存在的 skill（扫全部适配器项目级目录，标注是否已在订阅源；面板 Skill 页的「当前项目」子页同源） |
 | `nx-rh skill hub platform [ids...]` | 启用的平台范围 / 默认平台 |
 | `nx-rh setting get [key]` / `setting set k=v [k2=v2 ...]` | 设置页 |
 | `nx-rh env status` | 环境变量页：能力横幅（平台 / 提权 / 两个 scope 可否写） |
@@ -230,6 +237,21 @@ localStorage 持久化，刷新不丢。
 | `nx-rh env path remove <dir> [--scope S] [--dry-run]` | PATH 移除一行 |
 | `nx-rh env snapshot list` / `save [label]` / `restore <id> [--dry-run]` | 快照与回滚 |
 | `nx-rh bundled list` / `skill install [name] [--to DIR] [--force]` | 内置 skill 包 |
+| `nx-rh wt init [--root D] [--branch-prefix P] [--base-branch B] [--sync-mode copy\|symlink]` | 工作树页：初始化（根在主仓库内时自动登记 .gitignore） |
+| `nx-rh wt config` / `wt config set [--root ..] [--branch-prefix ..] [--base-branch ..] [--sync-mode ..]` | 查看 / 修改工作树配置 |
+| `nx-rh wt list [--base B]` / `wt get <ref>` | 工作树表（真相现查 git，富状态：脏 / 领先落后 / 缺扩展） |
+| `nx-rh wt add <描述> [--name N] [--base B] [--root R] [--force]` | 新建工作树（描述 → `feature/<名>` 分支） |
+| `nx-rh wt checkout <branch> [--name N] [--root R] [--force]` | 已存在分支挂成工作树 |
+| `nx-rh wt remove <ref> [--branch] [--force]` | 移除工作树（`--branch` 连分支删；主树不可删） |
+| `nx-rh wt switch <ref>` / `wt open <ref>` | 打印 cd 指令 / 文件管理器打开 |
+| `nx-rh wt context [--log N]` | 主项目上下文弹窗：主项目现状 + 领先落后 + 扩展状态 + 建议指令 |
+| `nx-rh wt rebase [ref] [--base B] [--message M]` | 把工作树 rebase 到主项目分支（冲突自动 abort） |
+| `nx-rh wt fanout [--base B] [--yes]` | 计划 / 执行：全部工作树 rebase（脏、领先目标拦下） |
+| `nx-rh wt ext list [--target T]` | 扩展文件表（主仓库看变更，工作树看一致/缺失） |
+| `nx-rh wt ext add <abspath> [--label L] [--force]` | 按全路径登记扩展文件（须被忽略） |
+| `nx-rh wt ext discover [--apply]` | 发现被忽略文件（默认只建议，`--apply` 登记） |
+| `nx-rh wt ext get <ref>` / `update <ref> [--label L]` / `remove <ref>` | 扩展文件查看 / 改标签 / 注销 |
+| `nx-rh wt ext sync [target] [--mode copy\|symlink] [--ids a,b] [--force] [--dry-run]` | 同步扩展文件进工作树（冲突不覆盖） |
 
 > `env` 模块是唯一改**操作系统状态**而非本仓库状态的模块：它读写 Windows 注册表里的
 > 持久化环境变量（用户级 `HKCU\Environment` / 系统级 `HKLM\...\Session Manager\Environment`）。
@@ -289,7 +311,7 @@ pnpm test      # 漏登记会被 tests/unit/registry.test.mjs 断言拦下
 **在哪个目录运行，哪个目录就是当前项目**——不需要额外配置：
 
 - `nx-rh serve [dir]`：把 `dir`（缺省 = 当前目录）注入为面板的「当前项目」，
-  面板首屏就停在那里；`skill migrate` 等命令不传 `--project` 时落点也是它
+  面板首屏就停在那里；`skill migrate` 等命令不传 `--project` 时安装位置也是它
 - `nx-rh recents`：全局跨项目的「最近目录」列表（`recents add` / `recents remove`），
   与按 cwd 隔离的数据并存——**面板的项目下拉由它驱动**，切过的项目自动出现在里面
 - **一个面板管所有项目**：`serve` 前先探测该端口上的 `/api/health`，若 `cwdScope` 字段在
@@ -340,7 +362,7 @@ nx-rh skill get nx-rh skill-hub     # 裸名 ref → references/skill-hub.md
 
 ```
 订阅源（Skill Hub）  <src>/<name>/SKILL.md              ← 唯一实文件
-目标（迁移落点）      user:    ~/<platform.globalDir>/<name>
+目标（安装位置）      user:    ~/<platform.globalDir>/<name>
                      project: <启动目录>/<platform.dir>/<name>
 ```
 
@@ -356,16 +378,16 @@ nx-rh skill get nx-rh skill-hub     # 裸名 ref → references/skill-hub.md
 - **目的仓库不做冲突检测，直接被订阅源覆盖**：目标只是落地副本，hub 里永远有一份，覆盖可恢复；
   删除（unmigrate）才需要 `--force`。来源侧扫描只认**实文件**——源目录里的链接是别处的落地副本，
   不算来源，也不制造假冲突
-- **提交**：`skill submit` 把平台目录里的实体 skill 收进订阅源，然后**删除目标实文件**并改回链接——收敛「唯一实文件 = 订阅源」
+- **提交**：`skill submit` 把平台目录里的实体 skill 收进订阅源，然后**删除目标实文件**并改回链接——收敛「唯一实文件 = 订阅源」这条规范；`--into <订阅源>` 指定收进哪个已订阅源（缺省当前主源）
 - **物化**：链接 → 实体副本（断开与订阅源的实时同步）
-- **零启动盘点**：`skill hub list`（`--long` 看完整描述与 skill 目录）/ `skill hub show <name>`（平台 × 作用域的落点矩阵）/
-  `skill adapters`（每个平台的项目级与用户级绝对路径）——不起面板就能判断「这个 skill 能不能在 X 平台上用、该放到哪」
+- **零启动盘点**：`skill hub list`（`--long` 看完整描述与 skill 目录）/ `skill hub show <name>`（平台 × 作用域的安装状态矩阵）/
+  `skill adapters`（每个平台的项目级与用户级绝对路径）/ `skill hub project skills`（当前项目目录里实际有什么）——不起面板就能判断「这个 skill 能不能在 X 平台上用、该放到哪」
 - **平台别名**：`--platform claude` / `wb` / `cursor` / `gemini` / `universal` 等价于对应 id；
   `skill adapt` 是 `skill migrate` 的别名（口语说法：把一个 skill 变成 .cursor）
 - **迁移可逆**：`migrate` ⇄ `unmigrate` 参数完全对称；`--to global`（= `user`）与 `--to project` 覆盖全局与项目化两端
 - **批量与精筛**：`--all` 全量、`--include <模式>` 取子集、`--exclude <模式>`（支持 `*`）排掉个别、
   `--match <关键词>` 按 **描述** 挑（agent 依业务需求选，而不是翻页手点）；`--dry-run` 先出计划不落盘
-- 面板对应：行首勾选 + 「→项目 / →用户 / 撤销勾选 / 提交未入 Hub」，未勾选时前两个即全量（弹窗确认）
+- 面板对应：行首勾选 + 「→项目 / →用户 / 撤销勾选 / 收进订阅源…」，未勾选时前两个即全量（弹窗确认）；收进时可弹窗选目标订阅源
 - **给外部 agent 上下文**：`skill cat <name>` 输出订阅源 skill 全文（SKILL.md 或某个 ref）；
   内置手册走 `skill get`（三段拼接 + 顺手安装），见下节
 - **三方合并**：`skill merge --base --a --b` 暴露 diff3-lite 原语（`core/diff.js`）：仅单侧变更的区域自动采用；双侧相同自动取一；双侧不同输出 `<<<<<<< / ======= / >>>>>>>` 冲突块
@@ -379,6 +401,7 @@ nx-rh skill get nx-rh skill-hub     # 裸名 ref → references/skill-hub.md
 | --- | --- | --- | --- |
 | Claude Code | `.claude/skills` | `~/.claude/skills` | |
 | WorkBuddy | `.workbuddy/skills` | `~/.workbuddy/skills` | |
+| Doubao（豆包） | `.doubao/skills` | `~/Doubao/skills` | |
 | Universal (.agents) | `.agents/skills` | `~/.agents/skills` | 是 |
 | CodeBuddy | `.codebuddy/skills` | `~/.codebuddy/skills` | |
 | Cursor | `.cursor/skills` | `~/.cursor/skills` | |
@@ -388,7 +411,7 @@ nx-rh skill get nx-rh skill-hub     # 裸名 ref → references/skill-hub.md
 | Windsurf | `.windsurf/skills` | `~/.codeium/windsurf/skills` | |
 | iFlow CLI | `.iflow/skills` | `~/.iflow/skills` | |
 
-默认聚焦 claude-code 与 workbuddy；落点规则：`--platform` 指定 > 设置里的平台范围（首个为默认平台）。
+默认聚焦 claude-code 与 workbuddy；安装位置规则：`--platform` 指定 > 设置里的平台范围（首个为默认平台）。
 
 ## 设计约定
 
