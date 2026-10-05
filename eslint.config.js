@@ -92,9 +92,10 @@ export default defineConfig([
     // 前端：这条规则的价值最高——把 Node 侧代码 import 进视图，
     // Vite 会把 node: 内置模块一起打进浏览器包，构建期报错或运行期炸掉。
     //
-    // files 必须同时覆盖 src/modules/**/view.jsx：真正写视图的文件就在那里，
-    // 只列 web/frontend/** 会让它反过来不受约束（A00 闸 1 的实测反例）。
-    files: ['src/web/frontend/**/*.{js,jsx}', 'src/modules/**/view.jsx'],
+    // files 覆盖 src/modules/** 全部视图文件（view.jsx 与拆出的 parts/*.jsx），
+    // 以及 shared.js（前后端共用纯函数，会被打进浏览器包）：
+    // 只列 web/frontend/** + view.jsx 会让 parts/* 落在所有分层规则之外（拆分时的实测洞）。
+    files: ['src/web/frontend/**/*.{js,jsx}', 'src/modules/**/*.jsx', 'src/modules/*/shared.js'],
     rules: {
       // hook 的依赖数组在「声明那一刻」求职值——数组里引用了下方才声明的
       // const（patchUi / project 这类），运行时就是 TDZ 整页白屏。
@@ -112,11 +113,29 @@ export default defineConfig([
             {
               group: ['**/modules/*/index.js', '**/modules/*/service.js', '**/runtime/**', '**/core/**'],
               message:
-                '前端只能 import 模块的 view.jsx，以及 web/frontend 下的组件与 api 客户端。index.js/service.js/runtime/core 是 Node 侧代码，拖进浏览器包会把 node: 内置模块一起带进来。',
+                '前端只能 import 模块的 view.jsx / parts / shared，以及 web/frontend 下的组件与 api 客户端。index.js/service.js/runtime/core 是 Node 侧代码，拖进浏览器包会把 node: 内置模块一起带进来。',
+            },
+            {
+              // 视图层同样禁止跨模块依赖（与上面 modules 层规则同一份禁列）——
+              // flat config 同一文件被两块匹配时规则整条替换，所以必须在这里重复声明。
+              group: ['../repos/*', '../skills/*', '../bundled/*', '../system/*', '../env/*', '../worktrees/*'],
+              message: '模块之间不得互相依赖；共享逻辑请下沉到 core/。唯一例外是 ../settings/service.js。',
             },
           ],
         },
       ],
+    },
+  },
+  {
+    // 尺寸护栏：文件 / 函数按「有效行」计（跳过空行与注释），超标即 lint 失败。
+    // 阈值依据拆分后实测：最大文件 ≈350 有效行（skills svc/queries.js）；
+    // 全仓最大函数 = env 视图 EnvView（420 有效行）——450 恰在它上方，
+    // 下一次有人写出巨石组件（如拆分前 442 行的 WorktreesView）当场拦截。
+    // tests/ 不在此列：smoke.mjs 是有意的单文件状态化 E2E（见 README）。
+    files: ['src/**/*.{js,jsx}'],
+    rules: {
+      'max-lines': ['error', { max: 500, skipBlankLines: true, skipComments: true }],
+      'max-lines-per-function': ['error', { max: 450, skipBlankLines: true, skipComments: true }],
     },
   },
 ]);
