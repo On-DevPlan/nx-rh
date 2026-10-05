@@ -70,9 +70,13 @@ function assertScope(scope) {
 
 // ─── 调用 PowerShell ───────────────────────────────────────────────────
 
+const PS_TIMEOUT_MS = 30000;
+
 function runPowerShell(script, extraEnv) {
   return new Promise((resolve) => {
     let child;
+    let done = false;
+    const finish = (val) => { if (!done) { done = true; clearTimeout(timer); resolve(val); } };
     try {
       child = spawn('powershell', ['-NoProfile', '-NonInteractive', '-Command', script], {
         windowsHide: true,
@@ -83,16 +87,21 @@ function runPowerShell(script, extraEnv) {
       resolve({ code: -1, stdout: '', stderr: String((e && e.message) || e) });
       return;
     }
+    // 超时兜底：子进程意外挂起时不能让请求永久 pending（页面会一直「读取中」）。
+    const timer = setTimeout(() => {
+      try { child.kill(); } catch { /* 已退出 */ }
+      finish({ code: -1, stdout: '', stderr: `PowerShell 执行超时（>${PS_TIMEOUT_MS / 1000}s），已终止` });
+    }, PS_TIMEOUT_MS);
     const out = [];
     const err = [];
     child.stdout.on('data', (d) => out.push(d));
     child.stderr.on('data', (d) => err.push(d));
-    child.on('error', (e) => resolve({ code: -1, stdout: '', stderr: String((e && e.message) || e) }));
+    child.on('error', (e) => finish({ code: -1, stdout: '', stderr: String((e && e.message) || e) }));
     child.on('close', (code) =>
       // stdout 被 [Console]::OutputEncoding 强制成 UTF-8，可安全按 utf-8 解。
       // stderr 没有这道保证（可能仍是代码页编码），所以它只用于诊断——
       // 分类一律走我们自己输出的 JSON 里的异常类型名，不解析 stderr。
-      resolve({ code, stdout: Buffer.concat(out).toString('utf8'), stderr: Buffer.concat(err).toString('utf8') })
+      finish({ code, stdout: Buffer.concat(out).toString('utf8'), stderr: Buffer.concat(err).toString('utf8') })
     );
   });
 }

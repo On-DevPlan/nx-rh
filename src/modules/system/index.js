@@ -9,6 +9,7 @@ import { compileRoute } from '../../runtime/spec.js';
 import { badInput, notFound, blocked } from '../../core/errors.js';
 import * as settings from '../settings/service.js';
 import * as repos from '../repos/service.js';
+import * as worktrees from '../worktrees/service.js';
 import * as recentsSvc from './service.js';
 import { listAdapters } from '../skills/adapters.js';
 
@@ -46,6 +47,8 @@ async function bootstrap() {
     hub: await skills.hubInfo(),
     sources: (await skills.listSources()).sources,
     repos: await repos.listRepos(),
+    // 工作树聚合（非 git 目录安全降级为 {git:false}，不阻断 bootstrap）
+    worktrees: await worktrees.overview(),
     // 命令表随 bootstrap 下发前端，面板底部的「CLI 等价」提示由此渲染，
     // 而不是各视图手写字符串。带 http 字段，故映射是双向可查的。
     commands: await commandTable(),

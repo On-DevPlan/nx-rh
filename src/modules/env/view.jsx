@@ -348,8 +348,25 @@ export default function EnvView() {
 
   return (
     <div className="stack">
-      {/* 浏览（过滤 / 范围）与最常用的动作放最上面一行，与其余页面一致；
-          卡片只负责回答「这一段是什么 + 它此刻的状态」。 */}
+      <div className="page-head">
+        <div className="title-block">
+          <h2>环境变量</h2>
+          <div className="page-desc">
+            查看与编辑用户级 / 系统级环境变量；PATH 按条目管理。所有写入都会先给你看 diff，确认后才落盘。
+          </div>
+        </div>
+        <div className="acts">
+          <button
+            className="btn"
+            disabled={busy || !supported}
+            onClick={() => setEdit({ name: '', scope: 'user', value: '', kind: 'String', isNew: true })}
+          >
+            新增变量
+          </button>
+        </div>
+      </div>
+
+      {/* 浏览（过滤 / 范围）一行 */}
       <div className="toolbar">
         <input
           className="search grow"
@@ -377,14 +394,6 @@ export default function EnvView() {
             只看用户级 {userHit.length}
           </button>
         </span>
-        <button
-          className="btn small"
-          style={{ marginLeft: 'auto' }}
-          disabled={busy || !supported}
-          onClick={() => setEdit({ name: '', scope: 'user', value: '', kind: 'String', isNew: true })}
-        >
-          新增变量
-        </button>
       </div>
 
       {/* 变量表：本页唯一的主角 */}

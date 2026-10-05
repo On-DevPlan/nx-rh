@@ -75,7 +75,7 @@ export default defineConfig([
         {
           patterns: [
             {
-              group: ['../repos/*', '../skills/*', '../bundled/*', '../system/*', '../env/*'],
+              group: ['../repos/*', '../skills/*', '../bundled/*', '../system/*', '../env/*', '../worktrees/*'],
               message: '模块之间不得互相依赖；共享逻辑请下沉到 core/。唯一例外是 ../settings/service.js。',
             },
           ],

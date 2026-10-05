@@ -7,7 +7,9 @@ import { VIEWS } from './registry.js';
 
 function viewFromHash() {
   const h = (location.hash || '').replace(/^#\/?/, '');
-  return VIEWS.some((v) => v.id === h) ? h : '';
+  // 取首段做模块匹配：模块内部可有子路由（如 skills/platform/claude-code）
+  const first = h.split('/')[0];
+  return VIEWS.some((v) => v.id === first) ? first : '';
 }
 
 export default function App() {
@@ -130,8 +132,7 @@ export default function App() {
       </main>
 
       <footer>
-        每个按钮都有同构的 CLI 命令<span className="fsep"> · </span>
-        命令表见 <code>nx-rh help</code>
+        <code>nx-rh help</code> 查看全部命令
         <span className="fsep"> · </span>
         agent 可加 <code>--json</code> 获取机器可读输出
       </footer>
