@@ -10,7 +10,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readdirSync, readFileSync } from 'node:fs';
-import { join, dirname } from 'node:path';
+import { join, dirname, relative } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..', '..');
@@ -111,6 +111,8 @@ test('前端注册表里的视图文件真实存在', () => {
 // ---- 视图里调用的每个 /api 路径都必须真实存在于路由表 ----
 // 这条抓的是「面板调了个不存在的接口」——改造前没有这层保护，
 // 前端写错路径只会在用户点击时 404。
+// 覆盖面 = view.jsx + parts/*（模块内文件布局见 README「模块内的文件布局与何时拆」）：
+// 视图拆分后 /api 字面量住在 parts/ 里，只扫 view.jsx 会静默漏掉它们。
 
 function routeSegments([, pattern]) {
   return pattern.split('/').filter(Boolean);
@@ -124,20 +126,36 @@ function pathMatchesRoute(pathSegs, routeSegs) {
   });
 }
 
+// 一个模块的全部视图源文件：view.jsx + parts/ 下的 .jsx/.js（旧布局无 parts/ 时回退）
+function viewSources(id) {
+  const dir = join(MODULES_DIR, id);
+  const files = [join(dir, 'view.jsx')];
+  try {
+    for (const e of readdirSync(join(dir, 'parts'))) {
+      if (/\.(jsx|js)$/.test(e)) files.push(join(dir, 'parts', e));
+    }
+  } catch {
+    /* 无 parts/ 目录：只扫 view.jsx */
+  }
+  return files;
+}
+
 test('视图调用的每个 /api 路径都有对应路由', () => {
   const routes = ACTIONS.filter((a) => a.http).map((a) => a.http);
   const problems = [];
 
   for (const id of frontendViewIds) {
-    const src = readFileSync(join(MODULES_DIR, id, 'view.jsx'), 'utf8');
-    // 抓 '/api/...' 与 `/api/...` 两种字面量；模板变量 ${x} 归一为 :param
-    for (const m of src.matchAll(/['"`](\/api\/[^'"`\s]*)['"`]/g)) {
-      const raw = m[1];
-      const clean = raw.split('?')[0].replace(/\$\{[^}]+\}/g, ':param');
-      if (!clean.startsWith('/api/')) continue;
-      const segs = clean.split('/').filter(Boolean);
-      const hit = routes.some((r) => pathMatchesRoute(segs, routeSegments(r)));
-      if (!hit) problems.push(`${id}/view.jsx → ${raw}`);
+    for (const file of viewSources(id)) {
+      const src = readFileSync(file, 'utf8');
+      // 抓 '/api/...' 与 `/api/...` 两种字面量；模板变量 ${x} 归一为 :param
+      for (const m of src.matchAll(/['"`](\/api\/[^'"`\s]*)['"`]/g)) {
+        const raw = m[1];
+        const clean = raw.split('?')[0].replace(/\$\{[^}]+\}/g, ':param');
+        if (!clean.startsWith('/api/')) continue;
+        const segs = clean.split('/').filter(Boolean);
+        const hit = routes.some((r) => pathMatchesRoute(segs, routeSegments(r)));
+        if (!hit) problems.push(`${id}/${relative(MODULES_DIR, file)} → ${raw}`);
+      }
     }
   }
 
