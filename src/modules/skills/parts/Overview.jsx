@@ -135,8 +135,8 @@ export function Overview({ data, openCreate }) {
               <div className="ec-top"><span className="ec-name">{lastSeg(ps.root)}</span></div>
               <div className="ec-path mono" title={ps.root}>{ps.root}</div>
               <div className="ec-stats">
-                <span><b>{ps.count}</b> 个 skill</span>
-                {ps.orphan ? <span style={{ color: 'var(--ink)' }}><b>{ps.orphan}</b> 不在订阅源</span> : null}
+                <span>有 <b>{ps.count}</b> skill</span>
+                {ps.orphan ? <span style={{ color: 'var(--ink)' }} title="只在项目目录里，订阅源里没有——点进去可收进 Hub">，其中 <b>{ps.orphan}</b> 独立未入 Hub</span> : null}
               </div>
             </div>
           );
@@ -144,11 +144,10 @@ export function Overview({ data, openCreate }) {
       </div>
 
       <div className="section-label">平台
-        <span className="hint">{summary.length} 个 Agent 平台 · 点进去快速收敛 / 查看</span>
+        <span className="hint">{summary.length} 个 Agent 平台 · 统计该平台目录里的 skill（用户级 + 当前项目级，同名只计一次）</span>
       </div>
       <div className="entry-grid">
         {summary.map((p) => {
-          const total = p.managed + p.orphan;
           return (
             <div key={p.id} className={'entry-card' + (p.enabled ? '' : ' off')} onClick={() => goPlatform(p.id)}>
               <div className="ec-top">
@@ -159,8 +158,8 @@ export function Overview({ data, openCreate }) {
               </div>
               <div className="ec-path mono">{p.id}</div>
               <div className="ec-stats">
-                <span><b>{total}</b> 处安装</span>
-                {p.orphan ? <span style={{ color: 'var(--ink)' }}><b>{p.orphan}</b> 不在订阅源</span> : null}
+                <span>有 <b>{p.managed + p.orphan}</b> skill</span>
+                {p.orphan ? <span style={{ color: 'var(--ink)' }} title="只在平台目录里，订阅源里没有——点进去可收进 Hub">，其中 <b>{p.orphan}</b> 独立未入 Hub</span> : null}
               </div>
             </div>
           );

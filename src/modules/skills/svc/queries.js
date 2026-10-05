@@ -180,6 +180,9 @@ export async function listAllSkills({ project, source, platform } = {}) {
   // 全平台汇总（总览页用）：扫描每个适配器的用户级 / 项目级目录，
   // 按「是否在订阅源」分 managed / orphan，按形态分 links / copies。
   // 一次请求拿全 11 个平台，避免前端逐个平台探测。
+  // 计数按 skill 名去重：同一个 skill 同时在用户级与项目级（典型：一处链接一处副本）
+  // 只算一个——面板要回答的是「这个平台里有几个 skill」，不是「有几份拷贝」。
+  // copies/links/user/project 是分母口径（各目录实际份数），标签只在悬停提示里用。
   const projRoot = project || projectRoot();
   const platformSummary = [];
   const projNames = new Set();
@@ -189,16 +192,19 @@ export async function listAllSkills({ project, source, platform } = {}) {
       enabled: s.platforms.includes(a.id), isDefault: s.defaultPlatform === a.id,
       managed: 0, orphan: 0, copies: 0, links: 0, user: 0, project: 0,
     };
+    const seen = new Set(); // 该平台上出现过的 skill 名（跨作用域去重）
     for (const sc of SCOPE_IDS) {
       const dir = targetDirFor(a.id, sc, projRoot);
       const found = await scanSkillsRoot(dir);
       if (found.length) rec[sc] = found.length;
       if (sc === 'project') for (const x of found) projNames.add(x.name);
       for (const x of found) {
-        if (sourceNames.has(x.name)) rec.managed += 1;
-        else rec.orphan += 1;
         if (x.linkType) rec.links += 1;
         else rec.copies += 1;
+        if (seen.has(x.name)) continue;
+        seen.add(x.name);
+        if (sourceNames.has(x.name)) rec.managed += 1;
+        else rec.orphan += 1;
       }
     }
     platformSummary.push(rec);
