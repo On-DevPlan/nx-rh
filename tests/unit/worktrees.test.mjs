@@ -7,7 +7,6 @@ import { spawnSync } from 'node:child_process';
 import { mkdtempSync, writeFileSync, mkdirSync, readFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { pathToFileURL } from 'node:url';
 
 let root;
 let svc;
@@ -41,12 +40,11 @@ before(async () => {
   writeFileSync(join(root, 'secrets', 'a.txt'), 'secret');
 
   process.chdir(root);
-  // 直接按绝对路径引入被测模块
-  svc = await import(
-    pathToFileURL('D:/a_js/js_proj/nx-rh/src/modules/worktrees/service.js').href
-  );
-  coreGit = await import(pathToFileURL('D:/a_js/js_proj/nx-rh/src/core/git.js').href);
-  coreGi = await import(pathToFileURL('D:/a_js/js_proj/nx-rh/src/core/gitignore.js').href);
+  // 按相对位置引入被测模块——禁止硬编码本机绝对路径（D:/...），否则 Linux CI 拼出
+  // /tmp/xxx/D:/... 的非法路径，整组用例 hookFailed。
+  svc = await import(new URL('../../src/modules/worktrees/service.js', import.meta.url).href);
+  coreGit = await import(new URL('../../src/core/git.js', import.meta.url).href);
+  coreGi = await import(new URL('../../src/core/gitignore.js', import.meta.url).href);
 });
 
 // ---- 纯解析 ----
