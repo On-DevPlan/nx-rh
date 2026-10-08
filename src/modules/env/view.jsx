@@ -1,21 +1,15 @@
-// 环境变量页：变量表 + 快照。
+// 环境变量页：四象限看板 + 快照。
 //
-// 信息架构只有两块，且主次分明：
-//   1. 变量表（主角）——一行 = 一个变量名，右侧是**生效值**（新进程实际读到的那个）。
-//      展开后并列显示 用户级 / 系统级 两个值，各自可编辑 / 删除。
-//      旧版每行只渲染 `用户级 ?? 系统级` 一个值：被用户级覆盖掉的系统级那侧，
-//      界面上既看不到、也点不到（编辑/删除写死取其中一侧）——面板看起来在报
-//      「这个变量的值」，其实只说了一半。这一版把两 scope 都摆出来。
-//      Path 也是表里的一行，只是展开后是**逐条目**列表，而不是一坨分号串
-//      （旧版 PATH 有两处表示：表里截断的巨串 + 下方独立卡片，还得靠文字互相引用）。
-//   2. 快照（安全网）——默认收起。它是写给「改错了要退回去」那一刻的，不是日常要看的。
+// 信息架构是一张 2×2 看板，四象限各自独立、互不混杂：
+//   ┌ 用户环境变量（HKCU\Environment，非 PATH） ─ 用户 PATH 条目 ┐
+//   └ 系统环境变量（HKLM\...\Environment，非 PATH） ─ 系统 PATH 条目 ┘
+// 用户级可写；系统级默认只读（需管理员）。PATH 是「拼接」不是覆盖，单独成列。
 //
 // 所有写入都走同一条流程：**先 dry-run 拿 diff → 弹窗给你看 → 确认才落盘**。
-// 这不是 UI 偏好，而是本页唯一涉及「改坏整台机器 PATH」的地方——
-// 让用户先看见将要发生什么，再决定。
+// 这是本页唯一可能「改坏整台机器 / PATH」的地方——让用户先看见将要发生什么。
 //
 // 每个按钮 = 一条 HTTP 路由 = 一条 CLI 命令（同源于 ../env/index.js 的 action 声明）。
-import { Fragment, useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { api } from '../../web/frontend/api/client.js';
 import { useToast, useGuard, useDialog, Modal, DiffPre, Copyable } from '../../web/frontend/components/ui.jsx';
 import { CliHints } from '../../web/frontend/components/CliHints.jsx';
@@ -26,77 +20,87 @@ const EXPAND_HINT =
   + '对已有的变量不会降级成 String，否则 %VAR% 会停止展开（PATH 写坏多半出在这里）。';
 
 const kindLabel = (k) => (k === 'ExpandString' ? 'expand' : 'string');
-const truncate = (v, n = 96) => (String(v).length > n ? String(v).slice(0, n - 1) + '…' : String(v));
+const truncate = (v, n = 56) => (String(v).length > n ? String(v).slice(0, n - 1) + '…' : String(v));
+const isPathName = (n) => String(n).toLowerCase() === 'path';
 
 function localTime(iso) {
   const d = new Date(iso);
   return Number.isNaN(d.getTime()) ? String(iso) : d.toLocaleString('zh-CN', { hour12: false });
 }
 
-// 行尾那一枚标签：同一个字段同时表达「在哪个 scope」与「两 scope 的关系」。
-// 于是「生效值」这一列永远只承载值——列才对得齐、扫得动；
-// 旧版把 `* / + / =` 三个符号压进名称前，又用三行图例教用户解码，等于先加密再解释。
-function relationTag(m) {
-  if (m.concat) return { text: '两 scope 拼接', title: 'Path 不是覆盖：新会话的 PATH = 系统级条目 + 用户级条目' };
-  if (m.shadow) return { text: '用户级覆盖', title: '两个 scope 都有且值不同——新进程看到的是用户级的值' };
-  if (m.duplicate) return { text: '两 scope 相同', title: '两个 scope 都有且值相同，改哪一侧都行' };
-  if (m.user) return { text: '仅用户级', title: '只有用户级有这个变量' };
-  return { text: '仅系统级', title: '只有系统级有这个变量；改动需要管理员身份' };
-}
-
-function ScopePills({ value, onChange, writable }) {
+// 象限外壳：标题 + 右侧状态标签 + 可滚动主体。
+function Quadrant({ title, tag, children }) {
   return (
-    <span className="plats">
-      {['user', 'system'].map((s) => {
-        const disabled = s === 'system' && !writable;
-        return (
-          <button
-            key={s}
-            type="button"
-            className={'pill' + (value === s ? ' on' : '')}
-            disabled={disabled}
-            title={disabled ? '需要以管理员身份运行 nx-rh' : undefined}
-            onClick={() => !disabled && onChange(s)}
-          >
-            {SCOPE_LABEL[s]}
-          </button>
-        );
-      })}
-    </span>
+    <div className="card" style={{ display: 'flex', flexDirection: 'column', minHeight: 0 }}>
+      <div className="colhead">
+        <h3 style={{ fontSize: 14 }}>{title}</h3>
+        {tag}
+      </div>
+      {children}
+    </div>
   );
 }
 
-// 展开体里的一行：**一个**作用域的值 + 它自己的 编辑 / 删除。
-// 未设置的那一侧也照常列出来（带「写入…」）——否则用户会以为面板够不到那一侧。
-function ScopeField({ scope, entry, writable, busy, onEdit, onDelete }) {
-  const canWrite = scope === 'user' || writable;
-  const lock = canWrite ? undefined : '需要以管理员身份运行 nx-rh';
+// 变量象限（用户 / 系统，非 PATH）：每行 名称 + 值 + 编辑 / 删除，底部「新增」。
+function VarQuadrant({ scope, values, shadowMap, writable, busy, onEdit, onDelete, onAdd }) {
   return (
-    <div className="vfield">
-      <span className="tag">{SCOPE_LABEL[scope]}</span>
-      {entry ? (
-        <>
-          <span
-            className="muted kind"
-            title={entry.kind === 'ExpandString' ? EXPAND_HINT : 'REG_SZ：值原样保存，不做 %VAR% 展开'}
-          >
-            {kindLabel(entry.kind)}
-          </span>
-          <Copyable className="mono val" text={entry.value}>{entry.value}</Copyable>
-          <span className="acts">
-            <button className="btn small ghost" disabled={busy || !canWrite} title={lock} onClick={onEdit}>编辑</button>
-            <button className="btn small ghost" disabled={busy || !canWrite} title={lock} onClick={onDelete}>删除</button>
-          </span>
-        </>
-      ) : (
-        <>
-          <span className="muted val">（未设置）</span>
-          <span className="acts">
-            <button className="btn small ghost" disabled={busy || !canWrite} title={lock} onClick={onEdit}>写入…</button>
-          </span>
-        </>
-      )}
-    </div>
+    <>
+      <div className="list" style={{ maxHeight: 280, overflow: 'auto' }}>
+        {values.length ? values.map((v) => {
+          const lower = v.name.toLowerCase();
+          const sh = shadowMap.get(lower);
+          const canWrite = scope === 'user' || writable;
+          return (
+            <div className="row" key={v.name} title={`[${kindLabel(v.kind)}] ${v.value}`}>
+              <span className="name"><Copyable text={v.name} /></span>
+              <Copyable className="desc mono" text={v.value}>{truncate(v.value)}</Copyable>
+              {sh?.shadow
+                ? <span className="tag strong" title={scope === 'user' ? '用户级覆盖了系统级' : '系统级被用户级覆盖'}>覆盖</span>
+                : sh?.duplicate ? <span className="tag" title="两个 scope 都有且值相同">相同</span> : null}
+              <span className="acts">
+                <button className="btn small ghost" disabled={busy || !canWrite} title={canWrite ? '编辑' : '需要管理员身份'} onClick={() => onEdit(v)}>编辑</button>
+                <button className="btn small ghost" disabled={busy || !canWrite} title={canWrite ? '删除' : '需要管理员身份'} onClick={() => onDelete(v)}>删除</button>
+              </span>
+            </div>
+          );
+        }) : <div className="row muted">（{SCOPE_LABEL[scope]}没有变量）</div>}
+      </div>
+      <div className="row-inline" style={{ padding: 8 }}>
+        <button className="btn small" disabled={busy || (scope === 'system' && !writable)} onClick={onAdd}>＋ 新增变量</button>
+      </div>
+    </>
+  );
+}
+
+// PATH 象限（用户 / 系统）：每行 序号 + 目录 + 移除，底部「追加目录」。
+function PathQuadrant({ scope, entries, writable, busy, onRemove, onAdd, onAddText, addText }) {
+  const canWrite = scope === 'user' || writable;
+  return (
+    <>
+      <div className="list" style={{ maxHeight: 280, overflow: 'auto' }}>
+        {entries.length ? entries.map((p, i) => (
+          <div className="row" key={scope + i} title={p.path}>
+            <span className="mono muted" style={{ width: 32, textAlign: 'right' }}>{String(i + 1).padStart(2)}</span>
+            <Copyable className="desc mono" text={p.path}>{truncate(p.path)}</Copyable>
+            {p.duplicate ? <span className="tag" title="与另一条目重复">重复</span> : null}
+            <span className="acts">
+              <button className="btn small ghost" disabled={busy || !canWrite} title={canWrite ? '从 PATH 移除' : '需要管理员身份'} onClick={() => onRemove(p.path)}>移除</button>
+            </span>
+          </div>
+        )) : <div className="row muted">（{SCOPE_LABEL[scope]} PATH 为空）</div>}
+      </div>
+      <div className="row-inline" style={{ padding: 8, gap: 6 }}>
+        <input
+          className="grow"
+          placeholder="要追加的目录，如 C:\\tools\\bin"
+          value={addText}
+          spellCheck="false"
+          onChange={(e) => onAddText(e.target.value)}
+          onKeyDown={(e) => { if (e.key === 'Enter' && canWrite) onAdd(); }}
+        />
+        <button className="btn small" disabled={busy || !canWrite} onClick={onAdd}>追加</button>
+      </div>
+    </>
   );
 }
 
@@ -113,12 +117,9 @@ export default function EnvView() {
 
   // 视图状态
   const [q, setQ] = useState('');
-  const [onlyUser, setOnlyUser] = useState(false); // 范围：全部 / 只看用户级设过的
-  const [open, setOpen] = useState(null); // 展开的变量名（小写）；同一时刻只展开一行
   const [snapOpen, setSnapOpen] = useState(false); // 快照是次要区块，默认收起
-  const [addDir, setAddDir] = useState('');
-  const [addScope, setAddScope] = useState('user');
   const [edit, setEdit] = useState(null); // { name, scope, value, kind, isNew }
+  const [pathAdd, setPathAdd] = useState({ user: '', system: '' });
 
   const load = useCallback(async () => {
     const [st, ls, snaps] = await Promise.all([
@@ -169,26 +170,33 @@ export default function EnvView() {
     }
   });
 
-  // ─── 各操作 ─────────────────────────────────────────────────────────
+  // ─── 变量增删改 ─────────────────────────────────────────────────────
 
   const setVar = (name, scope, value, kind) =>
     propose(`写入 ${name}（${SCOPE_LABEL[scope]}）`,
       `/api/env/${encodeURIComponent(name)}`, 'PUT', { value, scope, kind });
 
-  const delVar = (name, scope) =>
-    propose(`删除 ${name}（${SCOPE_LABEL[scope]}）`,
-      `/api/env/${encodeURIComponent(name)}`, 'DELETE', { scope });
+  const delVar = (v, scope) =>
+    propose(`删除 ${v.name}（${SCOPE_LABEL[scope]}）`,
+      `/api/env/${encodeURIComponent(v.name)}`, 'DELETE', { scope });
 
-  const addPath = () => {
-    const dir = addDir.trim();
+  const openEdit = (scope, v) => setEdit(v
+    ? { name: v.name, scope, value: v.value, kind: v.kind, isNew: false }
+    : { name: '', scope, value: '', kind: 'String', isNew: true });
+
+  // ─── PATH 增删 ──────────────────────────────────────────────────────
+
+  const addPath = (scope) => {
+    const dir = pathAdd[scope].trim();
     if (!dir) { toast('请输入要加入 PATH 的目录'); return; }
-    propose(`把目录加入 PATH（${SCOPE_LABEL[addScope]}）`,
-      '/api/env/path', 'POST', { dir, scope: addScope });
+    setPathAdd((s) => ({ ...s, [scope]: '' }));
+    propose(`把目录加入 PATH（${SCOPE_LABEL[scope]}）`, '/api/env/path', 'POST', { dir, scope });
   };
 
   const delPath = (dir, scope) =>
-    propose(`从 PATH 移除（${SCOPE_LABEL[scope]}）`,
-      '/api/env/path', 'DELETE', { dir, scope });
+    propose(`从 PATH 移除（${SCOPE_LABEL[scope]}）`, '/api/env/path', 'DELETE', { dir, scope });
+
+  // ─── 快照 ───────────────────────────────────────────────────────────
 
   const saveSnapshot = () => guard(async () => {
     const label = await dialog({ title: '保存快照', input: true, placeholder: '备注（可留空）', okText: '保存' });
@@ -239,111 +247,17 @@ export default function EnvView() {
     );
   }
 
-  // 名称过滤 → 范围过滤 → Path 置顶。
-  // Path 是唯一带专属编辑器（逐条目而不是一坨字符串）的一条，也是唯一「写坏会让整台
-  // 机器命令行不可用」的一条；让它在 54 行的字母序里随机落点并不合理——固定第一行。
-  const nameHit = (list?.merged || []).filter(
-    (m) => !q.trim() || m.name.toLowerCase().includes(q.trim().toLowerCase())
-  );
-  const userHit = nameHit.filter((m) => m.user);
-  const scoped = onlyUser ? userHit : nameHit;
-  const merged = (() => {
-    const i = scoped.findIndex((m) => m.name.toLowerCase() === 'path');
-    if (i <= 0) return scoped; // -1 = 没有 Path；0 = 已经在了
-    const rest = scoped.slice();
-    return [rest.splice(i, 1)[0], ...rest];
-  })();
-  const pathEntries = list?.path || [];
-  const pathSys = pathEntries.filter((p) => p.scope === 'system').length;
-  const pathUser = pathEntries.length - pathSys;
+  const kw = q.trim().toLowerCase();
+  const hit = (s) => !kw || s.toLowerCase().includes(kw);
 
-  // 一行 + （展开时的）展开体。Path 只是其中一行，展开体换成了逐条目列表。
-  const renderItem = (m) => {
-    const key = m.name.toLowerCase();
-    const isPath = key === 'path';
-    const isOpen = open === key;
-    const shown = m.user || m.system;
-    const rel = relationTag(m);
-    // 只在系统级存在、且当前进程未提权 —— 这一行此刻动不了（要动得先建用户级覆盖）。
-    const readonly = !m.user && !sysWritable;
-    return (
-      <Fragment key={m.name}>
-        <div className={'row vrow' + (isOpen ? ' open' : '') + (readonly ? ' readonly' : '')}>
-          <button
-            className="vcaret"
-            title={isOpen ? '收起' : '展开：分别查看 / 编辑两个作用域'}
-            onClick={() => setOpen(isOpen ? null : key)}
-          >
-            {isOpen ? '▾' : '▸'}
-          </button>
-          <span className="name"><Copyable text={m.name} /></span>
-          <span className="desc mono">
-            {isPath ? `共 ${pathEntries.length} 条（系统 ${pathSys} · 用户 ${pathUser}）` : truncate(shown.value)}
-          </span>
-          <span className={'tag' + (m.shadow ? ' strong' : '')} title={rel.title}>{rel.text}</span>
-        </div>
+  const userVals = (list?.scopes?.user?.values || []).filter((v) => !isPathName(v.name) && hit(v.name));
+  const sysVals = (list?.scopes?.system?.values || []).filter((v) => !isPathName(v.name) && hit(v.name));
+  const userPath = (list?.path || []).filter((p) => p.scope === 'user' && hit(p.path));
+  const sysPath = (list?.path || []).filter((p) => p.scope === 'system' && hit(p.path));
 
-        {isOpen ? (isPath ? (
-          <div className="vsub">
-            <div className="muted vnote">
-              新会话生效的 PATH = 系统级条目在前、用户级条目在后（拼接，不是覆盖）。
-            </div>
-            {pathEntries.length ? pathEntries.map((p, i) => (
-              <div className="vfield" key={`${p.scope}-${i}`}>
-                <span className="mono idx">{String(i + 1).padStart(3)}</span>
-                <span className="tag">{p.scope === 'user' ? '用户' : '系统'}</span>
-                <Copyable className="mono val" text={p.path}>{p.path}</Copyable>
-                {p.duplicate ? <span className="muted kind">重复</span> : null}
-                <span className="acts">
-                  <button
-                    className="btn small ghost"
-                    disabled={busy || (p.scope === 'system' && !sysWritable)}
-                    title={p.scope === 'system' && !sysWritable ? '需要以管理员身份运行 nx-rh' : undefined}
-                    onClick={() => delPath(p.path, p.scope)}
-                  >
-                    移除
-                  </button>
-                </span>
-              </div>
-            )) : <div className="muted vnote">（PATH 为空）</div>}
-            <div className="row-inline vadd">
-              <input
-                placeholder="要加入 PATH 的目录，如 C:\tools\bin"
-                value={addDir}
-                spellCheck="false"
-                onChange={(e) => setAddDir(e.target.value)}
-              />
-              <ScopePills value={addScope} onChange={setAddScope} writable={sysWritable} />
-              <button className="btn small" disabled={busy || !supported} onClick={addPath}>追加</button>
-            </div>
-          </div>
-        ) : (
-          <div className="vsub">
-            {['user', 'system'].map((scope) => (
-              <ScopeField
-                key={scope}
-                scope={scope}
-                entry={m[scope]}
-                writable={sysWritable}
-                busy={busy}
-                onEdit={() => setEdit({
-                  name: m.name,
-                  scope,
-                  value: m[scope]?.value ?? '',
-                  kind: m[scope]?.kind ?? 'String',
-                  isNew: !m[scope],
-                })}
-                onDelete={() => delVar(m.name, scope)}
-              />
-            ))}
-          </div>
-        )) : null}
-      </Fragment>
-    );
-  };
+  // 遮蔽关系速查（来自 merged 分析）
+  const shadowMap = new Map((list?.merged || []).map((m) => [m.name.toLowerCase(), m]));
 
-  // 值里有 % 但类型还是 String：这条最容易写出「以为存的是变量引用、其实是一段字面量」。
-  // 编辑已有的 String 变量时同样成立（kind 是显式传下去的，会盖掉 service 的自动升级）。
   const editNeedsExpand = edit?.kind !== 'ExpandString' && String(edit?.value || '').includes('%');
 
   return (
@@ -352,107 +266,120 @@ export default function EnvView() {
         <div className="title-block">
           <h2>环境变量</h2>
           <div className="page-desc">
-            查看与编辑用户级 / 系统级环境变量；PATH 按条目管理。所有写入都会先给你看 diff，确认后才落盘。
+            四象限看板：用户级 / 系统级变量与 PATH 分开承载。所有写入都会先给你看 diff，确认后才落盘。
           </div>
         </div>
         <div className="acts">
-          <button
-            className="btn"
-            disabled={busy || !supported}
-            onClick={() => setEdit({ name: '', scope: 'user', value: '', kind: 'String', isNew: true })}
-          >
-            新增变量
-          </button>
+          <button className="btn" disabled={busy || !supported} onClick={() => openEdit('user')}>新增变量</button>
         </div>
       </div>
 
-      {/* 浏览（过滤 / 范围）一行 */}
+      {/* 状态 + 搜索一行 */}
       <div className="toolbar">
         <input
           className="search grow"
-          placeholder="过滤名称…"
+          placeholder="过滤名称 / 路径…"
           value={q}
           spellCheck="false"
           onChange={(e) => setQ(e.target.value)}
         />
-        <span className="sep"></span>
-        <span className="plats">
-          <button
-            type="button"
-            className={'pill' + (onlyUser ? '' : ' on')}
-            title="全部变量（含只在系统级存在、当前改不了的那些）"
-            onClick={() => setOnlyUser(false)}
-          >
-            全部 {nameHit.length}
-          </button>
-          <button
-            type="button"
-            className={'pill' + (onlyUser ? ' on' : '')}
-            title="只看用户级存在或设过的——系统自带的那些不在这一档"
-            onClick={() => setOnlyUser(true)}
-          >
-            只看用户级 {userHit.length}
-          </button>
+        <span className="tag" title={status?.note || ''}>
+          {status === null ? '正在探测…'
+            : sysWritable ? '用户级 / 系统级 均可写'
+              : '用户级可写 · 系统级只读（需管理员）'}
         </span>
       </div>
 
-      {/* 变量表：本页唯一的主角 */}
-      <div className="card">
-        <div className="colhead">
-          <h3>环境变量</h3>
-          <span className="tag" title={status?.note || ''}>
-            {status === null ? '正在探测…'
-              : sysWritable ? '用户级 / 系统级 均可写'
-                : '用户级可写 · 系统级只读（需管理员）'}
-          </span>
-        </div>
-        <div className="muted vlegend">
-          两个 scope 同名时<b>用户级覆盖</b>系统级（新进程看到用户级的值）；<b>PATH 是例外</b>——它由两者拼接。
-          点行首三角可展开，分别改两个 scope；灰掉的行只在系统级有，用当前身份改不了。
-          写入的是注册表持久值：<b>新开的终端才生效</b>，已启动的进程不会跟变。
-        </div>
-        {merged.length ? (
-          <div className="list">{merged.map(renderItem)}</div>
-        ) : (
-          <div className="row muted">
-            {!list ? '正在读取…' : '（没有匹配的变量）'}
-            {list && onlyUser && nameHit.length ? (
-              <button
-                className="btn small ghost"
-                style={{ marginLeft: 8 }}
-                title="范围是「只看用户级」，但名称过滤下还有别的变量命中"
-                onClick={() => setOnlyUser(false)}
-              >
-                改为全部（{nameHit.length}）
-              </button>
-            ) : null}
-          </div>
-        )}
+      {/* 四象限看板 */}
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+        <Quadrant
+          title={`用户环境变量 · HKCU`}
+          tag={<span className="tag">{userVals.length}</span>}
+        >
+          <VarQuadrant
+            scope="user"
+            values={userVals}
+            shadowMap={shadowMap}
+            writable={sysWritable}
+            busy={busy}
+            onEdit={(v) => openEdit('user', v)}
+            onDelete={(v) => delVar(v, 'user')}
+            onAdd={() => openEdit('user')}
+          />
+        </Quadrant>
+
+        <Quadrant
+          title={`用户 PATH 列表`}
+          tag={<span className="tag">{userPath.length} 条</span>}
+        >
+          <PathQuadrant
+            scope="user"
+            entries={userPath}
+            writable={sysWritable}
+            busy={busy}
+            addText={pathAdd.user}
+            onAddText={(t) => setPathAdd((s) => ({ ...s, user: t }))}
+            onAdd={() => addPath('user')}
+            onRemove={(d) => delPath(d, 'user')}
+          />
+        </Quadrant>
+
+        <Quadrant
+          title={`系统环境变量 · HKLM`}
+          tag={<span className={'tag' + (sysWritable ? '' : ' bad')}>{sysVals.length}{sysWritable ? '' : ' · 只读'}</span>}
+        >
+          <VarQuadrant
+            scope="system"
+            values={sysVals}
+            shadowMap={shadowMap}
+            writable={sysWritable}
+            busy={busy}
+            onEdit={(v) => openEdit('system', v)}
+            onDelete={(v) => delVar(v, 'system')}
+            onAdd={() => openEdit('system')}
+          />
+        </Quadrant>
+
+        <Quadrant
+          title={`系统 PATH 列表`}
+          tag={<span className={'tag' + (sysWritable ? '' : ' bad')}>{sysPath.length} 条{sysWritable ? '' : ' · 只读'}</span>}
+        >
+          <PathQuadrant
+            scope="system"
+            entries={sysPath}
+            writable={sysWritable}
+            busy={busy}
+            addText={pathAdd.system}
+            onAddText={(t) => setPathAdd((s) => ({ ...s, system: t }))}
+            onAdd={() => addPath('system')}
+            onRemove={(d) => delPath(d, 'system')}
+          />
+        </Quadrant>
       </div>
 
-      {/* 快照：安全网，不是日常操作。默认收起，表头仍给出份数与「存一份」。 */}
+      <div className="muted" style={{ fontSize: 12 }}>
+        两个 scope 同名时<b>用户级覆盖</b>系统级；<b>PATH 是例外</b>——新会话 PATH = 系统条目 + 用户条目（拼接）。
+        写入的是注册表持久值：<b>新开的终端才生效</b>，已启动的进程不会跟变。
+      </div>
+
+      {/* 快照：安全网，默认收起 */}
       <div className="card">
         <div className="colhead">
           <button
             className="disclose"
-            title="每次写入前自动生成的备份；平时不需要看，改坏了再回来"
+            title="每次写入前自动生成的备份；改坏了再回来"
             onClick={() => setSnapOpen((v) => !v)}
           >
             <span className="caret">{snapOpen ? '▾' : '▸'}</span> 快照（{snapshots.length}）
           </button>
-          <button
-            className="btn small ghost"
-            style={{ marginLeft: 'auto' }}
-            disabled={busy || !supported}
-            onClick={saveSnapshot}
-          >
+          <button className="btn small ghost" style={{ marginLeft: 'auto' }} disabled={busy || !supported} onClick={saveSnapshot}>
             存一份
           </button>
         </div>
         {snapOpen ? (
           <>
             <div className="muted vlegend">
-              每次写入前都会自动生成一份，保留最近 50 份。恢复前也会自动备份，所以恢复本身可被恢复。
+              每次写入前自动生成，保留最近 50 份。恢复前也会自动备份，所以恢复本身可被恢复。
             </div>
             {snapshots.length ? (
               <div className="list">
@@ -464,11 +391,7 @@ export default function EnvView() {
                       {s.reason ? ` · ${s.reason}` : ''}
                     </span>
                     <span className="acts">
-                      <button
-                        className="btn small ghost"
-                        disabled={busy || !supported}
-                        onClick={() => restoreSnapshot(s.id)}
-                      >
+                      <button className="btn small ghost" disabled={busy || !supported} onClick={() => restoreSnapshot(s.id)}>
                         恢复
                       </button>
                     </span>
@@ -501,7 +424,6 @@ export default function EnvView() {
               />
             </div>
           ) : null}
-          {/* 值可能是上千字符的 PATH，单行 input 看不全 */}
           <textarea
             className="dlg-input"
             rows={3}
@@ -512,11 +434,19 @@ export default function EnvView() {
             onChange={(e) => setEdit({ ...edit, value: e.target.value })}
           />
           <div className="row-inline" style={{ alignItems: 'center' }}>
-            <ScopePills
-              value={edit.scope}
-              onChange={(s) => setEdit({ ...edit, scope: s })}
-              writable={sysWritable}
-            />
+            <span className="plats">
+              {['user', 'system'].map((s) => (
+                <button
+                  key={s}
+                  type="button"
+                  className={'pill' + (edit.scope === s ? ' on' : '')}
+                  disabled={s === 'system' && !sysWritable}
+                  onClick={() => setEdit({ ...edit, scope: s })}
+                >
+                  {SCOPE_LABEL[s]}
+                </button>
+              ))}
+            </span>
             <button
               type="button"
               className={'pill' + (edit.kind === 'ExpandString' ? ' on' : '')}

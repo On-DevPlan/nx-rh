@@ -8,6 +8,13 @@ import { Crumbs, SCOPE_SHORT, shortLabel } from './shared.jsx';
 import { SubmitIntoDialog, MigrateToDialog } from './dialogs.jsx';
 import { goOverview } from './routes.js';
 
+// 平台安装状态分两组承载：项目级与用户级是两套互不影响的配置，
+// 平台多了（现在 6 个、12 行）混在一屏太乱。
+const INSTALL_SCOPES = [
+  { id: 'project', title: '项目相关配置', hint: '仅当前项目目录（.xxx/skills）' },
+  { id: 'user', title: '用户相关配置', hint: '全局用户目录（~/），跨项目生效' },
+];
+
 // skill 文件查看器：左树右内容，SKILL.md 默认选中。
 function SkillFiles({ name }) {
   const [files, setFiles] = useState(null);
@@ -171,6 +178,37 @@ export function SkillDetail({ name, tick }) {
 
   const cells = d.cells || [];
 
+  // 单个平台落点行（分组卡片里复用；scope 已由卡片标题承载，行内只显示平台名）
+  const renderCell = (c) => (
+    <div key={c.scope + c.platform} className="row">
+      <span className="name">{shortLabel(c.platform, adapters)}</span>
+      <Copyable className="desc mono" text={c.dir} title="点击复制安装位置路径">{c.dir}</Copyable>
+      <span className={'tag' + (c.on ? (c.linkType ? '' : ' strong') : ' bad')}>
+        {c.on ? (c.linkType ? '链接' : '实体') : '未安装'}
+      </span>
+      {!isOrphan ? (
+        <span className="acts">
+          {c.on
+            ? <>
+                {/* 链接行：可「转实体」物化 + 「撤销」摘指针；实体行本就是独立副本，只需「删除」 */}
+                {c.linkType ? <button className="btn small ghost" title="转成实体副本，不再随订阅源变化" onClick={() => materializeCell(c)}>转实体</button> : null}
+                <button
+                  className="btn small ghost"
+                  title={c.linkType ? '撤销安装（订阅源不受影响）' : '删除这份实体副本——可能含本地改动，删除后不可恢复（Hub 里那份仍在）'}
+                  onClick={() => toggleCell(c)}
+                >
+                  {c.linkType ? '撤销' : '删除'}
+                </button>
+              </>
+            : <>
+                <button className={'btn small'} onClick={() => toggleCell(c)}>迁移</button>
+                <button className="btn small ghost" title="以实体副本安装（独立一份，不随订阅源变化）" onClick={() => migrateCellCopy(c)}>实体</button>
+              </>}
+        </span>
+      ) : null}
+    </div>
+  );
+
   return (
     <>
       <Crumbs trail={[{ label: name }]} />
@@ -197,41 +235,31 @@ export function SkillDetail({ name, tick }) {
       <div className="colhead" style={{ marginTop: 4 }}><h3>{isOrphan ? '出现位置' : '平台安装状态'}</h3>
         <span className="muted">链接随订阅源实时变；实体副本是独立一份</span>
       </div>
-      <div className="card detail-cells">
-        <div className="list">
-          {cells.length ? cells
-            .filter((c) => c.on || !isOrphan)
-            .map((c) => (
-              <div key={c.scope + c.platform} className="row">
-                <span className="name">{SCOPE_SHORT[c.scope]}·{shortLabel(c.platform, adapters)}</span>
-                <Copyable className="desc mono" text={c.dir} title="点击复制安装位置路径">{c.dir}</Copyable>
-                <span className={'tag' + (c.on ? (c.linkType ? '' : ' strong') : ' bad')}>
-                  {c.on ? (c.linkType ? '链接' : '实体') : '未安装'}
-                </span>
-                {!isOrphan ? (
-                  <span className="acts">
-                    {c.on
-                      ? <>
-                          {/* 链接行：撤销 = 摘掉指针，Hub 真相不受影响；实体行：删除 = 连本地改动一起删，语义不同，按钮分开 */}
-                          {!c.linkType ? <button className="btn small ghost" title="转成实体副本，不再随订阅源变化" onClick={() => materializeCell(c)}>转实体</button> : null}
-                          <button
-                            className="btn small ghost"
-                            title={c.linkType ? '撤销安装（订阅源不受影响）' : '删除这份实体副本——可能含本地改动，删除后不可恢复（Hub 里那份仍在）'}
-                            onClick={() => toggleCell(c)}
-                          >
-                            {c.linkType ? '撤销' : '删除'}
-                          </button>
-                        </>
-                      : <>
-                          <button className={'btn small'} onClick={() => toggleCell(c)}>迁移</button>
-                          <button className="btn small ghost" title="以实体副本安装（独立一份，不随订阅源变化）" onClick={() => migrateCellCopy(c)}>实体</button>
-                        </>}
-                  </span>
-                ) : null}
-              </div>
-            )) : <div className="row muted">（还没有安装到任何平台）</div>}
-        </div>
-      </div>
+      {INSTALL_SCOPES.map(({ id, title, hint }) => {
+        const rows = cells.filter((c) => c.scope === id && (c.on || !isOrphan));
+        const installed = rows.filter((c) => c.on).length;
+        const allOn = rows.length > 0 && installed === rows.length;
+        return (
+          <div className="card detail-cells" style={{ marginBottom: 10 }} key={id}>
+            <div
+              style={{
+                display: 'flex', alignItems: 'center', gap: 10,
+                padding: '8px 12px', borderBottom: '1px solid var(--border, #e5e7eb)',
+              }}
+            >
+              <strong style={{ fontSize: 13 }}>{title}</strong>
+              <span className="muted" style={{ fontSize: 12 }}>{hint}</span>
+              <span className={'tag' + (allOn ? '' : ' bad')} style={{ marginLeft: 'auto' }}>
+                {rows.length ? `${installed}/${rows.length} 已安装` : '（无启用平台）'}
+              </span>
+            </div>
+            <div className="list">
+              {rows.length ? rows.map(renderCell)
+                : <div className="row muted">（{id === 'project' ? '项目' : '用户'}级没有启用的平台）</div>}
+            </div>
+          </div>
+        );
+      })}
 
       <div className="toolbar" style={{ marginTop: 14, flexWrap: 'wrap' }}>
         {isOrphan
