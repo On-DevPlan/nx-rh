@@ -20,6 +20,7 @@ import {
   renderUnmigrate,
   renderSubmit,
   renderPurge,
+  renderDedupe,
 } from './renders.js';
 
 // `--to`：user（用户级 ~/）· global（= user，口头语）· project（项目级，缺省）· all（两者）
@@ -241,6 +242,30 @@ export default {
         dryRun: ctx['dry-run'] === true,
       }),
       render: renderPurge,
+    },
+
+    {
+      // 跨源重复/冲突的收敛动作（与 skill hub check 配对）：指定哪份实文件为准，
+      // 其余 delete（彻底唯一）或 link（来源里仍可见，但链接不算来源、不再制造冲突）。
+      id: 'skill.hub.dedupe',
+      cli: ['skill', 'hub', 'dedupe'],
+      http: ['POST', '/api/skills/dedupe'],
+      summary: '跨源重复/冲突唯一化：--source 指定以哪份实文件为准，其余 --as link（转链接）| delete（删除）',
+      args: ['name'],
+      flags: {
+        source: { type: 'string', required: true, hint: '以哪个订阅源里的实文件为准（订阅源路径）' },
+        as: { type: 'string', enum: ['link', 'delete'], default: 'link' },
+        force: { type: 'boolean', hint: '非准份也是实文件（可能含本地改动），丢弃不可逆，须显式确认' },
+        'dry-run': { type: 'boolean' },
+      },
+      run: (ctx) => service.dedupeSkill({
+        name: ctx.name,
+        source: ctx.source,
+        as: ctx.as,
+        force: ctx.force,
+        dryRun: ctx['dry-run'] === true,
+      }),
+      render: renderDedupe,
     },
 
     // ---- 迁移 / 撤销 / 提交 / 物化 ----

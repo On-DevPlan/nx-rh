@@ -4,13 +4,13 @@
 // 所以这里不需要「同步到目标」。
 // 刻意不声明 resource: 'skill'——`skill get` 这个 CLI 已被内置手册占用（bundled 模块），
 // CRUD 断言要求的 get 动词没法按 A00 命名；不改名就不硬凑。
-import { join } from 'node:path';
+import { join, resolve } from 'node:path';
 import fsp from 'node:fs/promises';
 import { exists, pathExists } from '../../../core/fstree.js';
 import { parseFrontmatter } from '../../../core/frontmatter.js';
 import { assertSafeName } from '../../../core/paths.js';
 import { badInput, notFound, conflict } from '../../../core/errors.js';
-import { detectLinkType } from '../../../core/link.js';
+import { detectLinkType, samePath, sameRealPath, createSkillLink } from '../../../core/link.js';
 import { hubPath, requireHubPath } from '../../settings/service.js';
 import { resolveSkillsRoot } from './scan.js';
 import { sourceEntriesFor } from './sources.js';
@@ -153,4 +153,72 @@ export async function purgeSkill({ name, project, force, dryRun } = {}) {
     removed.push({ kind: 'source', path: s.dir, source: s.source });
   }
   return { status: 'ok', dryRun: false, name, plan, removed };
+}
+
+// 唯一化一个跨源重复/冲突的 skill：以 --source 那份实文件为准，处理其余来源的实文件。
+//   as=link   → 其余转为指向准份的链接：来源目录里仍能看到这个 skill，但链接不算来源
+//               （见 scan 的 realOnly），冲突与重复随之消失——「勋章」形态：一份实文件 + N 处链接
+//   as=delete → 其余实文件直接删除：最彻底的唯一实文件，其余来源里这个 skill 不复存在
+// 选哪份为准是**内容决策**（哪份是对的），本函数只负责执行；两种 as 都会丢弃
+// 非准份的内容，因此与 purge 同款：先 --dry-run 看计划，加 --force 才落盘。
+export async function dedupeSkill({ name, source, as = 'link', force, dryRun } = {}) {
+  name = assertSafeName(name);
+  if (as !== 'link' && as !== 'delete') throw badInput('as 只能是 link | delete');
+  const entries = await sourceEntriesFor(name);
+  const winner = entries.find((e) => samePath(e.source, resolve(String(source || ''))));
+  if (!winner) {
+    throw notFound(
+      `--source 指定的订阅源里没有实文件 ${name}: ${source}` +
+      `（实文件来源: ${entries.map((e) => e.source).join(' , ') || '无'}）`
+    );
+  }
+  const others = entries.filter((e) => e !== winner);
+
+  const plan = {
+    name,
+    as,
+    winner: { source: winner.source, dir: winner.dir, md5: winner.md5 },
+    others: others.map((e) => ({ source: e.source, dir: e.dir, md5: e.md5 })),
+  };
+  if (!others.length) {
+    return { status: 'ok', dryRun: !!dryRun, name, plan, removed: [], linked: [], note: '本就只有一份实文件，无需处理' };
+  }
+  if (dryRun) return { status: 'ok', dryRun: true, name, plan, removed: [], linked: [] };
+
+  // 与 purge 的实体副本同款闸门：非准份也是实文件，可能含本地改动，丢弃不可逆
+  if (!force) {
+    return {
+      status: 'blocked',
+      dryRun: false,
+      name,
+      plan,
+      removed: [],
+      linked: [],
+      reason: `${others.length} 份非准实文件将${as === 'delete' ? '被删除' : '被链接替换'}（可能含本地改动），不可逆，加 --force 确认`,
+    };
+  }
+
+  const removed = [];
+  const linked = [];
+  const skipped = [];
+  for (const o of others) {
+    if (await sameRealPath(o.dir, winner.dir)) {
+      skipped.push({ ...o, reason: '与准份同一实体' });
+      continue;
+    }
+    await fsp.rm(o.dir, { recursive: true, force: true });
+    if (as === 'delete') {
+      removed.push({ ...o });
+      continue;
+    }
+    const r = await createSkillLink(winner.dir, o.dir);
+    if (r.ok) {
+      linked.push({ ...o, linkType: r.linkType });
+    } else {
+      // 建链失败：至少恢复一份副本，不让来源凭空丢 skill（与 submitOne 同款兜底）
+      await fsp.cp(winner.dir, o.dir, { recursive: true, dereference: true, force: true });
+      removed.push({ ...o, degraded: true, reason: r.error });
+    }
+  }
+  return { status: 'ok', dryRun: false, name, plan, as, removed, linked, skipped };
 }

@@ -199,6 +199,28 @@ export function renderPurge(d) {
   return lines.join('\n');
 }
 
+// 唯一化（dedupe）：跨源重复/冲突收敛为「一份实文件（准份）+ 其余删除或转链接」
+export function renderDedupe(d) {
+  const lines = [];
+  if (d.status === 'blocked') lines.push(`已阻止: ${d.reason}`);
+  else if (d.dryRun) lines.push(`预演（--dry-run，未改动磁盘）: 唯一化 ${d.plan.name}`);
+  else if (d.note) lines.push(`${d.note}: ${d.name}`);
+  else lines.push(`已唯一化 ${d.name}（--as ${d.as}）`);
+  lines.push(`  准份  ${d.plan.winner.md5.slice(0, 8)}  ${d.plan.winner.dir}`);
+  const pending = d.dryRun || d.status === 'blocked';
+  lines.push(pending ? `  其余将 --as ${d.plan.as}:` : `  其余已处理:`);
+  for (const o of d.plan.others) {
+    const hit = !pending && (d.linked.find((x) => x.dir === o.dir) || d.removed.find((x) => x.dir === o.dir));
+    const mark = hit?.linkType ? `（${hit.linkType}）`
+      : hit?.degraded ? `（建链失败，已回填副本: ${hit.reason}）`
+        : hit ? '' : '';
+    lines.push(`    ${o.md5.slice(0, 8)}  ${o.dir}${mark}`);
+  }
+  if (!d.plan.others.length) lines.push('    （无）');
+  if (d.status === 'blocked') lines.push('', '确认无误后加 --force 执行。');
+  return lines.join('\n');
+}
+
 // 适配器总表：每个平台的两个安装位置都打绝对路径——「把 skill 变成 .claude / .workbuddy / .cursor」
 // 在终端里直接可抄，不需要先起面板。
 export function renderAdapters(list) {
