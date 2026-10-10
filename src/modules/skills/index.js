@@ -270,18 +270,20 @@ export default {
     },
 
     {
-      // 批量快捷唯一化（hub check 弹窗的一键操作）：全部重复/冲突组都以主源实文件为准，
-      // 其余转链接（as=delete 则删除）——一次性处理所有冲突，访问性不受影响。
+      // 批量快捷唯一化（hub check 弹窗的勾选操作）：重复/冲突组都以主源实文件为准，
+      // 其余转链接（as=delete 则删除）——一次性处理勾选的全部冲突，访问性不受影响。
       id: 'skill.hub.dedupe-all',
       cli: ['skill', 'hub', 'dedupe-all'],
       http: ['POST', '/api/skills/dedupe-all'],
-      summary: '批量唯一化：全部重复/冲突组都以主源实文件为准，其余 --as link（转链接）| delete（删除）',
+      summary: '批量唯一化：重复/冲突组都以主源实文件为准，其余 --as link（转链接）| delete（删除）',
       flags: {
+        names: { type: 'array', hint: '只处理这些 skill（逗号分隔）；缺省=全部重复/冲突组' },
         as: { type: 'string', enum: ['link', 'delete'], default: 'link' },
         force: { type: 'boolean', hint: '非准份也是实文件（可能含本地改动），丢弃不可逆，须显式确认' },
         'dry-run': { type: 'boolean' },
       },
       run: (ctx) => service.dedupeAll({
+        names: ctx.names,
         as: ctx.as,
         force: ctx.force,
         dryRun: ctx['dry-run'] === true,

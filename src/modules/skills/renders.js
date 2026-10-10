@@ -242,6 +242,7 @@ export function renderDedupeAll(d) {
     for (const s of g.skipped) lines.push(`    → 跳过（${s.reason}）  ${s.dir}`);
   }
   if (!d.groups.length) lines.push('    （无）');
+  if (d.ignored?.length) lines.push(`  点名但已不在重复/冲突里（跳过）: ${d.ignored.join(' , ')}`);
   if (!pending && d.totals) {
     lines.push(`  合计：${d.totals.groups} 组，转链接 ${d.totals.linked}，删除 ${d.totals.removed}，跳过 ${d.totals.skipped}`);
   }

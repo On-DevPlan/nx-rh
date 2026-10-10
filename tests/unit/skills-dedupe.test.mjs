@@ -116,6 +116,26 @@ try {
   const auditAfter = await svc.sourceAudit();
   check('批量唯一化后审计全绿', auditAfter.conflicts.length === 0, JSON.stringify(auditAfter.conflicts.map((c) => c.name)));
 
+  // ── 多选勾选：names 点名只处理勾选的组，未点名的原样不动 ──
+  putSkill(hub1, 'sel-a', '勾选甲');
+  putSkill(hub2, 'sel-a', '勾选甲');
+  putSkill(hub1, 'sel-b', '勾选乙');
+  putSkill(hub2, 'sel-b', '勾选乙');
+
+  const m1 = await svc.dedupeAll({ names: ['sel-a'], force: true });
+  check('点名只处理 sel-a', m1.status === 'ok' && m1.totals.groups === 1 && m1.groups[0].name === 'sel-a' && m1.totals.linked === 1,
+    JSON.stringify(m1.totals));
+  check('未点名的 sel-b 两份原样不动', existsSync(join(hub1, 'sel-b')) && existsSync(join(hub2, 'sel-b'))
+    && !(await detectLinkType(join(hub1, 'sel-b'))));
+  check('sel-b 仍在审计里', (await svc.sourceAudit()).conflicts.some((c) => c.name === 'sel-b'));
+
+  const m2 = await svc.dedupeAll({ names: ['sel-b', 'nope'], dryRun: true });
+  check('点名不存在的组进 ignored 不报错', m2.dryRun === true && m2.groups.length === 1 && m2.groups[0].name === 'sel-b'
+    && m2.ignored.join(',') === 'nope', JSON.stringify(m2.ignored));
+
+  const m3 = await svc.dedupeAll({ names: ['sel-b'], force: true });
+  check('再点名 sel-b 收敛后审计全绿', m3.status === 'ok' && m3.totals.groups === 1 && (await svc.sourceAudit()).conflicts.length === 0);
+
   const b3 = await svc.dedupeAll({ force: true });
   check('没有重复时再调用只回 note', b3.status === 'ok' && b3.totals.groups === 0 && !!b3.note);
 } finally {

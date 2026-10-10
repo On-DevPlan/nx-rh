@@ -4,9 +4,10 @@
 //   · 跨源冲突 / 重复订阅 → 逐条「以此为准…」唯一化（POST /api/skills/dedupe）：
 //     以选中那份实文件为准（勋章），其余 delete（彻底唯一）或 link（其余来源转
 //     指向准份的链接——来源里仍可见，但链接不算来源，冲突随之消失）
-//   · 「全部以主源为准」：所有组一键批量唯一化（POST /api/skills/dedupe-all），
-//     每组以主源实文件为准、其余转软链接——一次性处理全部冲突，访问性不受影响
-import { useEffect, useState } from 'react';
+//   · 「以主源为准」：勾选的组批量唯一化（POST /api/skills/dedupe-all，缺省全选、
+//     可只勾一部分），每组以主源实文件为准、其余转软链接——一次性处理勾选的冲突，
+//     访问性不受影响
+import { useEffect, useRef, useState } from 'react';
 import { api } from '../../../web/frontend/api/client.js';
 import { useStore } from '../../../web/frontend/store.jsx';
 import { useToast, useGuard, useDialog, Modal, Copyable } from '../../../web/frontend/components/ui.jsx';
@@ -22,6 +23,10 @@ export function HubCheckDialog({ onClose }) {
   const [tick, setTick] = useState(0);
   // 唯一化确认视图（Modal 内容切换，不叠第二个弹窗）：{ name, winner, others }
   const [resolve, setResolve] = useState(null);
+  // 批量唯一化的勾选：组名集合。新报告到达时全选重置——不是所有情况都要「全部」，
+  // 勾选就是为了让用户只收敛其中一部分。
+  const [sel, setSel] = useState(() => new Set());
+  const allRef = useRef(null);
 
   useEffect(() => {
     let alive = true;
@@ -78,22 +83,42 @@ export function HubCheckDialog({ onClose }) {
   const duplicates = (d?.conflicts || []).filter((c) => c.same);
   const hubProblems = d?.hubProblems || [];
   const allGroups = conflicts.length + duplicates.length;
+  const allNames = (d?.conflicts || []).map((c) => c.name);
+  const selCount = sel.size;
+  const allSel = allGroups > 0 && selCount === allGroups;
+  const someSel = selCount > 0 && selCount < allGroups;
 
-  // 批量快捷唯一化：全部重复/冲突组都以主源那份实文件为准，其余转软链接——
-  // 一次性处理所有冲突，来源目录里仍可见（链接），访问性不受影响。
+  // 新报告到达（首查 / 重新检查 / 收敛后重查）→ 缺省全选
+  useEffect(() => {
+    if (d) setSel(new Set(allNames));
+  }, [d]);
+  useEffect(() => {
+    if (allRef.current) allRef.current.indeterminate = someSel;
+  });
+
+  const toggleGroup = (name) => setSel((s) => {
+    const n = new Set(s);
+    if (n.has(name)) n.delete(name); else n.add(name);
+    return n;
+  });
+  const toggleAll = () => setSel(allSel ? new Set() : new Set(allNames));
+
+  // 批量唯一化：勾选的组都以主源那份实文件为准，其余转软链接——
+  // 一次性处理勾选的全部冲突，来源目录里仍可见（链接），访问性不受影响。
   const runDedupeAll = () => guard(async () => {
+    const names = [...sel];
     const ok = await dialog({
-      title: '全部以主源为准',
-      message: `全部 ${allGroups} 组重复/冲突都以主源那份实文件为准，其余实文件转为指向准份的软链接。\n`
+      title: '以主源为准',
+      message: `已选 ${names.length} 组重复/冲突都以主源那份实文件为准，其余实文件转为指向准份的软链接。\n`
         + '各来源目录里这些 skill 仍可见（链接），但链接不算来源——冲突与重复随之消失。\n'
         + '非准份可能含本地改动，丢弃不可逆。',
       danger: true,
-      okText: `全部以主源为准（${allGroups} 组）`,
+      okText: `以主源为准（${names.length} 组）`,
     });
     if (!ok) return;
     setBusy(true);
     try {
-      const r = await api('/api/skills/dedupe-all', { method: 'POST', body: { as: 'link', force: true } });
+      const r = await api('/api/skills/dedupe-all', { method: 'POST', body: { names, as: 'link', force: true } });
       if (r.status === 'blocked') { toast(r.reason); return; }
       toast(`已唯一化 ${r.totals.groups} 组：其余 ${r.totals.linked + r.totals.removed} 处已转软链接`
         + (r.totals.skipped ? `，跳过 ${r.totals.skipped} 处（与准份同一实体）` : '')
@@ -178,13 +203,21 @@ export function HubCheckDialog({ onClose }) {
         ) : <span className="muted">{busy ? '检查中…' : '等待…'}</span>}
         <span style={{ flex: 1 }} />
         {allGroups ? (
-          <button
-            className="btn small" disabled={busy}
-            title="全部重复/冲突组都以主源那份实文件为准，其余转软链接——一次性处理所有冲突，各来源目录里仍可见"
-            onClick={runDedupeAll}
-          >
-            全部以主源为准（{allGroups} 组）
-          </button>
+          <>
+            <label className="chk-all" title="全选 / 全不选（勾选要收敛的组）">
+              <input ref={allRef} type="checkbox" checked={allSel} onChange={toggleAll} />
+              全选
+            </label>
+            {selCount ? (
+              <button
+                className="btn small" disabled={busy}
+                title="勾选的组都以主源那份实文件为准，其余转软链接——一次性处理勾选的冲突，各来源目录里仍可见"
+                onClick={runDedupeAll}
+              >
+                以主源为准（已选 {selCount}/{allGroups} 组）
+              </button>
+            ) : null}
+          </>
         ) : null}
         <button className="btn small ghost" onClick={() => setTick((t) => t + 1)} disabled={busy}>
           {busy ? '检查中…' : '重新检查'}
@@ -229,7 +262,10 @@ export function HubCheckDialog({ onClose }) {
                 {conflicts.map((c) => (
                   <div key={c.name} style={{ padding: '8px 10px', borderBottom: '1px solid var(--soft-2)' }}>
                     <div className="row" style={{ marginBottom: 2 }}>
-                      <span className="name" style={{ fontWeight: 700 }}>{c.name}</span>
+                      <label style={{ display: 'inline-flex', alignItems: 'center', gap: 6, cursor: 'pointer' }}>
+                        <input type="checkbox" checked={sel.has(c.name)} onChange={() => toggleGroup(c.name)} />
+                        <span className="name" style={{ fontWeight: 700 }}>{c.name}</span>
+                      </label>
                       <span className="tag bad">{c.entries.length} 个来源</span>
                     </div>
                     {c.entries.map(renderEntry(c.name, c.entries))}
@@ -246,7 +282,10 @@ export function HubCheckDialog({ onClose }) {
                 {duplicates.map((c) => (
                   <div key={c.name} style={{ padding: '8px 10px', borderBottom: '1px solid var(--soft-2)' }}>
                     <div className="row" style={{ marginBottom: 2 }}>
-                      <span className="name" style={{ fontWeight: 700 }}>{c.name}</span>
+                      <label style={{ display: 'inline-flex', alignItems: 'center', gap: 6, cursor: 'pointer' }}>
+                        <input type="checkbox" checked={sel.has(c.name)} onChange={() => toggleGroup(c.name)} />
+                        <span className="name" style={{ fontWeight: 700 }}>{c.name}</span>
+                      </label>
                       <span className="tag">md5 {c.entries[0].md5.slice(0, 8)}</span>
                       <span className="tag">{c.entries.length} 个来源</span>
                     </div>

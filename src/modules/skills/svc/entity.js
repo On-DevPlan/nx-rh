@@ -230,14 +230,18 @@ async function applyDedupeGroup(winnerDir, others, as) {
   return { removed, linked, skipped };
 }
 
-// 批量快捷唯一化：把 sourceAudit 发现的**全部**重复/冲突组一次收敛——
+// 批量快捷唯一化：把 sourceAudit 发现的重复/冲突组一次收敛——
 // 每组以主源（current）那份实文件为准，其余转链接（as=delete 则删除）。
+// names 点名只处理这些组（多选勾选），缺省=全部组；点了名但已不在重复/冲突里
+// 的名字进 ignored 回报，不报错（弹窗渲染与点击之间组可能已被处理掉）。
 // 链接不算来源（见 scan 的 realOnly），重复/冲突随之消失，而各来源目录里
 // 仍能看到这些 skill（访问性不受影响）。组里没有主源实文件时取第一份为准并标注。
-export async function dedupeAll({ as = 'link', force, dryRun } = {}) {
+export async function dedupeAll({ names, as = 'link', force, dryRun } = {}) {
   if (as !== 'link' && as !== 'delete') throw badInput('as 只能是 link | delete');
+  const want = (Array.isArray(names) ? names : names ? [names] : []).map((n) => assertSafeName(n));
   const audit = await sourceAudit();
   const groups = audit.conflicts
+    .filter((c) => !want.length || want.includes(c.name))
     .map((c) => {
       const winner = c.entries.find((e) => e.current) || c.entries[0];
       return {
@@ -248,17 +252,19 @@ export async function dedupeAll({ as = 'link', force, dryRun } = {}) {
       };
     })
     .filter((g) => g.others.length > 0);
+  const ignored = want.filter((n) => !groups.some((g) => g.name === n));
   const totals = { groups: groups.length, linked: 0, removed: 0, skipped: 0, degraded: 0 };
   if (!groups.length) {
-    return { status: 'ok', dryRun: !!dryRun, as, groups: [], totals, note: '没有跨源重复/冲突，无需处理' };
+    return { status: 'ok', dryRun: !!dryRun, as, groups: [], ignored, totals, note: '没有跨源重复/冲突，无需处理' };
   }
-  if (dryRun) return { status: 'ok', dryRun: true, as, groups, totals };
+  if (dryRun) return { status: 'ok', dryRun: true, as, groups, ignored, totals };
   if (!force) {
     return {
       status: 'blocked',
       dryRun: false,
       as,
       groups,
+      ignored,
       totals,
       reason: `${totals.groups} 组重复/冲突的非准实文件将${as === 'delete' ? '被删除' : '被链接替换'}（可能含本地改动），不可逆，加 --force 确认`,
     };
@@ -272,5 +278,5 @@ export async function dedupeAll({ as = 'link', force, dryRun } = {}) {
     totals.degraded += r.removed.filter((x) => x.degraded).length;
     results.push({ name: g.name, noPrimary: g.noPrimary, winner: g.winner, ...r });
   }
-  return { status: 'ok', dryRun: false, as, groups: results, totals };
+  return { status: 'ok', dryRun: false, as, groups: results, ignored, totals };
 }
