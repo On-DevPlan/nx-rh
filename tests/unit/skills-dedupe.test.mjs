@@ -84,6 +84,40 @@ try {
   // 指定的准份来源里没有实文件（如已转成链接）→ NOT_FOUND
   const bad = await errCode(() => svc.dedupeSkill({ name: 'dup-same', source: hub2, force: true }));
   check('准份来源无实文件报 NOT_FOUND', bad === 'NOT_FOUND', String(bad));
+
+  // ── 批量快捷唯一化：全部组都以主源实文件为准，其余转链接（一键处理所有冲突）──
+  putSkill(hub1, 'batch-same', '批量一致');
+  putSkill(hub2, 'batch-same', '批量一致');
+  putSkill(hub1, 'batch-diff', '旧源版本b');
+  putSkill(hub2, 'batch-diff', '新源版本b');
+
+  const auditB = await svc.sourceAudit();
+  const batchNames = auditB.conflicts.filter((c) => c.name.startsWith('batch-')).map((c) => c.name).sort();
+  check('批量 fixtures 进入审计', batchNames.join(',') === 'batch-diff,batch-same', batchNames.join(','));
+
+  const pb = await svc.dedupeAll({ dryRun: true });
+  check('批量 dry-run 只出计划（2 组，不动盘）', pb.dryRun === true && pb.totals.groups === 2
+    && existsSync(join(hub1, 'batch-same')) && existsSync(join(hub1, 'batch-diff')));
+
+  const bb = await svc.dedupeAll();
+  check('批量无 force 先 blocked', bb.status === 'blocked' && bb.totals.groups === 2, bb.reason || '');
+
+  const b2 = await svc.dedupeAll({ as: 'link', force: true });
+  check('批量唯一化 ok：2 组各转 1 链接', b2.status === 'ok' && b2.totals.linked === 2 && b2.totals.removed === 0,
+    JSON.stringify(b2.totals));
+  check('以主源为准：两组准份都是 hub2', b2.groups.every((g) => g.winner.source === hub2),
+    JSON.stringify(b2.groups.map((g) => g.name + '@' + g.winner.source)));
+  check('非主源 hub1 的两份已是链接', !!(await detectLinkType(join(hub1, 'batch-same')))
+    && !!(await detectLinkType(join(hub1, 'batch-diff'))));
+  check('链接内容仍可读（指向主源版本）', readFileSync(join(hub1, 'batch-diff', 'SKILL.md'), 'utf8').includes('新源版本b'));
+  check('实文件来源只剩主源', (await svc.sourceEntriesFor('batch-same')).length === 1
+    && (await svc.sourceEntriesFor('batch-same'))[0].source === hub2);
+
+  const auditAfter = await svc.sourceAudit();
+  check('批量唯一化后审计全绿', auditAfter.conflicts.length === 0, JSON.stringify(auditAfter.conflicts.map((c) => c.name)));
+
+  const b3 = await svc.dedupeAll({ force: true });
+  check('没有重复时再调用只回 note', b3.status === 'ok' && b3.totals.groups === 0 && !!b3.note);
 } finally {
   const failed = results.filter((r) => !r.ok);
   log(`\n${results.length - failed.length}/${results.length} passed`);

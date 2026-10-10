@@ -221,6 +221,34 @@ export function renderDedupe(d) {
   return lines.join('\n');
 }
 
+// 批量唯一化（dedupe-all）：全部重复/冲突组一次收敛，主源实文件为准
+export function renderDedupeAll(d) {
+  if (d.note) return d.note;
+  const lines = [];
+  if (d.status === 'blocked') lines.push(`已阻止: ${d.reason}`);
+  else if (d.dryRun) lines.push('预演（--dry-run，未改动磁盘）: 批量唯一化计划');
+  else lines.push(`已批量唯一化 ${d.totals.groups} 组（--as ${d.as}）`);
+
+  const pending = d.status === 'blocked' || d.dryRun;
+  for (const g of d.groups) {
+    lines.push(`  ${g.name}${g.noPrimary ? '（无主源实文件，取第一份为准）' : ''}`);
+    lines.push(`    准份  ${g.winner.md5.slice(0, 8)}  ${g.winner.dir}`);
+    if (pending) {
+      for (const o of g.others) lines.push(`    其余将 --as ${d.as}  ${o.md5.slice(0, 8)}  ${o.dir}`);
+      continue;
+    }
+    for (const l of g.linked) lines.push(`    → 链接（${l.linkType}）  ${l.dir}`);
+    for (const r of g.removed) lines.push(`    → 删除${r.degraded ? `（建链失败，已回填副本: ${r.reason}）` : ''}  ${r.dir}`);
+    for (const s of g.skipped) lines.push(`    → 跳过（${s.reason}）  ${s.dir}`);
+  }
+  if (!d.groups.length) lines.push('    （无）');
+  if (!pending && d.totals) {
+    lines.push(`  合计：${d.totals.groups} 组，转链接 ${d.totals.linked}，删除 ${d.totals.removed}，跳过 ${d.totals.skipped}`);
+  }
+  if (d.status === 'blocked') lines.push('', '确认无误后加 --force 执行。');
+  return lines.join('\n');
+}
+
 // 适配器总表：每个平台的两个安装位置都打绝对路径——「把 skill 变成 .claude / .workbuddy / .cursor」
 // 在终端里直接可抄，不需要先起面板。
 export function renderAdapters(list) {

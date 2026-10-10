@@ -5,7 +5,8 @@ import { useGuard, useDialog } from '../../../web/frontend/components/ui.jsx';
 import { CliHints } from '../../../web/frontend/components/CliHints.jsx';
 import { sourceLabel, lastSeg } from './shared.jsx';
 import { goOverview, goPlatform, goHub, goProject } from './routes.js';
-import { SkillSettingsDialog, HubCheckDialog } from './dialogs.jsx';
+import { SkillSettingsDialog } from './dialogs.jsx';
+import { HubCheckDialog } from './HubCheckDialog.jsx';
 
 export function Overview({ data, openCreate }) {
   const guard = useGuard();

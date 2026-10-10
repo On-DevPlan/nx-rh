@@ -15,6 +15,7 @@ import { hubPath, requireHubPath } from '../../settings/service.js';
 import { resolveSkillsRoot } from './scan.js';
 import { sourceEntriesFor } from './sources.js';
 import { resolveTargets } from './targets.js';
+import { sourceAudit } from './queries.js';
 
 // 组装 SKILL.md：frontmatter（name/description）+ 正文
 function buildSkillMd(name, description, body) {
@@ -198,11 +199,18 @@ export async function dedupeSkill({ name, source, as = 'link', force, dryRun } =
     };
   }
 
+  const { removed, linked, skipped } = await applyDedupeGroup(winner.dir, others, as);
+  return { status: 'ok', dryRun: false, name, plan, as, removed, linked, skipped };
+}
+
+// 执行一组唯一化：其余实文件删除 → 按要求原位重建为指向准份的链接。
+// 建链失败：至少回填一份副本，不让来源凭空丢 skill（与 submitOne 同款兜底）。
+async function applyDedupeGroup(winnerDir, others, as) {
   const removed = [];
   const linked = [];
   const skipped = [];
   for (const o of others) {
-    if (await sameRealPath(o.dir, winner.dir)) {
+    if (await sameRealPath(o.dir, winnerDir)) {
       skipped.push({ ...o, reason: '与准份同一实体' });
       continue;
     }
@@ -211,14 +219,58 @@ export async function dedupeSkill({ name, source, as = 'link', force, dryRun } =
       removed.push({ ...o });
       continue;
     }
-    const r = await createSkillLink(winner.dir, o.dir);
+    const r = await createSkillLink(winnerDir, o.dir);
     if (r.ok) {
       linked.push({ ...o, linkType: r.linkType });
     } else {
-      // 建链失败：至少恢复一份副本，不让来源凭空丢 skill（与 submitOne 同款兜底）
-      await fsp.cp(winner.dir, o.dir, { recursive: true, dereference: true, force: true });
+      await fsp.cp(winnerDir, o.dir, { recursive: true, dereference: true, force: true });
       removed.push({ ...o, degraded: true, reason: r.error });
     }
   }
-  return { status: 'ok', dryRun: false, name, plan, as, removed, linked, skipped };
+  return { removed, linked, skipped };
+}
+
+// 批量快捷唯一化：把 sourceAudit 发现的**全部**重复/冲突组一次收敛——
+// 每组以主源（current）那份实文件为准，其余转链接（as=delete 则删除）。
+// 链接不算来源（见 scan 的 realOnly），重复/冲突随之消失，而各来源目录里
+// 仍能看到这些 skill（访问性不受影响）。组里没有主源实文件时取第一份为准并标注。
+export async function dedupeAll({ as = 'link', force, dryRun } = {}) {
+  if (as !== 'link' && as !== 'delete') throw badInput('as 只能是 link | delete');
+  const audit = await sourceAudit();
+  const groups = audit.conflicts
+    .map((c) => {
+      const winner = c.entries.find((e) => e.current) || c.entries[0];
+      return {
+        name: c.name,
+        noPrimary: !c.entries.some((e) => e.current),
+        winner: { source: winner.source, dir: winner.dir, md5: winner.md5 },
+        others: c.entries.filter((e) => e !== winner).map((e) => ({ source: e.source, dir: e.dir, md5: e.md5 })),
+      };
+    })
+    .filter((g) => g.others.length > 0);
+  const totals = { groups: groups.length, linked: 0, removed: 0, skipped: 0, degraded: 0 };
+  if (!groups.length) {
+    return { status: 'ok', dryRun: !!dryRun, as, groups: [], totals, note: '没有跨源重复/冲突，无需处理' };
+  }
+  if (dryRun) return { status: 'ok', dryRun: true, as, groups, totals };
+  if (!force) {
+    return {
+      status: 'blocked',
+      dryRun: false,
+      as,
+      groups,
+      totals,
+      reason: `${totals.groups} 组重复/冲突的非准实文件将${as === 'delete' ? '被删除' : '被链接替换'}（可能含本地改动），不可逆，加 --force 确认`,
+    };
+  }
+  const results = [];
+  for (const g of groups) {
+    const r = await applyDedupeGroup(g.winner.dir, g.others, as);
+    totals.linked += r.linked.length;
+    totals.removed += r.removed.length;
+    totals.skipped += r.skipped.length;
+    totals.degraded += r.removed.filter((x) => x.degraded).length;
+    results.push({ name: g.name, noPrimary: g.noPrimary, winner: g.winner, ...r });
+  }
+  return { status: 'ok', dryRun: false, as, groups: results, totals };
 }
