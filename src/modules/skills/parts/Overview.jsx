@@ -5,12 +5,13 @@ import { useGuard, useDialog } from '../../../web/frontend/components/ui.jsx';
 import { CliHints } from '../../../web/frontend/components/CliHints.jsx';
 import { sourceLabel, lastSeg } from './shared.jsx';
 import { goOverview, goPlatform, goHub, goProject } from './routes.js';
-import { SkillSettingsDialog } from './dialogs.jsx';
+import { SkillSettingsDialog, HubCheckDialog } from './dialogs.jsx';
 
 export function Overview({ data, openCreate }) {
   const guard = useGuard();
   const { dialog, node: dialogNode } = useDialog();
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const [checkOpen, setCheckOpen] = useState(false);
   const sources = data?.sources || [];
   const srcPaths = sources.map((s) => s.path);
   const summary = data?.platformSummary || [];
@@ -32,6 +33,7 @@ export function Overview({ data, openCreate }) {
           </div>
         </div>
         <div className="acts">
+          <button className="btn ghost" onClick={() => setCheckOpen(true)}>检查订阅源…</button>
           <button className="btn ghost" onClick={() => setSettingsOpen(true)}>Skill 设置</button>
           {data?.hub?.path ? <button className="btn" onClick={openCreate}>＋ 新建</button> : null}
         </div>
@@ -108,6 +110,7 @@ export function Overview({ data, openCreate }) {
 
       <CliHints module="skills" />
       {settingsOpen ? <SkillSettingsDialog onClose={() => setSettingsOpen(false)} /> : null}
+      {checkOpen ? <HubCheckDialog onClose={() => setCheckOpen(false)} /> : null}
       {dialogNode}
     </>
   );

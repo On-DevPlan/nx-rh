@@ -1,8 +1,8 @@
-// Skill 页的弹窗：编辑器、「收进订阅源」选源、迁移选平台、Skill 域设置。
+// Skill 页的弹窗：编辑器、「收进订阅源」选源、迁移选平台、Skill 域设置、订阅源检查。
 import { useEffect, useState } from 'react';
 import { api } from '../../../web/frontend/api/client.js';
 import { useStore } from '../../../web/frontend/store.jsx';
-import { useToast, useGuard, useDialog, Modal } from '../../../web/frontend/components/ui.jsx';
+import { useToast, useGuard, useDialog, Modal, Copyable } from '../../../web/frontend/components/ui.jsx';
 import { sourceLabel } from '../shared.js';
 
 // skill 编辑器（新建 / 编辑，弹窗）
@@ -319,6 +319,161 @@ export function SkillSettingsDialog({ onClose }) {
 
       {dlgNode}
       <div className="dlg-acts"><button className="btn ghost" onClick={onClose}>关闭</button></div>
+    </Modal>
+  );
+}
+
+// 检查订阅源：跨源实文件重复与冲突（GET /api/skills/hub-check 的弹窗形态）。
+// 用途：sourceAudit 在线下的 CLI 渲染（skill hub check）；面板这里给一份可读报告。
+// 只读，不落盘——每段下面写清处理建议，照着改就行。
+const HUB_PROBLEM_LABEL = { missing: '不存在', empty: '空源', 'same-root': '重复根', nested: '嵌套订阅' };
+const HUB_PROBLEM_TONE  = { missing: 'bad',    empty: 'bad',  'same-root': 'bad',    nested: 'bad' };
+
+export function HubCheckDialog({ onClose }) {
+  const [d, setD] = useState(null);
+  const [err, setErr] = useState('');
+  const [busy, setBusy] = useState(false);
+  // tick 触发重查：避免 useCallback 闭包坑，effect 依赖 tick 即可
+  const [tick, setTick] = useState(0);
+
+  useEffect(() => {
+    let alive = true;
+    setBusy(true); setErr('');
+    api('/api/skills/hub-check')
+      .then((r) => { if (alive) setD(r); })
+      .catch((e) => { if (alive) setErr(String((e && e.message) || e)); })
+      .finally(() => { if (alive) setBusy(false); });
+    return () => { alive = false; };
+  }, [tick]);
+
+  const { refreshBoot } = useStore();
+  const toast = useToast();
+  const guard = useGuard();
+  const { dialog, node: dlgNode } = useDialog();
+
+  // 快速删除：取消订阅该来源（订阅配置改动，不动磁盘上的 skill 文件）
+  const removeSource = (path) => guard(async () => {
+    const ok = await dialog({
+      title: '取消订阅该来源',
+      message: `确认取消订阅？\n${path}\n（订阅配置改动，不动磁盘上的 skill 文件）`,
+      danger: true,
+      okText: '取消订阅',
+    });
+    if (!ok) return;
+    await api('/api/skills/sources', { method: 'DELETE', body: { path } });
+    toast('已取消订阅');
+    await refreshBoot();
+    setTick((t) => t + 1); // 重查本弹窗
+  });
+
+  const conflicts = (d?.conflicts || []).filter((c) => !c.same);
+  const duplicates = (d?.conflicts || []).filter((c) => c.same);
+  const hubProblems = d?.hubProblems || [];
+
+  // 冲突/重复里每个来源一行：md5 前缀 + 来源路径 + 主源标记 + 快速删除
+  const renderEntry = (e) => (
+    <div key={e.source} className="row" style={{ paddingLeft: 12 }}>
+      <span className="tag" style={{ flex: '0 0 72px', fontFamily: 'ui-monospace, Consolas, monospace' }}>{e.md5.slice(0, 8)}</span>
+      <Copyable className="desc mono" text={e.source} title="点击复制来源路径">{e.source}</Copyable>
+      {e.current ? <span className="tag strong">主源</span> : null}
+      <span className="acts">
+        <button className="btn small ghost" title="取消订阅该来源（订阅配置改动，不动磁盘）" onClick={() => removeSource(e.source)}>删除</button>
+      </span>
+    </div>
+  );
+
+  return (
+    <Modal title="检查订阅源" onClose={onClose}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
+        {d ? (
+          <span className={'tag' + (d.ok ? ' strong' : ' bad')}>
+            {d.ok
+              ? '全部健康'
+              : `有 ${hubProblems.length + conflicts.length} 处需处理${duplicates.length ? `（另有 ${duplicates.length} 个内容一致的重复订阅）` : ''}`}
+          </span>
+        ) : <span className="muted">{busy ? '检查中…' : '等待…'}</span>}
+        <span style={{ flex: 1 }} />
+        <button className="btn small ghost" onClick={() => setTick((t) => t + 1)} disabled={busy}>
+          {busy ? '检查中…' : '重新检查'}
+        </button>
+      </div>
+
+      {err ? <div className="dlg-msg">检查失败：{err}</div> : null}
+
+      {!d && !err ? <div className="muted">读取中…</div> : null}
+
+      {d ? (
+        <>
+          <div className="vlegend">
+            源 {d.summary.sources} 个 · 来源问题 {d.summary.hubProblems} · 跨源冲突 {d.summary.conflicts} · 内容一致的重复订阅 {d.summary.duplicates}
+            {d.current ? <> · 主源 <code>{d.current}</code></> : null}
+          </div>
+
+          {hubProblems.length ? (
+            <>
+              <div className="section-label">来源配置问题<span className="hint">这些是「订阅配置」该修的，不是 skill 该修的</span></div>
+              <div className="list" style={{ border: '1px solid var(--soft-2)', borderRadius: 6 }}>
+                {hubProblems.map((p) => (
+                  <div key={p.path + p.kind} className="row">
+                    <span className={'tag ' + (HUB_PROBLEM_TONE[p.kind] || '')} style={{ flex: '0 0 72px', textAlign: 'center' }}>
+                      {HUB_PROBLEM_LABEL[p.kind] || p.kind}
+                    </span>
+                    <Copyable className="desc mono" text={p.path} title="点击复制路径">{p.path}</Copyable>
+                    <span className="muted" style={{ fontSize: 12, flex: '0 1 220px', textAlign: 'right' }}>{p.reason}</span>
+                    <span className="acts">
+                      <button className="btn small ghost" title="取消订阅该来源（订阅配置改动，不动磁盘）" onClick={() => removeSource(p.path)}>删除</button>
+                    </span>
+                  </div>
+                ))}
+              </div>
+            </>
+          ) : null}
+
+          {conflicts.length ? (
+            <>
+              <div className="section-label">跨源冲突（内容不同）<span className="hint">同名出现在多个源、md5 不同。迁移会 blocked；保留一份实文件后用 <code>--source</code> 指定采用哪份</span></div>
+              <div className="list" style={{ border: '1px solid var(--soft-2)', borderRadius: 6 }}>
+                {conflicts.map((c) => (
+                  <div key={c.name} style={{ padding: '8px 10px', borderBottom: '1px solid var(--soft-2)' }}>
+                    <div className="row" style={{ marginBottom: 2 }}>
+                      <span className="name" style={{ fontWeight: 700 }}>{c.name}</span>
+                      <span className="tag bad">{c.entries.length} 个来源</span>
+                    </div>
+                    {c.entries.map(renderEntry)}
+                  </div>
+                ))}
+              </div>
+            </>
+          ) : null}
+
+          {duplicates.length ? (
+            <>
+              <div className="section-label">重复订阅（内容一致）<span className="hint">同名且 md5 相同。处理：保留一份，取消多余的订阅（<code>skill hub remove &lt;path&gt;</code>）</span></div>
+              <div className="list" style={{ border: '1px solid var(--soft-2)', borderRadius: 6 }}>
+                {duplicates.map((c) => (
+                  <div key={c.name} style={{ padding: '8px 10px', borderBottom: '1px solid var(--soft-2)' }}>
+                    <div className="row" style={{ marginBottom: 2 }}>
+                      <span className="name" style={{ fontWeight: 700 }}>{c.name}</span>
+                      <span className="tag">md5 {c.entries[0].md5.slice(0, 8)}</span>
+                      <span className="tag">{c.entries.length} 个来源</span>
+                    </div>
+                    {c.entries.map(renderEntry)}
+                  </div>
+                ))}
+              </div>
+            </>
+          ) : null}
+
+          {!hubProblems.length && !conflicts.length && !duplicates.length ? (
+            <div className="muted" style={{ padding: 8 }}>所有订阅源都健康，没有跨源冲突或重复订阅。</div>
+          ) : null}
+        </>
+      ) : null}
+
+      {dlgNode}
+      <div className="dlg-acts" style={{ marginTop: 12 }}>
+        <button className="btn ghost" onClick={onClose}>关闭</button>
+      </div>
     </Modal>
   );
 }
