@@ -153,6 +153,12 @@ main { padding: 14px 20px 28px; max-width: 1240px; margin: 0 auto; }
 .grow { flex: 1 1 220px; max-width: 340px; min-width: 160px; }
 .toolbar .search { flex: 1 1 240px; max-width: 460px; }
 
+/* 订阅源子页：全选勾选（作用于当前过滤结果） */
+.toolbar .chk-all {
+  display: inline-flex; align-items: center; gap: 6px;
+  white-space: nowrap; cursor: pointer; user-select: none;
+}
+
 /* 选中之后才出现的操作条 */
 .toolbar.bulk {
   background: var(--soft);

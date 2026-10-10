@@ -126,8 +126,10 @@ export function SubmitIntoDialog({ names, onClose, onDone }) {
 }
 
 // 迁移到某作用域：显式选平台（复选，缺省勾默认平台）+ 形态（跟随设置/软链接/实体复制）。
+// names 是数组：详情页单个 skill 传 [name]，订阅源子页批量传勾选的多个——同一弹窗同一套选择。
 // 刻意不提供「全部平台一键铺」——那是误伤面最大的操作；细粒度在安装矩阵逐行做。
-export function MigrateToDialog({ name, to, boot, onClose, onDone }) {
+export function MigrateToDialog({ names, to, boot, onClose, onDone }) {
+  const single = names.length === 1;
   const toast = useToast();
   const guard = useGuard();
   const settings = boot?.settings || {};
@@ -151,9 +153,15 @@ export function MigrateToDialog({ name, to, boot, onClose, onDone }) {
       const effMode = mode === 'auto' ? undefined : mode;
       const done = [];
       for (const pid of enabledIds.filter((id) => ids.has(id))) {
-        const r = await api('/api/skills/migrate', { method: 'POST', body: { name, to, platform: pid, ...(effMode ? { mode: effMode } : {}) } });
-        if (r.status === 'blocked') { toast(`${platName(pid)}：跨源冲突，先解决订阅`); continue; }
-        done.push(platName(pid));
+        const r = await api('/api/skills/migrate', { method: 'POST', body: { name: names, to, platform: pid, ...(effMode ? { mode: effMode } : {}) } });
+        if (single) {
+          if (r.status === 'blocked') { toast(`${platName(pid)}：跨源冲突，先解决订阅`); continue; }
+          done.push(platName(pid));
+        } else {
+          // 批量：blocked 只挡同名冲突的那几个，其余照迁——两边都报，不让冲突淹没成功数
+          if (r.blocked?.length) toast(`${platName(pid)}：${r.blocked.length} 个跨源冲突，先解决订阅`);
+          if (r.migrated || r.skipped) done.push(`${platName(pid)}（${r.migrated} 处${r.skipped ? `，跳过 ${r.skipped}` : ''}）`);
+        }
       }
       if (done.length) toast(`已迁移到${to === 'user' ? '用户' : '项目'}级：${done.join('、')}`);
       onDone();
@@ -164,8 +172,11 @@ export function MigrateToDialog({ name, to, boot, onClose, onDone }) {
 
   const how = mode === 'copy' ? '实体复制' : mode === 'symlink' ? '软链接' : `跟随设置（${settings.skillSyncMode === 'copy' ? '复制' : '软链接'}）`;
   return (
-    <Modal title={`迁移到${to === 'user' ? '用户' : '项目'}级 · ${name}`} onClose={onClose}>
+    <Modal title={`迁移到${to === 'user' ? '用户' : '项目'}级 · ${single ? names[0] : `${names.length} 个 skill`}`} onClose={onClose}>
       <div className="vlegend">勾选目标平台（可多选）；形态: {how}。</div>
+      {!single ? (
+        <div className="muted" style={{ fontSize: 12, maxHeight: 84, overflow: 'auto', marginBottom: 8 }} title={names.join('、')}>{names.join('、')}</div>
+      ) : null}
       <div className="list">
         {enabledIds.map((id) => (
           <label key={id} className="row src-row">

@@ -292,7 +292,7 @@ export function SkillDetail({ name, tick }) {
       ) : null}
       {migrateTo ? (
         <MigrateToDialog
-          name={name}
+          names={[name]}
           to={migrateTo}
           boot={boot}
           onClose={() => setMigrateTo(null)}
