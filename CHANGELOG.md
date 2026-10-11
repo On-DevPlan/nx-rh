@@ -2,7 +2,7 @@
 
 本文件记录对外可见的变更。格式参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)。
 
-## [Unreleased]
+## [0.15.5] - 2026-10-11 新增 rh-gitsync skill：批量检查并安全同步 git 仓库（零依赖 Python 脚本）
 
 ### Added
 
