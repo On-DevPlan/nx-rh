@@ -243,8 +243,8 @@ try {
   check(
     'skill list 是内置可装清单（B04 形状：skills 名字数组 + defaultGroup + groups）',
     Array.isArray(bundleList.skills) && bundleList.skills.includes('nx-rh')
-      && bundleList.defaultGroup === 'nx-rh' && Array.isArray(bundleList.groups)
-      && bundleList.groups.includes('rh-collect'),
+      && bundleList.skills.includes('rh-gitsync') && bundleList.defaultGroup === 'nx-rh'
+      && Array.isArray(bundleList.groups) && bundleList.groups.includes('rh-collect'),
     JSON.stringify(bundleList).slice(0, 220)
   );
   check('skill install --list 仍是别名（形状随主命令）',
@@ -254,7 +254,8 @@ try {
     'skill groups 给出 group → skills 映射',
     Array.isArray(bundleGroups.groups)
       && (bundleGroups.groupSkills['nx-rh'] || []).includes('nx-rh')
-      && (bundleGroups.groupSkills['rh-collect'] || []).includes('rh-collect'),
+      && (bundleGroups.groupSkills['rh-collect'] || []).includes('rh-collect')
+      && (bundleGroups.groupSkills['rh-gitsync'] || []).includes('rh-gitsync'),
     JSON.stringify(bundleGroups).slice(0, 220)
   );
 
@@ -263,6 +264,11 @@ try {
   const installedMd = readFileSync(join(skillsHome, 'nx-rh', 'SKILL.md'), 'utf8');
   check('SKILL.md 落地且含 ref-map', installedMd.includes('场景路由（ref-map）') && installedMd.includes('[[repo-registry]]'));
   check('references 一并复制', existsSync(join(skillsHome, 'nx-rh', 'references', 'skill-hub.md')));
+
+  const gitSyncInst = cliJson(['skill', 'install', 'rh-gitsync', '--to', skillsHome]);
+  check('rh-gitsync 安装且 Python 执行件随包落地',
+    gitSyncInst.status === 'ok' && existsSync(join(skillsHome, 'rh-gitsync', 'scripts', 'gitsync.py')),
+    JSON.stringify(gitSyncInst).slice(0, 220));
 
   const again = cliJson(['skill', 'install', '--to', skillsHome]);
   check('重复安装幂等跳过', again.status === 'ok' && again.skipped === true);

@@ -20,3 +20,7 @@ src/web/public/
 # Tool artifacts / scratch tools (本地工具产物，不入库)
 .tool/
 .claude/settings.local.json
+
+# Python 字节码（assets/rh-gitsync/scripts/ 的本地调试残留，不能进发布包）
+__pycache__/
+*.pyc

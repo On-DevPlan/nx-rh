@@ -382,11 +382,15 @@ nx-rh skill get nx-rh skill-hub     # 裸名 ref → references/skill-hub.md
 - 旧名 `repo-hub` 仍可作为 `--name` 别名使用
 - Web 面板「Skill」页底部「内置手册」区块：导出上下文 / 安装到本机
 
-包内另有两个面向特定任务的配套 skill（同样可 `skill install <名>`）：
+包内另有三个面向特定任务的配套 skill（同样可 `skill install <名>`）：
 
 - **rh-collect**：把发现的 git 仓库先问过用户再登记进仓库清单。
 - **rh-worktree**：自动适配主仓库/工作树——主仓库里按需求登记扩展文件并创建工作树（不复制），
   工作树里显示主项目地址、本树信息与被 ignore 的关注项（如 `.tool` 本地工具目录）的主项目全路径，只读参考。
+- **rh-gitsync**：批量检查登记仓库与远端的同步状态——工作区干净且差异单向（只领先 / 只落后）
+  时自动 push / pull --ff-only；脏工作区、双向分叉不动手，由 agent 进入目录检查、问过用户再操作。
+  自带零依赖 Python 脚本（`assets/rh-gitsync/scripts/gitsync.py`，标准库即可运行）。
+  **nx-rh 本体仍不做 git 操作**——git 的事交给 git 自己，这里只是把「标准同步流程」交给 agent。
 
 ## Skill 订阅与迁移
 

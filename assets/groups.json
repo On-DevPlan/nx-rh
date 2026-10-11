@@ -13,6 +13,10 @@
     "rh-worktree": {
       "skills": ["rh-worktree"],
       "summary": "自动适配主仓库/工作树，规范创建工作树并只读提醒被 ignore 的关注项（nx-rh 不代复制）"
+    },
+    "rh-gitsync": {
+      "skills": ["rh-gitsync"],
+      "summary": "批量检查登记仓库与远端同步状态；干净且单向的差异自动推拉，脏工作区/双向分叉留给 agent 问过用户再动"
     }
   }
 }

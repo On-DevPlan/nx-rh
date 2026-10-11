@@ -2,6 +2,18 @@
 
 本文件记录对外可见的变更。格式参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)。
 
+## [Unreleased]
+
+### Added
+
+- **新配套 skill `rh-gitsync`**：批量检查登记仓库与远端的同步状态并安全同步。
+  工作区干净且差异单向（只领先 → `git push`、只落后 → `git pull --ff-only`）的仓库自动推拉；
+  脏工作区、双向分叉、无上游、detached、fetch 失败一律不动手（`needs-human`），由 agent
+  进入目录检查、问过用户再操作。执行件是零依赖 Python 脚本
+  （`assets/rh-gitsync/scripts/gitsync.py`，纯标准库 + git，`skill install rh-gitsync`
+  随手册一起装到目标机器）；`--json` 输出逐仓库状态与顶层汇总，退出码区分「全就绪 /
+  有需人工 / 环境错误」。`nx-rh` 本体仍不做任何 git 操作（「为什么不管 git」边界不变）。
+
 ## [0.15.4] - 2026-10-11 新增千问办公 / Trae CN / Qoder 平台适配器
 
 ### Added

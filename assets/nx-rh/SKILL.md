@@ -64,6 +64,11 @@ agent_created: true
 > 自动适配主仓库/工作树，规范创建工作树并显示主项目变更；工作树内可查看主项目被 ignore 的
 > 关注项（如 `.tool` 本地工具目录）的主项目全路径、只读参考——**nx-rh 不复制文件**，
 > 需要内容时 agent 自行复制。
+>
+> 还有配套 skill **`rh-gitsync`**（`skill install rh-gitsync` 或 `skill install --group=rh-gitsync`）：
+> 批量检查仓库与远端的同步状态并安全同步——工作区干净且差异单向（只领先/只落后）时自动
+> push / pull --ff-only；脏工作区、双向分叉不动手，agent 进入目录检查、问过用户再操作。
+> 自带零依赖 Python 脚本；nx-rh 本体仍不做 git 操作。
 
 ## 场景路由（ref-map）
 
