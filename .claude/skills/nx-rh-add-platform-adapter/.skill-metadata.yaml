@@ -1,0 +1,71 @@
+examples:
+  - id: add-platform-adapter
+    title:
+      zh: 给 nx-rh 新增一个平台适配器
+      en: Add a New Platform Adapter to nx-rh
+    description:
+      zh: 提供平台名称与真实 skills 目录，走完 4 文件改动面与验证链
+      en: Provide the platform name and real skill directories; the skill covers the 4-file change surface and verification chain
+    prompt:
+      zh: |-
+        给 nx-rh 新增 <平台名> 平台适配器：
+
+        平台配置目录：<如 C:\Users\xxx\.trae-cn>
+        用户级 skills 路径：<如 ~/.trae-cn/skills>
+        项目级 skills 路径（没有或不确定就说明）：<可选>
+
+        请按 nx-rh 加平台的完整流程：先考证落点，再改 4 个文件（adapters.js / README / skill-hub.md / skills-adapters 单测），最后跑完验证链（eslint / build 零 diff / unit / smoke / CLI 核对）。
+      en: |-
+        Add a new platform adapter to nx-rh for: <platform name>
+
+        Platform config dir: <e.g. C:\Users\xxx\.trae-cn>
+        User-level skills path: <e.g. ~/.trae-cn/skills>
+        Project-level skills path (say "none"/"unknown" if unsure): <optional>
+
+        Follow the full nx-rh platform-adapter workflow: verify the real skill directories first, then change the 4 files (adapters.js / README / skill-hub.md / skills-adapters unit test), then run the verification chain (eslint / build zero-diff / unit / smoke / CLI check).
+  - id: verify-adapter-landing
+    title:
+      zh: 核对平台落点并收尾验证
+      en: Verify Adapter Landing Points and Finish Checks
+    description:
+      zh: 给定平台 id，核对 CLI 绝对落点、跑 lint/build/unit/smoke 并确认 build 零 diff
+      en: For a platform id, check CLI absolute paths, run lint/build/unit/smoke, and confirm zero build diff
+    prompt:
+      zh: |-
+        帮我核对 nx-rh 中 <平台 id> 适配器的落点与状态：
+
+        - 跑 node bin/cli.mjs skill hub adapters，核对该平台的项目级 / 用户级绝对路径与 [启用] / [默认] 标记
+        - 跑 eslint、目标单测、pnpm run build（核对零产物 diff）、smoke、全量 unit，报告结果
+
+        另外核对工作区改动面是否正好是那 4 个文件。
+      en: |-
+        Verify the <platform id> adapter in nx-rh:
+
+        - Run `node bin/cli.mjs skill hub adapters` and check the absolute project/user paths and [enabled]/[default] markers
+        - Run eslint, the target unit test, `pnpm run build` (check for zero artifact diff), smoke, and the full unit suite; report results
+
+        Also confirm the working-tree change surface is exactly the 4 files.
+  - id: sync-platform-tables
+    title:
+      zh: 同步三处平台表
+      en: Synchronize the Three Platform Tables
+    description:
+      zh: adapters.js 条目变更后，同步 README、内置手册平台表与单测，避免文档说谎
+      en: After changing an adapters.js entry, keep README, the built-in manual table, and unit tests in sync
+    prompt:
+      zh: |-
+        我在 nx-rh 改了 adapters.js 里的平台条目（<说明改动，如新增平台 / 改别名 / 改落点>），请把其余三处同步并核对一致：
+
+        - README.md「### 适配器」表
+        - assets/nx-rh/references/skill-hub.md「## 平台与安装位置」表
+        - tests/unit/skills-adapters.test.mjs 单测
+
+        最后用 grep 三方对照 id / 别名 / 两级路径，确认没有只改一处的漏网。
+      en: |-
+        I changed a platform entry in nx-rh's adapters.js (<describe: new platform / alias change / path change>). Sync the other three places and verify they agree:
+
+        - README.md "### 适配器" table
+        - assets/nx-rh/references/skill-hub.md "## 平台与安装位置" table
+        - tests/unit/skills-adapters.test.mjs unit tests
+
+        Then grep across the three files to confirm id / aliases / paths match everywhere.
