@@ -2,6 +2,17 @@
 
 本文件记录对外可见的变更。格式参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)。
 
+## [0.15.4] - 2026-10-11 新增千问办公 / Trae CN / Qoder 平台适配器
+
+### Added
+
+- **Qianwen（千问办公）**：用户级 `~/.qwenworkcn/skills`（官方唯一写明的落点）；官方无项目级
+  约定，表里项目级那格是占位，要生效用 `--to global`。别名 `qwenwork` / `qwen` / `qw`。
+- **Trae CN（国内版）**：项目级 `.trae/skills`（两版共用）、用户级 `~/.trae-cn/skills`——两级
+  目录名不同；裸 `trae` 落到国内版，国际版要聚焦再补一行 `id=trae`。
+- **Qoder**：项目级 / 用户级同为 `.qoder/skills`（官方两级都写明，项目级优先；用户级本机实测）；
+  中国版（qoder.cn）落点未实测也无佐证，要聚焦再补一行 `id=qoder-cn`。
+
 ## [0.15.3] - 2026-10-10 订阅源检查弹窗：跨源重复/冲突唯一化（勋章 + 软链接）
 
 ### Added
