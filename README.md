@@ -437,6 +437,9 @@ nx-rh skill get nx-rh skill-hub     # 裸名 ref → references/skill-hub.md
 | Claude Code | `.claude/skills` | `~/.claude/skills` | |
 | WorkBuddy | `.workbuddy/skills` | `~/.workbuddy/skills` | |
 | Doubao（豆包） | `.doubao/skills` | `~/Doubao/skills` | |
+| Qianwen（千问办公） | `.qwenworkcn/skills` | `~/.qwenworkcn/skills` | |
+| Trae CN（国内版） | `.trae/skills` | `~/.trae-cn/skills` | |
+| Qoder | `.qoder/skills` | `~/.qoder/skills` | |
 | Universal (.agents) | `.agents/skills` | `~/.agents/skills` | 是 |
 | CodeBuddy | `.codebuddy/skills` | `~/.codebuddy/skills` | |
 | Cursor | `.cursor/skills` | `~/.cursor/skills` | |
@@ -447,6 +450,9 @@ nx-rh skill get nx-rh skill-hub     # 裸名 ref → references/skill-hub.md
 | iFlow CLI | `.iflow/skills` | `~/.iflow/skills` | |
 
 默认聚焦 claude-code 与 workbuddy；安装位置规则：`--platform` 指定 > 设置里的平台范围（首个为默认平台）。
+
+千问办公官方只写明用户级 `~/.qwenworkcn/skills`（每个 skill 一个含 `SKILL.md` 的子目录），**没有项目级约定**：
+表里那一格是按 `.<id>/skills` 惯例给的占位，迁到项目级千问读不到，要生效请用 `--to global`。
 
 ## 设计约定
 

@@ -229,6 +229,9 @@ nx-rh skill platform [claude-code workbuddy ...]               # 启用哪些平
 | claude-code | claude · cc | `.claude/skills` | `~/.claude/skills` |
 | workbuddy | wb | `.workbuddy/skills` | `~/.workbuddy/skills` |
 | doubao | doubao | `.doubao/skills` | `~/Doubao/skills` |
+| qianwen | qwenwork · qwen · qw | `.qwenworkcn/skills` | `~/.qwenworkcn/skills` |
+| trae-cn | trae | `.trae/skills` | `~/.trae-cn/skills` |
+| qoder | — | `.qoder/skills` | `~/.qoder/skills` |
 | agents | universal | `.agents/skills` | `~/.agents/skills` |
 | codebuddy | cb | `.codebuddy/skills` | `~/.codebuddy/skills` |
 | cursor | — | `.cursor/skills` | `~/.cursor/skills` |
@@ -237,6 +240,16 @@ nx-rh skill platform [claude-code workbuddy ...]               # 启用哪些平
 | copilot | — | `.copilot/skills` | `~/.copilot/skills` |
 | windsurf | — | `.windsurf/skills` | `~/.codeium/windsurf/skills` |
 | iflow-cli | iflow | `.iflow/skills` | `~/.iflow/skills` |
+
+千问办公（qianwen）官方只写明用户级 `~/.qwenworkcn/skills`，**无项目级约定**——项目级那一格只是占位，
+迁到那里千问读不到，要生效用 `--to global`。
+
+Trae 国内版用户级是 `~/.trae-cn/skills`，项目级两版共用 `.trae/skills`；国际版用户级应为 `~/.trae/skills`，
+未装未实测，要聚焦国际版就在 `ADAPTERS` 里补一行 `id: 'trae'`。
+
+Qoder（国际版 qoder.com，另有中国版 qoder.cn）两级目录同名：项目级 `<项目>/.qoder/skills`、用户级
+`~/.qoder/skills`，官方两级都写明、用户级本机实测；中国版落点未实测也无佐证，要聚焦中国版就在
+`ADAPTERS` 里补一行 `id: 'qoder-cn'`。
 
 ## 判定与正反例
 

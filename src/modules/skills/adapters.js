@@ -15,6 +15,18 @@ export const ADAPTERS = [
   // 豆包：用户级落点是「非隐藏 + 首字母大写」的 ~/Doubao/skills（与 ~/Doubao/chats 同级），
   // 不同于其它平台的 ~/.<id>/skills 隐藏目录约定；项目级仍走隐藏目录 .doubao/skills。
   { id: 'doubao', name: 'Doubao（豆包）', dir: '.doubao/skills', globalDir: 'Doubao/skills' },
+  // 千问办公（QwenWork）：官方文档只写明用户级 ~/.qwenworkcn/skills（每个 skill 一个含
+  // SKILL.md 的子目录），**没有项目级约定**——这里的 dir 是按 .<id>/skills 惯例给的占位，
+  // 迁到项目级千问读不到，要真正生效请走用户级（--to global）。
+  { id: 'qianwen', name: 'Qianwen（千问办公）', dir: '.qwenworkcn/skills', globalDir: '.qwenworkcn/skills' },
+  // Trae 国内版：用户级 ~/.trae-cn/skills（本机实测），但项目级两版共用 .trae/skills
+  // （project-graph 仓库里就有三个带 SKILL.md 的实体）。国际版按同族约定是 ~/.trae/skills，
+  // 本机未装未实测——真要聚焦国际版再加一行 id=trae 的适配器即可。
+  { id: 'trae-cn', name: 'Trae CN（国内版）', dir: '.trae/skills', globalDir: '.trae-cn/skills' },
+  // Qoder（阿里，分国际版 qoder.com 与中国版 qoder.cn）：两级目录同名 .qoder/skills，官方文档
+  // 两级都写明（项目级优先级最高）；用户级本机实测（~/.qoder/skills，24 个带 SKILL.md 的实体）。
+  // 中国版落点未实测也无文档佐证——真要聚焦中国版再加一行 id=qoder-cn 的适配器即可。
+  { id: 'qoder', name: 'Qoder', dir: '.qoder/skills', globalDir: '.qoder/skills' },
   // 其余平台保留，可按需在“平台范围”里启用
   { id: 'agents', name: 'Universal (.agents)', dir: '.agents/skills', globalDir: '.agents/skills', universal: true },
   { id: 'codebuddy', name: 'CodeBuddy', dir: '.codebuddy/skills', globalDir: '.codebuddy/skills' },
@@ -42,6 +54,13 @@ const PLATFORM_ALIASES = {
   workbuddy: 'workbuddy',
   wb: 'workbuddy',
   doubao: 'doubao',
+  qianwen: 'qianwen',
+  qwenwork: 'qianwen', // 产品英文名 QwenWork
+  qwen: 'qianwen',
+  qw: 'qianwen',
+  'trae-cn': 'trae-cn',
+  trae: 'trae-cn', // 本机只装国内版，裸 trae 就落到它；若哪天加了 id=trae 需重新斟酌这条
+  qoder: 'qoder',
   codebuddy: 'codebuddy',
   cb: 'codebuddy',
   cursor: 'cursor',
