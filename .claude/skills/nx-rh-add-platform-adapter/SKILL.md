@@ -1,3 +1,4 @@
+
 ---
 name: nx-rh-add-platform-adapter
 name_en: nx-rh Add Platform Adapter
@@ -10,19 +11,18 @@ argument-hint-en: Describe the platform to add (name, config dir, user/project s
 argument-hint-zh: 说明要新增的平台（名称、配置目录、用户级/项目级 skills 路径）
 user-invocable: true
 ---
-
 # nx-rh — 新增 Agent 平台适配器
 
 给 nx-rh（Skill Hub）新增 / 调整一个 Agent 平台适配器（Trae、Qianwen、Doubao 这类工具的 skill 读取目录）。仓库根：`D:\code\a_js\proj\nx-rh`。触发语：「给 nx-rh 加个平台」「加 qianwen / trae-cn 平台」「改平台别名 / 落点」「adapters.js 加一行」。
 
 ## 改动面总览（固定 4 文件）
 
-| # | 文件 | 角色 | 改什么 |
-|---|------|------|--------|
-| 1 | `src/modules/skills/adapters.js` | **唯一真相源**（Web 下拉、CLI `--platform` 校验、目标目录解析都由它派生） | `ADAPTERS` 加条目 + `PLATFORM_ALIASES` 加别名 |
-| 2 | `README.md`「### 适配器」节 | 文档副本 | 表加一行 + 特殊口径说明 |
-| 3 | `assets/nx-rh/references/skill-hub.md`「## 平台与安装位置」节 | 文档副本（内置手册） | 表加一行 + 特殊口径说明 |
-| 4 | `tests/unit/skills-adapters.test.mjs` | 回归测试 | 头注释 + 新平台用例 |
+| # | 文件                                                            | 角色                                                                              | 改什么                                            |
+| - | --------------------------------------------------------------- | --------------------------------------------------------------------------------- | ------------------------------------------------- |
+| 1 | `src/modules/skills/adapters.js`                              | **唯一真相源**（Web 下拉、CLI `--platform` 校验、目标目录解析都由它派生） | `ADAPTERS` 加条目 + `PLATFORM_ALIASES` 加别名 |
+| 2 | `README.md`「### 适配器」节                                   | 文档副本                                                                          | 表加一行 + 特殊口径说明                           |
+| 3 | `assets/nx-rh/references/skill-hub.md`「## 平台与安装位置」节 | 文档副本（内置手册）                                                              | 表加一行 + 特殊口径说明                           |
+| 4 | `tests/unit/skills-adapters.test.mjs`                         | 回归测试                                                                          | 头注释 + 新平台用例                               |
 
 > 三处平台表副本必须同步，漏一处 = 文档说谎。收尾用 `git status --porcelain` 核对**只**有这 4 个文件。
 
