@@ -232,6 +232,7 @@ nx-rh skill platform [claude-code workbuddy ...]               # 启用哪些平
 | qianwen | qwenwork · qwen · qw | `.qwenworkcn/skills` | `~/.qwenworkcn/skills` |
 | trae-cn | trae | `.trae/skills` | `~/.trae-cn/skills` |
 | qoder | — | `.qoder/skills` | `~/.qoder/skills` |
+| qoder-cn | qodercn | `.qoder-cn/skills` | `~/.qoder-cn/skills` |
 | agents | universal | `.agents/skills` | `~/.agents/skills` |
 | codebuddy | cb | `.codebuddy/skills` | `~/.codebuddy/skills` |
 | cursor | — | `.cursor/skills` | `~/.cursor/skills` |
@@ -247,9 +248,10 @@ nx-rh skill platform [claude-code workbuddy ...]               # 启用哪些平
 Trae 国内版用户级是 `~/.trae-cn/skills`，项目级两版共用 `.trae/skills`；国际版用户级应为 `~/.trae/skills`，
 未装未实测，要聚焦国际版就在 `ADAPTERS` 里补一行 `id: 'trae'`。
 
-Qoder（国际版 qoder.com，另有中国版 qoder.cn）两级目录同名：项目级 `<项目>/.qoder/skills`、用户级
-`~/.qoder/skills`，官方两级都写明、用户级本机实测；中国版落点未实测也无佐证，要聚焦中国版就在
-`ADAPTERS` 里补一行 `id: 'qoder-cn'`。
+Qoder 分国际版（qoder.com）与中国版（qoder.com.cn）：国际版两级目录同名 `.qoder/skills`，官方两级都写明、
+用户级本机实测。中国版整套用户配置独立在 `~/.qoder-cn/`，用户级 `~/.qoder-cn/skills` 本机实测；项目级
+无文档也无实体佐证，表里那格按 `.<id>/skills` 惯例占位，迁过去读不到就 `--to global`。别名 `qodercn`，
+裸 `qoder` 维持归国际版。
 
 ## 判定与正反例
 

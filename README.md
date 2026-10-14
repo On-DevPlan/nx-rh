@@ -444,6 +444,7 @@ nx-rh skill get nx-rh skill-hub     # 裸名 ref → references/skill-hub.md
 | Qianwen（千问办公） | `.qwenworkcn/skills` | `~/.qwenworkcn/skills` | |
 | Trae CN（国内版） | `.trae/skills` | `~/.trae-cn/skills` | |
 | Qoder | `.qoder/skills` | `~/.qoder/skills` | |
+| Qoder CN（中国版） | `.qoder-cn/skills` | `~/.qoder-cn/skills` | |
 | Universal (.agents) | `.agents/skills` | `~/.agents/skills` | 是 |
 | CodeBuddy | `.codebuddy/skills` | `~/.codebuddy/skills` | |
 | Cursor | `.cursor/skills` | `~/.cursor/skills` | |
@@ -457,6 +458,10 @@ nx-rh skill get nx-rh skill-hub     # 裸名 ref → references/skill-hub.md
 
 千问办公官方只写明用户级 `~/.qwenworkcn/skills`（每个 skill 一个含 `SKILL.md` 的子目录），**没有项目级约定**：
 表里那一格是按 `.<id>/skills` 惯例给的占位，迁到项目级千问读不到，要生效请用 `--to global`。
+
+Qoder 分国际版（qoder.com）与中国版（qoder.com.cn）：国际版两级同名 `.qoder/skills`，官方两级都写明；
+中国版整套用户配置独立在 `~/.qoder-cn/`，用户级 `~/.qoder-cn/skills` 本机实测，项目级那格是占位
+（无文档无实体佐证），读不到就 `--to global`。裸 `qoder` 维持归国际版，中国版用 `qoder-cn` / `qodercn`。
 
 ## 设计约定
 

@@ -3,7 +3,9 @@
 // 与其它平台 ~/.<id>/skills 的隐藏目录约定不同——单测把这条平台差异锁死。
 // 千问办公的特殊点：官方只有用户级 ~/.qwenworkcn/skills，项目级那格是占位（产品不读）。
 // Trae 国内版的特殊点：两级目录名不同——项目级 .trae/skills（两版共用）、用户级 ~/.trae-cn/skills。
-// Qoder 的特殊点：两级目录同名 .qoder/skills（官方两级都写明，用户级本机实测）；中国版落点未实测。
+// Qoder 的特殊点：两级目录同名 .qoder/skills（官方两级都写明，用户级本机实测）。
+// Qoder 中国版（qoder-cn）的特殊点：用户级 ~/.qoder-cn/skills 本机实测；项目级无佐证是占位格。
+//   裸 qoder 维持归国际版——本机两版都装，不同于 trae 只装国内版才把裸名让给 -cn。
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { mkdtempSync } from 'node:fs';
@@ -91,6 +93,24 @@ test('Qoder 别名归一到 qoder', () => {
   for (const al of ['qoder', 'Qoder', 'QODER']) {
     assert.equal(normalizePlatformId(al), 'qoder', `${al} 应归一为 qoder`);
   }
+});
+
+test('Qoder 中国版用户级 ~/.qoder-cn/skills 实测，项目级是占位格', () => {
+  const a = adapterById('qoder-cn');
+  assert.ok(a, 'qoder-cn 适配器应存在');
+  assert.equal(a.id, 'qoder-cn');
+  assert.equal(a.dir, '.qoder-cn/skills');
+  assert.equal(a.globalDir, '.qoder-cn/skills');
+  const proj = join(tmp, 'proj4');
+  assert.equal(targetDirFor('qoder-cn', 'user', tmp), join(home, '.qoder-cn', 'skills'));
+  assert.equal(targetDirFor('qoder-cn', 'project', proj), join(proj, '.qoder-cn', 'skills'));
+});
+
+test('Qoder 中国版别名：qoder-cn / qodercn 归中国版，裸 qoder 维持归国际版', () => {
+  for (const al of ['qoder-cn', 'qodercn', 'Qoder-CN', 'QODERCN']) {
+    assert.equal(normalizePlatformId(al), 'qoder-cn', `${al} 应归一为 qoder-cn`);
+  }
+  assert.equal(normalizePlatformId('qoder'), 'qoder');
 });
 
 test('未知平台归一为空、all 透传', () => {

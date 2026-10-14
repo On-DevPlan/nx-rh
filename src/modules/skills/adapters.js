@@ -23,10 +23,13 @@ export const ADAPTERS = [
   // （project-graph 仓库里就有三个带 SKILL.md 的实体）。国际版按同族约定是 ~/.trae/skills，
   // 本机未装未实测——真要聚焦国际版再加一行 id=trae 的适配器即可。
   { id: 'trae-cn', name: 'Trae CN（国内版）', dir: '.trae/skills', globalDir: '.trae-cn/skills' },
-  // Qoder（阿里，分国际版 qoder.com 与中国版 qoder.cn）：两级目录同名 .qoder/skills，官方文档
-  // 两级都写明（项目级优先级最高）；用户级本机实测（~/.qoder/skills，24 个带 SKILL.md 的实体）。
-  // 中国版落点未实测也无文档佐证——真要聚焦中国版再加一行 id=qoder-cn 的适配器即可。
+  // Qoder 国际版（qoder.com）：两级目录同名 .qoder/skills，官方文档两级都写明（项目级优先级
+  // 最高）；用户级本机实测（~/.qoder/skills，24 个带 SKILL.md 的实体）。中国版独立适配器见下一行。
   { id: 'qoder', name: 'Qoder', dir: '.qoder/skills', globalDir: '.qoder/skills' },
+  // Qoder 中国版（qoder.com.cn）：整套用户配置独立在 ~/.qoder-cn/（settings/auth 里指向
+  // qoder.com.cn，本机实测），用户级 ~/.qoder-cn/skills 本机实测（内含 symlink 实体）；项目级
+  // 无文档也无实体佐证，dir 按 .<id>/skills 惯例占位——迁到项目级若读不到，要生效请走 --to global。
+  { id: 'qoder-cn', name: 'Qoder CN（中国版）', dir: '.qoder-cn/skills', globalDir: '.qoder-cn/skills' },
   // 其余平台保留，可按需在“平台范围”里启用
   { id: 'agents', name: 'Universal (.agents)', dir: '.agents/skills', globalDir: '.agents/skills', universal: true },
   { id: 'codebuddy', name: 'CodeBuddy', dir: '.codebuddy/skills', globalDir: '.codebuddy/skills' },
@@ -60,7 +63,9 @@ const PLATFORM_ALIASES = {
   qw: 'qianwen',
   'trae-cn': 'trae-cn',
   trae: 'trae-cn', // 本机只装国内版，裸 trae 就落到它；若哪天加了 id=trae 需重新斟酌这条
-  qoder: 'qoder',
+  qoder: 'qoder', // 本机两版都装，裸 qoder 维持归国际版（不同于 trae：只装国内版才把裸名让给 -cn）
+  'qoder-cn': 'qoder-cn',
+  qodercn: 'qoder-cn', // 无连字符变体
   codebuddy: 'codebuddy',
   cb: 'codebuddy',
   cursor: 'cursor',
