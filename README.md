@@ -441,10 +441,11 @@ nx-rh skill get nx-rh skill-hub     # 裸名 ref → references/skill-hub.md
 | Claude Code | `.claude/skills` | `~/.claude/skills` | |
 | WorkBuddy | `.workbuddy/skills` | `~/.workbuddy/skills` | |
 | Doubao（豆包） | `.doubao/skills` | `~/Doubao/skills` | |
+| DoubaoWork（豆包办公） | `.doubaowork/skills` | `~/DoubaoWork/skills` | |
 | Qianwen（千问办公） | `.qwenworkcn/skills` | `~/.qwenworkcn/skills` | |
 | Trae CN（国内版） | `.trae/skills` | `~/.trae-cn/skills` | |
 | Qoder | `.qoder/skills` | `~/.qoder/skills` | |
-| Qoder CN（中国版） | `.qoder-cn/skills` | `~/.qoder-cn/skills` | |
+| QoderCN（中国版） | `.qoder-cn/skills` | `~/.qoder-cn/skills` | |
 | Universal (.agents) | `.agents/skills` | `~/.agents/skills` | 是 |
 | CodeBuddy | `.codebuddy/skills` | `~/.codebuddy/skills` | |
 | Cursor | `.cursor/skills` | `~/.cursor/skills` | |
@@ -461,7 +462,13 @@ nx-rh skill get nx-rh skill-hub     # 裸名 ref → references/skill-hub.md
 
 Qoder 分国际版（qoder.com）与中国版（qoder.com.cn）：国际版两级同名 `.qoder/skills`，官方两级都写明；
 中国版整套用户配置独立在 `~/.qoder-cn/`，用户级 `~/.qoder-cn/skills` 本机实测，项目级那格是占位
-（无文档无实体佐证），读不到就 `--to global`。裸 `qoder` 维持归国际版，中国版用 `qoder-cn` / `qodercn`。
+（无文档无实体佐证），读不到就 `--to global`。裸 `qoder` 维持归国际版，中国版用 `qoder-cn` / `qodercn`。显示名连写 `QoderCN`（不带空格）——Web 平台勋章取显示名首词，带空格会和国际版坍缩成同一个 `qoder` 勋章。
+
+DoubaoWork（豆包办公，桌面端）与「豆包」是同族不同产品：用户级落点是「非隐藏 + 产品名」的
+`~/DoubaoWork/skills`（与 `~/Doubao/skills` 同款，应用启动时自动创建，本机实测存在）；内置技能在
+`AppData/.../workspace/.skills`（应用自带，别往那放用户内容），`workspace/.user_skills` 也会被扫，
+但标准用户安装位置是 `~/DoubaoWork/skills`。项目级无文档也无实体佐证，表里那一格是占位，
+读不到就 `--to global`。别名 `doubaowork` / `dbw`，裸 `doubao` 仍归「豆包」。
 
 ## 设计约定
 

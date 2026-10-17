@@ -15,6 +15,12 @@ export const ADAPTERS = [
   // 豆包：用户级落点是「非隐藏 + 首字母大写」的 ~/Doubao/skills（与 ~/Doubao/chats 同级），
   // 不同于其它平台的 ~/.<id>/skills 隐藏目录约定；项目级仍走隐藏目录 .doubao/skills。
   { id: 'doubao', name: 'Doubao（豆包）', dir: '.doubao/skills', globalDir: 'Doubao/skills' },
+  // 豆包办公（DoubaoWork，桌面端，与上面的「豆包」是同族不同产品）：用户级落点是「非隐藏 +
+  // 产品名」的 ~/DoubaoWork/skills（与 ~/Doubao/skills 同款，应用启动时自动创建，本机实测存在）。
+  // 内置技能在 AppData/.../workspace/.skills（应用自带，别往那放用户内容）；workspace/.user_skills
+  // 也会被扫，但面向用户的标准安装位置是 ~/DoubaoWork/skills。项目级无文档也无实体佐证（D:\code 下
+  // 找不到 .doubaowork），dir 按 .<id>/skills 惯例占位——迁到项目级若读不到，要生效请走用户级（--to global）。
+  { id: 'doubao-work', name: 'DoubaoWork（豆包办公）', dir: '.doubaowork/skills', globalDir: 'DoubaoWork/skills' },
   // 千问办公（QwenWork）：官方文档只写明用户级 ~/.qwenworkcn/skills（每个 skill 一个含
   // SKILL.md 的子目录），**没有项目级约定**——这里的 dir 是按 .<id>/skills 惯例给的占位，
   // 迁到项目级千问读不到，要真正生效请走用户级（--to global）。
@@ -29,7 +35,9 @@ export const ADAPTERS = [
   // Qoder 中国版（qoder.com.cn）：整套用户配置独立在 ~/.qoder-cn/（settings/auth 里指向
   // qoder.com.cn，本机实测），用户级 ~/.qoder-cn/skills 本机实测（内含 symlink 实体）；项目级
   // 无文档也无实体佐证，dir 按 .<id>/skills 惯例占位——迁到项目级若读不到，要生效请走 --to global。
-  { id: 'qoder-cn', name: 'Qoder CN（中国版）', dir: '.qoder-cn/skills', globalDir: '.qoder-cn/skills' },
+  // 显示名必须连写 QoderCN（不带空格）：Web 的平台勋章取 name 首词（按空格/连字符切），带空格的
+  // "Qoder CN" 会和国际版一起坍缩成 "qoder"，平台范围里出现两个一模一样的勋章。
+  { id: 'qoder-cn', name: 'QoderCN（中国版）', dir: '.qoder-cn/skills', globalDir: '.qoder-cn/skills' },
   // 其余平台保留，可按需在“平台范围”里启用
   { id: 'agents', name: 'Universal (.agents)', dir: '.agents/skills', globalDir: '.agents/skills', universal: true },
   { id: 'codebuddy', name: 'CodeBuddy', dir: '.codebuddy/skills', globalDir: '.codebuddy/skills' },
@@ -57,6 +65,9 @@ const PLATFORM_ALIASES = {
   workbuddy: 'workbuddy',
   wb: 'workbuddy',
   doubao: 'doubao',
+  'doubao-work': 'doubao-work',
+  doubaowork: 'doubao-work', // 产品名连写
+  dbw: 'doubao-work', // DoubaoWork 缩写；裸 doubao 仍归「豆包」（先有产品），不抢
   qianwen: 'qianwen',
   qwenwork: 'qianwen', // 产品英文名 QwenWork
   qwen: 'qianwen',

@@ -6,6 +6,10 @@
 // Qoder 的特殊点：两级目录同名 .qoder/skills（官方两级都写明，用户级本机实测）。
 // Qoder 中国版（qoder-cn）的特殊点：用户级 ~/.qoder-cn/skills 本机实测；项目级无佐证是占位格。
 //   裸 qoder 维持归国际版——本机两版都装，不同于 trae 只装国内版才把裸名让给 -cn。
+//   显示名连写 QoderCN（不带空格）：Web 勋章取 name 首词，带空格会和国际版坍缩成同一个 "qoder"。
+// DoubaoWork（豆包办公，doubao-work）的特殊点：与「豆包」同族不同产品，用户级是「非隐藏 + 产品名」
+//   的 ~/DoubaoWork/skills（与 ~/Doubao/skills 同款，应用启动时自动创建）；项目级无佐证是占位格。
+//   别名 doubaowork / dbw，裸 doubao 仍归「豆包」不抢。
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { mkdtempSync } from 'node:fs';
@@ -113,6 +117,24 @@ test('Qoder 中国版别名：qoder-cn / qodercn 归中国版，裸 qoder 维持
   assert.equal(normalizePlatformId('qoder'), 'qoder');
 });
 
+test('DoubaoWork 用户级 ~/DoubaoWork/skills 实测，项目级是占位格', () => {
+  const a = adapterById('doubao-work');
+  assert.ok(a, 'doubao-work 适配器应存在');
+  assert.equal(a.id, 'doubao-work');
+  assert.equal(a.dir, '.doubaowork/skills');
+  assert.equal(a.globalDir, 'DoubaoWork/skills');
+  const proj = join(tmp, 'proj5');
+  assert.equal(targetDirFor('doubao-work', 'user', tmp), join(home, 'DoubaoWork', 'skills'));
+  assert.equal(targetDirFor('doubao-work', 'project', proj), join(proj, '.doubaowork', 'skills'));
+});
+
+test('DoubaoWork 别名：doubao-work / doubaowork / dbw 归一，裸 doubao 仍归豆包', () => {
+  for (const al of ['doubao-work', 'doubaowork', 'dbw', 'DOUBAOWORK', 'Doubao-Work']) {
+    assert.equal(normalizePlatformId(al), 'doubao-work', `${al} 应归一为 doubao-work`);
+  }
+  assert.equal(normalizePlatformId('doubao'), 'doubao');
+});
+
 test('未知平台归一为空、all 透传', () => {
   assert.equal(normalizePlatformId('nope'), '');
   assert.equal(normalizePlatformId('all'), 'all');
@@ -124,4 +146,14 @@ test('默认平台保留且适配器 id 无重复', () => {
     assert.ok(platformNames().includes(id), `${id} 应保留`);
   }
   assert.equal(ADAPTERS.length, new Set(ADAPTERS.map((a) => a.id)).size);
+});
+
+test('显示名首词（Web 勋章的取法）全表唯一，同族平台不得坍缩成同一勋章', () => {
+  // 与 Web 端 shortLabel（parts/shared.jsx）/ 平台范围 pill（parts/dialogs.jsx）同一套取法：
+  // 去掉 ASCII 括号后缀，按空格/连字符切，取首词小写。
+  const shortLabel = (a) => (a.name || a.id).replace(/\s*\(.*\)$/, '').split(/[\s-]/)[0].toLowerCase();
+  const labels = ADAPTERS.map(shortLabel);
+  assert.equal(labels.length, new Set(labels).size, `勋章首词重复：${labels.join(', ')}`);
+  // 曾因 "Qoder CN（中国版）" 带空格坍缩成 "qoder" 的回归点
+  assert.equal(adapterById('qoder-cn') && shortLabel(adapterById('qoder-cn')), 'qodercn（中国版）');
 });
