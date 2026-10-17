@@ -69,6 +69,8 @@ export async function removeRepo(id) {
   return mutateStore((s) => {
     const idx = s.repos.findIndex((x) => x.id === id);
     if (idx < 0) throw notFound('repo 不存在: ' + id);
+    // 看板里同步摘引用（看板只存 id，登记没了就是死引用）
+    for (const b of s.boards) b.repoIds = b.repoIds.filter((x) => x !== id);
     return s.repos.splice(idx, 1)[0];
   });
 }

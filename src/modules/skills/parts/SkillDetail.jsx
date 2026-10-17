@@ -15,11 +15,36 @@ const INSTALL_SCOPES = [
   { id: 'user', title: '用户相关配置', hint: '全局用户目录（~/），跨项目生效' },
 ];
 
+// 结构小面板：当前 .md 的前三级标题（outline 来自 content 接口，围栏感知、带行号）。
+// 点条目跳到正文对应行并短暂高亮——「这个 skill / ref 讲什么结构」一眼可读。
+function OutlinePanel({ outline, onJump }) {
+  if (!outline?.length) return null;
+  return (
+    <div className="skl-outline" data-testid="skl-outline">
+      <div className="skl-ol-head">结构</div>
+      {outline.map((h) => (
+        <button
+          key={h.line + h.text}
+          type="button"
+          className={`skl-ol-item l${h.level}`}
+          title={h.text}
+          onClick={() => onJump(h.line)}
+        >
+          <span className="t">{h.text}</span>
+          <span className="n">{h.line}</span>
+        </button>
+      ))}
+    </div>
+  );
+}
+
 // skill 文件查看器：左树右内容，SKILL.md 默认选中。
 function SkillFiles({ name }) {
   const [files, setFiles] = useState(null);
   const [cur, setCur] = useState('');
   const [text, setText] = useState(null);
+  const [outline, setOutline] = useState([]);
+  const [hlLine, setHlLine] = useState(0); // 跳转高亮的行号（短暂）
   const [err, setErr] = useState('');
 
   useEffect(() => {
@@ -39,18 +64,32 @@ function SkillFiles({ name }) {
     if (!cur) return undefined;
     let alive = true;
     setText(null);
+    setOutline([]);
     setErr('');
     api(`/api/skills/content?name=${encodeURIComponent(name)}&ref=${encodeURIComponent(cur)}`)
-      .then((d) => { if (alive) setText(d.content); })
+      .then((d) => {
+        if (!alive) return;
+        setText(d.content);
+        setOutline(/\.md$/i.test(cur) ? d.outline || [] : []);
+      })
       .catch((e) => { if (alive) setErr(String((e && e.message) || e)); });
     return () => { alive = false; };
   }, [name, cur]);
 
+  // 跳行：滚动到目标行并短暂高亮（定时清掉，不叠加）
+  const jump = (line) => {
+    document.getElementById(`skl-ln-${line}`)?.scrollIntoView({ block: 'start' });
+    setHlLine(line);
+    clearTimeout(jump.t);
+    jump.t = setTimeout(() => setHlLine(0), 1200);
+  };
+
   if (err) return <div className="dlg-msg">读取失败：{err}</div>;
   if (!files) return <div className="muted">读取中…</div>;
   if (!files.length) return <div className="muted">（这个 skill 目录里没有文件）</div>;
+  const lines = typeof text === 'string' ? text.split('\n') : null;
   return (
-    <div className="skl-files">
+    <div className={'skl-files' + (outline.length ? ' has-outline' : '')}>
       <div className="skl-tree">
         {files.map((f) => (
           <button key={f.path} type="button" className={'skl-file' + (f.path === cur ? ' on' : '')} title={f.path} onClick={() => setCur(f.path)}>
@@ -60,8 +99,19 @@ function SkillFiles({ name }) {
         ))}
       </div>
       <div className="skl-body">
-        {text === null ? <div className="muted">读取中…</div> : <pre>{text}</pre>}
+        {lines === null ? (
+          <div className="muted">读取中…</div>
+        ) : (
+          <pre>
+            {lines.map((ln, i) => (
+              <span key={i} id={`skl-ln-${i + 1}`} className={hlLine === i + 1 ? 'hl' : undefined}>
+                {ln + '\n'}
+              </span>
+            ))}
+          </pre>
+        )}
       </div>
+      <OutlinePanel outline={outline} onJump={jump} />
     </div>
   );
 }

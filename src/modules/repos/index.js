@@ -5,6 +5,30 @@
 // git 状态 / diff / pull / push / resolve 一律不做——git 客户端是无底洞，
 // 面板里做不出比 IDE 更好的体验，真要看状态直接用 git 自己（见 README「为什么不管 git」）。
 import * as service from './service.js';
+import * as boards from './boards.js';
+import { badInput } from '../../core/errors.js';
+
+// ---- 看板的 CLI 人读渲染 ----
+// 用户要的「快速判断看板里的 repo 和 desc」：按主题分组，一行 = 仓库名 + 一句话描述。
+function renderBoardList(d) {
+  const lines = [];
+  for (const b of d.boards) {
+    lines.push(`【${b.name}】${b.repos.length} 个仓库${b.desc ? ` —— ${b.desc}` : ''}`);
+    for (const r of b.repos) lines.push(`  ${r.name.padEnd(18)} ${r.desc || '-'}`);
+  }
+  if (d.unassigned.length) {
+    lines.push('【未分组】');
+    for (const r of d.unassigned) lines.push(`  ${r.name.padEnd(18)} ${r.desc || '-'}`);
+  }
+  if (!lines.length) return '（还没有看板与仓库，用 board add <名称> 建主题、repo add 登记仓库）';
+  return lines.join('\n');
+}
+
+function renderBoard(b) {
+  const lines = [`【${b.name}】${b.desc || ''} —— ${b.repos.length} 个仓库`];
+  for (const r of b.repos) lines.push(`  ${r.name.padEnd(18)} ${r.desc || '-'}`);
+  return lines.join('\n');
+}
 
 const lastSeg = (p) => String(p || '').replace(/\\/g, '/').split('/').filter(Boolean).slice(-1)[0] || '';
 
@@ -140,6 +164,104 @@ export default {
       args: ['id'],
       run: (ctx) => service.repoOpen(ctx.id),
       render: (d) => `已打开: ${d.opened}`,
+    },
+
+    // ---- 看板（主题容器）：多项目编排层，面板与 CLI 同源 ----
+    {
+      id: 'board.list',
+      cli: ['board', 'list'],
+      http: ['GET', '/api/boards'],
+      summary: '看板清单：每个主题里有哪些仓库、各自的一句话描述',
+      run: () => boards.listBoards(),
+      render: renderBoardList,
+    },
+    {
+      id: 'board.get',
+      cli: ['board', 'get'],
+      http: ['GET', '/api/boards/:id'],
+      summary: '查看单个看板（含成员仓库与描述）',
+      args: ['id'],
+      run: (ctx) => boards.getBoard(ctx.id),
+      render: renderBoard,
+    },
+    {
+      id: 'board.add',
+      cli: ['board', 'add'],
+      http: ['POST', '/api/boards'],
+      summary: '新建看板（主题容器）',
+      args: ['name'],
+      flags: { desc: { type: 'string' } },
+      run: (ctx) => boards.createBoard(ctx),
+      render: (b) => `已新建看板: ${b.name}`,
+    },
+    {
+      id: 'board.update',
+      cli: ['board', 'update'],
+      http: ['PATCH', '/api/boards/:id'],
+      summary: '改看板名称 / 描述',
+      args: ['id'],
+      flags: {
+        name: { type: 'string' },
+        desc: { type: 'string' },
+      },
+      run: (ctx) => boards.updateBoard(ctx.id, ctx),
+      render: (b) => `已更新看板: ${b.name}`,
+    },
+    {
+      id: 'board.remove',
+      cli: ['board', 'remove'],
+      http: ['DELETE', '/api/boards/:id'],
+      summary: '删看板（里面的仓库回到未分组，登记不动）',
+      args: ['id'],
+      run: (ctx) => boards.removeBoard(ctx.id),
+      render: (d) => `已删除看板: ${d.removed}（${d.released} 个仓库回到未分组）`,
+    },
+    {
+      id: 'board.assign',
+      cli: ['board', 'assign'],
+      http: ['POST', '/api/boards/assign'],
+      summary: '把仓库放进看板（board 留空 = 移回未分组；--before 插到某卡片前）',
+      args: ['id'],
+      flags: {
+        board: { type: 'string', hint: '目标看板 id；留空 = 未分组' },
+        before: { type: 'string', hint: '插到这张卡片之前' },
+      },
+      run: (ctx) => boards.assignRepo(ctx),
+      render: (d) => `已移动: ${d.name}`,
+    },
+    {
+      id: 'board.import',
+      cli: ['board', 'import'],
+      http: ['POST', '/api/boards/import'],
+      summary: '导入看板 JSON（一个看板 = 一个主题；按 path/name 匹配已登记仓库）',
+      // 两种入口同一条 action：CLI 给文件路径（- = stdin），面板直接 POST {json}。
+      // file 因此不能是必填——否则面板那条路会先被「缺少参数」拦掉（真踩过：400）。
+      args: [{ name: 'file', required: false }],
+      run: async (ctx) => {
+        let json = typeof ctx.json === 'string' ? ctx.json : '';
+        if (!json && ctx.file) {
+          const { readFileSync } = await import('node:fs');
+          json = readFileSync(ctx.file === '-' ? 0 : ctx.file, 'utf8');
+        }
+        if (!json) throw badInput('请给看板 JSON 文件路径（- 读 stdin），或在面板里粘贴 JSON');
+        return boards.importBoards({ json });
+      },
+      render: (d) => {
+        const lines = [`新建 ${d.created} 个看板，合并 ${d.merged} 个，匹配仓库 ${d.matched} 个`];
+        if (d.unmatched.length) {
+          lines.push('未匹配（登记里找不到，未导入）:');
+          for (const u of d.unmatched) lines.push(`  [${u.board}] ${u.entry}`);
+        }
+        return lines.join('\n');
+      },
+    },
+    {
+      id: 'board.export',
+      cli: ['board', 'export'],
+      http: ['GET', '/api/boards/export'],
+      summary: '导出看板 JSON（可回灌给 board import）',
+      run: () => boards.exportBoards(),
+      render: (d) => JSON.stringify(d, null, 2),
     },
   ],
 };

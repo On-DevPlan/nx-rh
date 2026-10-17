@@ -2,6 +2,26 @@
 
 本文件记录对外可见的变更。格式参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)。
 
+## [0.16.0] - 2026-10-17 仓库看板工作台 + Skill 文件结构预览
+
+### Added
+
+- **仓库看板（主题容器）**：仓库页从登记表升级为多项目编排工作台——一个看板 = 一个主题，
+  纵向堆叠；仓库以手机 app 式方格卡片呈现（首字块 + 名称 + 两行描述，hover 浮出
+  打开/编辑/删除）；「未分组」固定最后。新增 `board` CLI 八条命令与面板同源：
+  `board list`（按主题直出 repo + 一句话描述速览）/ get / add / update / remove /
+  assign（支持 `--before` 插位）/ import / export。成员关系挂 `boards[].repoIds`
+  （删板 = 仓库回未分组；删登记 = 看板同步摘引用）。
+- **卡片拖拽编排**：拖到看板空白 = 追加末尾；拖到某张卡片上 = 插到它前面；
+  拖回未分组 = 摘出；落点虚线高亮，刷新持久化。
+- **看板导入 / 导出**：`board import <file>` 与面板粘贴/选文件两路入口（一条 action，
+  file 与 json 双参），JSON 结构 `{boards:[{name, desc?, repos:[{path|name, desc?}]}]}`；
+  按 path（大小写与分隔符不敏感）或名称匹配**已登记**仓库，匹配不上的如实报告、
+  不硬造登记；同名看板合并。`board export` / 面板「导出」输出可回灌的同构 JSON。
+- **Skill 文件结构预览**：Skill 详情页的文件预览加结构小面板——当前 .md 的前三级
+  标题（outline 数据 content 接口现成返回，围栏感知、带行号），层级缩进；
+  点条目跳到正文对应行并短暂高亮；非 .md 或无标题不显示，窄屏排内容下方。
+
 ## [0.15.5] - 2026-10-11 新增 rh-gitsync skill：批量检查并安全同步 git 仓库（零依赖 Python 脚本）
 
 ### Added

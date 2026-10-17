@@ -204,6 +204,81 @@ main { padding: 14px 20px 28px; max-width: 1240px; margin: 0 auto; }
 .tb-set-box .row-inline > label { flex: 0 0 66px; color: var(--mid); }
 .tb-set-box .row-inline > select { flex: 1; min-width: 0; }
 
+/* ---------- 仓库看板工作台：主题容器纵向堆叠 + 手机式仓库方格卡片 ----------
+ * 一个看板 = 一个主题容器（card 头 + 卡片网格）；卡片可拖拽入板 / 插到某卡前 /
+ * 拖回未分组。落点高亮用 1px 描边（与侧栏拖拽同一套视觉语言）。 */
+.bd-workbench { display: flex; flex-direction: column; gap: 12px; }
+.bd-board { padding: 0 0 10px; }
+.bd-board.drop { outline: 1px dashed var(--accent, #2563eb); outline-offset: -1px; }
+.bd-board .colhead { padding: 8px 12px; margin: 0; border-bottom: var(--border); }
+.bd-head h3 { margin: 0; font-size: 13px; }
+.bd-head .bd-count { margin-left: auto; font-size: 11px; }
+.bd-grid {
+  display: grid;
+  /* 固定列宽（不随行内卡片数拉伸）：手机 app 网格的方正感来自等宽等高的格子 */
+  grid-template-columns: repeat(auto-fill, 118px);
+  justify-content: start;
+  gap: 8px;
+  padding: 10px 12px 0;
+}
+.bd-card {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  padding: 12px 8px 8px;
+  border: var(--border);
+  border-radius: 10px;
+  background: var(--paper);
+  cursor: grab;
+  text-align: center;
+}
+.bd-card:hover { border-color: var(--mid); box-shadow: var(--shadow-pop); }
+.bd-card.dragging { opacity: 0.45; }
+.bd-card.drop { outline: 1px dashed var(--accent, #2563eb); outline-offset: -1px; }
+.bd-card .glyph {
+  display: grid;
+  place-items: center;
+  width: 38px;
+  height: 38px;
+  border-radius: 10px;
+  background: var(--ink);
+  color: #fff;
+  font-size: 16px;
+  font-weight: 700;
+}
+.bd-card .nm {
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--ink);
+}
+.bd-card .ds {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  overflow: hidden;
+  min-height: 28px;
+  font-size: 11px;
+  line-height: 14px;
+  color: var(--mid);
+}
+.bd-card .acts {
+  position: absolute;
+  top: 4px;
+  right: 4px;
+  display: none;
+  gap: 2px;
+}
+.bd-card:hover .acts { display: inline-flex; }
+.bd-card .acts .btn { padding: 1px 4px; font-size: 10px; }
+.bd-empty { grid-column: 1 / -1; padding: 14px 0; text-align: center; font-size: 11px; }
+.bd-exp { width: 100%; font-family: ui-monospace, Consolas, monospace; font-size: 11px; }
+
 /* ---------- skill 查看器：左文件树 / 右内容 ---------- */
 .skl-files {
   display: grid;
@@ -248,6 +323,56 @@ main { padding: 14px 20px 28px; max-width: 1240px; margin: 0 auto; }
 }
 .skl-file .b { flex: 0 0 auto; font-size: 10px; }
 .skl-body { min-height: 0; max-height: 46vh; overflow: auto; padding: 10px 12px; background: var(--paper); }
+
+/* 结构小面板：当前 .md 的前三级标题（数据来自 content 接口的 outline，零新增请求）。
+ * 有面板时右缘多一栏（210px）；条目按标题层级缩进，点条目跳正文对应行。 */
+.skl-files.has-outline { grid-template-columns: 220px minmax(0, 1fr) 210px; }
+.skl-outline {
+  min-height: 0;
+  max-height: 46vh;
+  overflow: auto;
+  padding: 6px 4px;
+  background: var(--soft);
+  border-left: var(--border);
+}
+.skl-ol-head {
+  padding: 2px 8px 6px;
+  font-size: 11px;
+  color: var(--mid);
+  letter-spacing: 0.04em;
+}
+.skl-ol-item {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  width: 100%;
+  padding: 3px 8px;
+  border: 0;
+  border-radius: 4px;
+  background: none;
+  font: inherit;
+  font-size: 11px;
+  text-align: left;
+  color: var(--ink);
+  cursor: pointer;
+}
+.skl-ol-item:hover { background: var(--soft-2); }
+.skl-ol-item.l2 { padding-left: 18px; }
+.skl-ol-item.l3 { padding-left: 28px; }
+.skl-ol-item .t {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.skl-ol-item.l1 .t { font-weight: 600; }
+.skl-ol-item .n { flex: 0 0 auto; font-size: 10px; color: var(--mid); }
+/* 跳转目标行短暂着色（配合 SkillFiles 的 hlLine 定时清除） */
+.skl-body pre span.hl {
+  background: color-mix(in srgb, var(--accent, #2563eb) 16%, transparent);
+  outline: 1px solid color-mix(in srgb, var(--accent, #2563eb) 45%, transparent);
+}
 
 /* ---------- 输入框：核心显示密度（与行同高） ---------- */
 input, select {
@@ -727,6 +852,12 @@ textarea.dlg-input:focus { outline: none; border-color: var(--mid); box-shadow: 
   .skl-files { grid-template: none; display: flex; flex-direction: column; }
   .skl-tree { max-height: 180px; border-right: 0; border-bottom: var(--border); }
   .skl-body { max-height: 60vh; }
+  .skl-files.has-outline .skl-outline {
+    max-height: 200px;
+    border-left: 0;
+    border-top: var(--border);
+    order: 3;
+  }
 
   /* 列表行：名称宽度放开，描述换行 */
   .row.skl .name, .row.vrow .name { width: auto; flex: 0 0 auto; }
