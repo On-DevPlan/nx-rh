@@ -10,6 +10,9 @@
 // DoubaoWork（豆包办公，doubao-work）的特殊点：与「豆包」同族不同产品，用户级是「非隐藏 + 产品名」
 //   的 ~/DoubaoWork/skills（与 ~/Doubao/skills 同款，应用启动时自动创建）；项目级无佐证是占位格。
 //   别名 doubaowork / dbw，裸 doubao 仍归「豆包」不抢。
+// WorkBuddy AI（workbuddy-ai）的特殊点：与国内版 WorkBuddy（.workbuddy/skills）同族不同产品，
+//   两级目录都换成 .workbuddy-ai/skills（用户级本机实测、项目级在应用的项目目录约定表里，不是占位格）。
+//   裸 workbuddy / wb 仍归国内版；显示名连写 WorkBuddyAI（带空格会坍缩成同一个 workbuddy 勋章）。
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { mkdtempSync } from 'node:fs';
@@ -135,6 +138,25 @@ test('DoubaoWork 别名：doubao-work / doubaowork / dbw 归一，裸 doubao 仍
   assert.equal(normalizePlatformId('doubao'), 'doubao');
 });
 
+test('WorkBuddy AI（国际版）两级目录同名 .workbuddy-ai/skills', () => {
+  const a = adapterById('workbuddy-ai');
+  assert.ok(a, 'workbuddy-ai 适配器应存在');
+  assert.equal(a.id, 'workbuddy-ai');
+  assert.equal(a.dir, '.workbuddy-ai/skills');
+  assert.equal(a.globalDir, '.workbuddy-ai/skills');
+  const proj = join(tmp, 'proj6');
+  assert.equal(targetDirFor('workbuddy-ai', 'user', tmp), join(home, '.workbuddy-ai', 'skills'));
+  assert.equal(targetDirFor('workbuddy-ai', 'project', proj), join(proj, '.workbuddy-ai', 'skills'));
+});
+
+test('WorkBuddy AI 别名归一，裸 workbuddy / wb 仍归国内版', () => {
+  for (const al of ['workbuddy-ai', 'workbuddyai', 'wbai', 'wb-ai', 'WorkBuddyAI', 'WB-AI']) {
+    assert.equal(normalizePlatformId(al), 'workbuddy-ai', `${al} 应归一为 workbuddy-ai`);
+  }
+  assert.equal(normalizePlatformId('workbuddy'), 'workbuddy');
+  assert.equal(normalizePlatformId('wb'), 'workbuddy');
+});
+
 test('未知平台归一为空、all 透传', () => {
   assert.equal(normalizePlatformId('nope'), '');
   assert.equal(normalizePlatformId('all'), 'all');
@@ -148,6 +170,13 @@ test('默认平台保留且适配器 id 无重复', () => {
   assert.equal(ADAPTERS.length, new Set(ADAPTERS.map((a) => a.id)).size);
 });
 
+test('新装 store 默认只启用 claude-code', async () => {
+  const { loadStore } = await import('../../src/core/store.js');
+  const s = await loadStore(join(tmp, 'no-such-store.json'));
+  assert.deepEqual(s.settings.platforms, ['claude-code'], '默认平台范围只应含 claude-code');
+  assert.equal(s.settings.defaultPlatform, 'claude-code');
+});
+
 test('显示名首词（Web 勋章的取法）全表唯一，同族平台不得坍缩成同一勋章', () => {
   // 与 Web 端 shortLabel（parts/shared.jsx）/ 平台范围 pill（parts/dialogs.jsx）同一套取法：
   // 去掉 ASCII 括号后缀，按空格/连字符切，取首词小写。
@@ -156,4 +185,7 @@ test('显示名首词（Web 勋章的取法）全表唯一，同族平台不得�
   assert.equal(labels.length, new Set(labels).size, `勋章首词重复：${labels.join(', ')}`);
   // 曾因 "Qoder CN（中国版）" 带空格坍缩成 "qoder" 的回归点
   assert.equal(adapterById('qoder-cn') && shortLabel(adapterById('qoder-cn')), 'qodercn（中国版）');
+  // 同族第二个回归点：WorkBuddy 国内版 / 国际版
+  assert.equal(shortLabel(adapterById('workbuddy')), 'workbuddy');
+  assert.equal(shortLabel(adapterById('workbuddy-ai')), 'workbuddyai（国际版）');
 });

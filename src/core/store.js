@@ -15,7 +15,7 @@ const EMPTY = () => ({
   settings: {
     skillHubPath: '', // 当前主订阅源（Skill Hub 仓库根）
     skillSyncMode: 'symlink', // 'symlink' | 'copy'（迁移默认形态）
-    platforms: ['claude-code', 'workbuddy'], // 默认聚焦的平台（适配器）
+    platforms: ['claude-code'], // 默认只启用 claude-code；其余平台在「平台范围」里按需开（首个即默认平台）
     defaultPlatform: 'claude-code', // 迁移时未指定平台则用它
     skillHubSources: [], // 订阅源目录（可多个、可重叠）
     skillProjectCandidates: [], // 项目目录候选（下拉多选项）

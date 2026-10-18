@@ -2,6 +2,23 @@
 
 本文件记录对外可见的变更。格式参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)。
 
+## [Unreleased]
+
+### Added
+
+- **WorkBuddy AI（国际版）平台适配器**：`workbuddy-ai`，两级目录同名 `.workbuddy-ai/skills`
+  （用户级 `~/.workbuddy-ai/skills` 本机实测——应用启动即建，技能扫描的 watch 目录就是它；
+  项目级 `.workbuddy-ai/skills` 与应用里 `.workbuddy/skills` 并列写在项目目录约定表中，两级都真生效，
+  不是占位格）。与国内版 WorkBuddy（`.workbuddy/skills`）是同族不同产品，两行并存。别名
+  `workbuddyai` / `wbai` / `wb-ai`；裸 `workbuddy` / `wb` 仍归国内版。显示名连写
+  `WorkBuddyAI（国际版）`——Web 平台勋章取显示名首词，带空格会与国内版坍缩成同一个 `workbuddy` 勋章。
+
+### Changed
+
+- **默认平台范围收窄为 claude-code**：新装 store 的 `platforms` 从 `['claude-code', 'workbuddy']`
+  改为 `['claude-code']`，其余平台（含 workbuddy / workbuddy-ai）在「平台范围」里按需开。
+  已有 store 不受影响，仍按自己存的 `platforms` 走。
+
 ## [0.16.0] - 2026-10-17 仓库看板工作台 + Skill 文件结构预览
 
 ### Added

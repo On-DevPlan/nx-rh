@@ -9,9 +9,18 @@ import { homedir } from 'node:os';
 import { join } from 'node:path';
 
 export const ADAPTERS = [
-  // 默认聚焦的两个平台排在最前
+  // 常用平台排在最前（默认只启用 claude-code，其余按需在「平台范围」里开）
   { id: 'claude-code', name: 'Claude Code', dir: '.claude/skills', globalDir: '.claude/skills' },
+  // WorkBuddy 国内版（workbuddy.cn）：两级目录同名 .workbuddy/skills。
   { id: 'workbuddy', name: 'WorkBuddy', dir: '.workbuddy/skills', globalDir: '.workbuddy/skills' },
+  // WorkBuddy AI 国际版（workbuddy.ai）：与上一行国内版是同族不同产品，目录也不同名。
+  // 两级都同名 .workbuddy-ai/skills——用户级本机实测（~/.workbuddy-ai/skills，应用启动即建，
+  // 技能扫描的 watch 目录就是它）；项目级 .workbuddy-ai/skills 与 .workbuddy/skills 并列写在
+  // 应用的项目目录约定表里，所以不是占位格，两级都能真生效（不同于 qianwen / doubao-work）。
+  // skill 规范与其它平台同款：一个 skill 一个含 SKILL.md 的子目录，frontmatter 必填
+  // name + description（agent 创建的还要 agent_created: true），可选 scripts/ references/ assets/。
+  // 显示名连写 WorkBuddyAI（不带空格）：Web 勋章取 name 首词，带空格会和国内版坍缩成同一个 workbuddy。
+  { id: 'workbuddy-ai', name: 'WorkBuddyAI（国际版）', dir: '.workbuddy-ai/skills', globalDir: '.workbuddy-ai/skills' },
   // 豆包：用户级落点是「非隐藏 + 首字母大写」的 ~/Doubao/skills（与 ~/Doubao/chats 同级），
   // 不同于其它平台的 ~/.<id>/skills 隐藏目录约定；项目级仍走隐藏目录 .doubao/skills。
   { id: 'doubao', name: 'Doubao（豆包）', dir: '.doubao/skills', globalDir: 'Doubao/skills' },
@@ -63,7 +72,11 @@ const PLATFORM_ALIASES = {
   'claude-code': 'claude-code',
   cc: 'claude-code',
   workbuddy: 'workbuddy',
-  wb: 'workbuddy',
+  wb: 'workbuddy', // 裸名归国内版（先有产品），国际版要显式写 workbuddy-ai
+  'workbuddy-ai': 'workbuddy-ai',
+  workbuddyai: 'workbuddy-ai', // 产品名连写
+  wbai: 'workbuddy-ai', // WorkBuddy AI 缩写
+  'wb-ai': 'workbuddy-ai',
   doubao: 'doubao',
   'doubao-work': 'doubao-work',
   doubaowork: 'doubao-work', // 产品名连写

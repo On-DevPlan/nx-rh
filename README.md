@@ -179,7 +179,7 @@ localStorage 持久化，刷新不丢。
   "settings": {
     "skillHubPath": "D:/a_other/md/sl/skills",
     "skillSyncMode": "symlink",
-    "platforms": ["claude-code", "workbuddy"],
+    "platforms": ["claude-code"],
     "defaultPlatform": "claude-code",
     "skillHubSources": ["D:/a_other/md/sl/skills"],
     "skillProjectCandidates": []
@@ -440,6 +440,7 @@ nx-rh skill get nx-rh skill-hub     # 裸名 ref → references/skill-hub.md
 | --- | --- | --- | --- |
 | Claude Code | `.claude/skills` | `~/.claude/skills` | |
 | WorkBuddy | `.workbuddy/skills` | `~/.workbuddy/skills` | |
+| WorkBuddyAI（国际版） | `.workbuddy-ai/skills` | `~/.workbuddy-ai/skills` | |
 | Doubao（豆包） | `.doubao/skills` | `~/Doubao/skills` | |
 | DoubaoWork（豆包办公） | `.doubaowork/skills` | `~/DoubaoWork/skills` | |
 | Qianwen（千问办公） | `.qwenworkcn/skills` | `~/.qwenworkcn/skills` | |
@@ -455,10 +456,18 @@ nx-rh skill get nx-rh skill-hub     # 裸名 ref → references/skill-hub.md
 | Windsurf | `.windsurf/skills` | `~/.codeium/windsurf/skills` | |
 | iFlow CLI | `.iflow/skills` | `~/.iflow/skills` | |
 
-默认聚焦 claude-code 与 workbuddy；安装位置规则：`--platform` 指定 > 设置里的平台范围（首个为默认平台）。
+默认只启用 claude-code（新装 store 的 `platforms` 就一项）；其余平台在「平台范围」里按需开。
+安装位置规则：`--platform` 指定 > 设置里的平台范围（首个为默认平台）。
 
 千问办公官方只写明用户级 `~/.qwenworkcn/skills`（每个 skill 一个含 `SKILL.md` 的子目录），**没有项目级约定**：
 表里那一格是按 `.<id>/skills` 惯例给的占位，迁到项目级千问读不到，要生效请用 `--to global`。
+
+WorkBuddy 分国内版（workbuddy.cn，`~/.workbuddy/skills`）与国际版（workbuddy.ai，`~/.workbuddy-ai/skills`）：
+同族不同产品、目录也不同名，两行都留着。国际版两级同名 `.workbuddy-ai/skills`——用户级本机实测
+（应用启动即建，技能扫描的 watch 目录就是它），项目级与应用里 `.workbuddy/skills` 并列写在项目目录
+约定表中，所以两级都真生效（不是占位格）。裸 `workbuddy` / `wb` 归国内版（先有产品），国际版用
+`workbuddy-ai` / `workbuddyai` / `wbai`；显示名连写 `WorkBuddyAI`（不带空格）——Web 平台勋章取显示名首词，
+带空格会与国内版坍缩成同一个 `workbuddy` 勋章。
 
 Qoder 分国际版（qoder.com）与中国版（qoder.com.cn）：国际版两级同名 `.qoder/skills`，官方两级都写明；
 中国版整套用户配置独立在 `~/.qoder-cn/`，用户级 `~/.qoder-cn/skills` 本机实测，项目级那格是占位

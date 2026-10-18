@@ -109,7 +109,7 @@ node bin/cli.mjs skill hub adapters
 ### ⑥ 收尾约定
 
 - **CHANGELOG 不动**：feature 提交不碰，留给 `chore(release)` 补写。
-- **默认平台不动**：新平台默认不启用（CLI 显示 `[   ]`）；要启用让用户跑 `nx-rh skill platform <平台列表>`（首个为默认平台，claude-code 保持排最前）。
+- **默认平台不动**：新装 store 的默认平台范围只有 `claude-code`（`src/core/store.js` 的 `platforms`）；新平台默认不启用（CLI 显示 `[   ]`）。要启用让用户跑 `nx-rh skill platform <平台列表>`（首个为默认平台，claude-code 保持排最前）。
 - **提交**：`feat(skills): 新增 <平台> 平台适配器`；提交前 `git status` 核对 4 文件；不主动提交，先问用户。
 
 ## 坑与约定
@@ -118,7 +118,7 @@ node bin/cli.mjs skill hub adapters
 - **build 零 diff**：`src/web/public` 构建产物已提交；`pnpm run build` 后若 `git status` 出现产物 churn，说明前端硬编码了平台，需排查（正常零 diff）。
 - **worktrees 预存在失败**：Windows 本地全量 unit 里 `worktrees.test.mjs` 可能失败（本仓库已知 2 例），与 skills 改动无关；用 `gh run list` 看 ubuntu CI 是否为绿佐证。
 - **多行 `node -e` 静默失败**：验证脚本落成 `.mjs` 文件再 `node <file>`。
-- **默认平台用例**：`skills-adapters.test.mjs` 里「默认平台保留且适配器 id 无重复」锁死 claude-code / workbuddy 与全表 id 唯一——新增条目不能破坏。
+- **默认平台用例**：`skills-adapters.test.mjs` 里「默认平台保留且适配器 id 无重复」锁死 claude-code / workbuddy 两个适配器仍在表里与全表 id 唯一，「新装 store 默认只启用 claude-code」锁死默认范围——新增条目不能破坏。
 
 ## 实战锚点
 

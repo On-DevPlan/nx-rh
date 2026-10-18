@@ -219,15 +219,17 @@ nx-rh skill hub check          # 来源健康：目录缺失 / 空源 / 嵌套�
 
 ```bash
 nx-rh skill adapters [--project <目录>]                       # 每平台的项目级 / 用户级绝对安装位置
-nx-rh skill platform [claude-code workbuddy ...]               # 启用哪些平台（首个为默认平台）
+nx-rh skill platform [claude-code workbuddy-ai ...]            # 启用哪些平台（首个为默认平台）
 ```
 
-平台 id 与别名（别名只是输入便利，表仍是唯一真相源）：
+平台 id 与别名（别名只是输入便利，表仍是唯一真相源）。新装 store 默认只启用 `claude-code`，
+其余平台要显式 `skill platform` 开（首个为默认平台）：
 
 | id | 别名 | 项目级 | 用户级 |
 | --- | --- | --- | --- |
 | claude-code | claude · cc | `.claude/skills` | `~/.claude/skills` |
 | workbuddy | wb | `.workbuddy/skills` | `~/.workbuddy/skills` |
+| workbuddy-ai | workbuddyai · wbai · wb-ai | `.workbuddy-ai/skills` | `~/.workbuddy-ai/skills` |
 | doubao | doubao | `.doubao/skills` | `~/Doubao/skills` |
 | doubao-work | doubaowork · dbw | `.doubaowork/skills` | `~/DoubaoWork/skills` |
 | qianwen | qwenwork · qwen · qw | `.qwenworkcn/skills` | `~/.qwenworkcn/skills` |
@@ -245,6 +247,12 @@ nx-rh skill platform [claude-code workbuddy ...]               # 启用哪些平
 
 千问办公（qianwen）官方只写明用户级 `~/.qwenworkcn/skills`，**无项目级约定**——项目级那一格只是占位，
 迁到那里千问读不到，要生效用 `--to global`。
+
+WorkBuddy 分国内版（workbuddy.cn，`.workbuddy/skills`）与国际版（workbuddy.ai，`.workbuddy-ai/skills`）：
+同族不同产品、目录也不同名，两行都保留。国际版两级同名 `.workbuddy-ai/skills`，用户级本机实测
+（应用启动即建，技能扫描的 watch 目录就是它），项目级也在应用的项目目录约定表里，两级都真生效。
+裸 `workbuddy` / `wb` 归国内版（先有产品），国际版用 `workbuddy-ai` / `workbuddyai` / `wbai`；
+显示名连写 `WorkBuddyAI`（不带空格），带空格会与国内版坍缩成同一个 `workbuddy` 勋章。
 
 Trae 国内版用户级是 `~/.trae-cn/skills`，项目级两版共用 `.trae/skills`；国际版用户级应为 `~/.trae/skills`，
 未装未实测，要聚焦国际版就在 `ADAPTERS` 里补一行 `id: 'trae'`。
