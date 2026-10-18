@@ -2,7 +2,7 @@
 
 本文件记录对外可见的变更。格式参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)。
 
-## [Unreleased]
+## [0.16.1] - 2026-10-18 WorkBuddy AI（国际版）适配器 + 默认平台只留 claude-code
 
 ### Added
 
