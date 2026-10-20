@@ -4,8 +4,7 @@
 // renderXxx 四处重复登记。现在命令表、help 文本、参数校验全部由 action 声明派生，
 // 新增命令只需在所属模块的 actions 里加一条。
 import { readFileSync } from 'node:fs';
-import http from 'node:http';
-import { DEFAULT_PORT, storePathFromEnv, setStartupDir, projectRoot, cwdScope } from '../core/paths.js';
+import { APP_NAME, DEFAULT_PORT, storePathFromEnv, setStartupDir, projectRoot, cwdScope } from '../core/paths.js';
 import { toErrorPayload, exitCodeOf, badInput } from '../core/errors.js';
 import { ACTIONS, MODULES } from './registry.js';
 import { cliPathsOf, argSpecsOf, flagSpecsOf, booleanFlagNames, applySpec, usageOf } from './spec.js';
@@ -20,7 +19,7 @@ const BUILTINS = [
   {
     id: 'serve',
     cli: ['serve'],
-    summary: '启动 Web 面板（可跟项目目录，默认当前目录）',
+    summary: '启动 Web 面板（默认 :7800；可跟项目目录；--port N 改端口；--no-open 不开浏览器；端口上已有本面板则直接打开它，否则顺延到下一个空闲端口；NX_SERVE_NO_OPEN=1 全局不开浏览器）',
     args: [{ name: 'dir', required: false }],
     flags: { port: { type: 'number', default: DEFAULT_PORT }, 'no-open': { type: 'boolean' } },
     run: (ctx) => cmdServe(ctx),
@@ -250,61 +249,58 @@ function printCommandHelp(cmd) {
   console.log(lines.join('\n'));
 }
 
-// 探测同端口上是否已经有 nx-rh 的面板：
-// 拿 /api/health 的 cwdScope 字段认领——那是本工具独有的响应形状，
-// 别人的服务不会恰好返回它。超时/连接失败一律当作「没有」。
-function probePanel(port, timeoutMs = 800) {
-  return new Promise((resolve) => {
-    const req = http.get(
-      { host: '127.0.0.1', port, path: '/api/health', timeout: timeoutMs },
-      (res) => {
-        let body = '';
-        res.setEncoding('utf8');
-        res.on('data', (c) => { body += c; });
-        res.on('end', () => {
-          try {
-            const j = JSON.parse(body);
-            const d = j && j.ok ? j.data : null;
-            resolve(d && d.status === 'ok' && typeof d.cwdScope === 'string' ? d : null);
-          } catch {
-            resolve(null);
-          }
-        });
-      }
-    );
-    req.on('timeout', () => { req.destroy(); resolve(null); });
-    req.on('error', () => resolve(null));
-  });
-}
-
+// 端口协商与「要不要开浏览器」的统一口径在 core/serve-port.js：
+// 所有 nx-xx 面板共用同一份，靠 /api/bootstrap 的 app.name 认领彼此，
+// 靠 NX_SERVE_NO_OPEN 统一关闭自动开浏览器。这里不再自带探测实现。
 async function cmdServe(ctx) {
   const { startServer } = await import('./server.js');
   const { openBrowser } = await import('../core/open.js');
+  const { autoOpenEnabled, resolvePortConflict, describeOccupant } =
+    await import('../core/serve-port.js');
   const { touchRecent } = await import('../modules/system/service.js');
 
   // 启动目录注入：serve [dir] 决定面板的「当前项目」，未给则取 cwd。
   setStartupDir(ctx.dir || process.cwd());
-  const port = ctx.port || DEFAULT_PORT;
+  const desiredPort = ctx.port || DEFAULT_PORT;
+  const host = '127.0.0.1';
+  // --no-open 与 NX_SERVE_NO_OPEN 是「或」关系：任一为真就不开浏览器。
+  const canOpen = autoOpenEnabled(ctx['no-open']);
 
   // 启动期装载自检：import 即触发 registry 的重复命令/路由断言与 ROUTES 编译。
   // 任何两处声明撞名都在「起服务之前」炸，而不是等用户敲到那条命令才暴露。
   await import('./registry.js');
   await import('./api.js');
 
-  // 一个面板管所有项目：端口上若已是自己的面板，就登记最近项目 + 打开它，
-  // 不再起第二个进程（每个项目开一个端口会让「切项目」变成「切端口」）。
-  const running = await probePanel(port);
-  if (running) {
-    console.log('nx-rh · npx-repo-hub v' + VERSION);
-    console.log(`已在运行的面板: http://127.0.0.1:${port}  （作用域 ${running.cwdScope}）`);
-    console.log(`已登记为最近项目: ${projectRoot()}`);
-    await touchRecent(projectRoot()).catch(() => {});
-    if (!ctx['no-open']) openBrowser(`http://127.0.0.1:${port}`);
-    return;
+  // 一个面板管所有项目：端口被占时先问一句「上面跑的是不是我」。
+  // 是自己的面板 → 复用它（登记最近项目 + 打开它，不起第二个进程）；
+  // 是别的服务 → 顺延到下一个空闲端口，起自己的面板。
+  let server;
+  try {
+    server = await startServer({ port: desiredPort, host });
+  } catch (err) {
+    if (!err || err.code !== 'EADDRINUSE') throw err;
+
+    const decision = await resolvePortConflict(desiredPort, APP_NAME, host);
+
+    if (decision.action === 'reuse') {
+      const addr = `http://${host}:${desiredPort}`;
+      const scope = decision.existing && decision.existing.cwdScope;
+      console.log('nx-rh · npx-repo-hub v' + VERSION);
+      console.log(`已在运行的面板: ${addr}` + (scope ? `  （作用域 ${scope}）` : ''));
+      console.log(`已登记为最近项目: ${projectRoot()}`);
+      await touchRecent(projectRoot()).catch(() => {});
+      if (canOpen) openBrowser(addr);
+      return;
+    }
+
+    // 别人占的：顺延到下一个空闲端口，再起自己的面板。
+    console.log(
+      `端口 ${desiredPort} 已被占用（占用者: ${describeOccupant(decision.occupant)}），改用 ${decision.port}`
+    );
+    server = await startServer({ port: decision.port, host });
   }
 
-  const server = await startServer({ port, host: '127.0.0.1' });
-  const addr = `http://127.0.0.1:${server.address().port}`;
+  const addr = `http://${host}:${server.address().port}`;
 
   console.log('nx-rh · npx-repo-hub v' + VERSION);
   console.log(`面板:   ${addr}`);
@@ -317,7 +313,7 @@ async function cmdServe(ctx) {
   // 登记「最近项目」失败不阻塞启动
   await touchRecent(projectRoot()).catch(() => {});
 
-  if (!ctx['no-open']) openBrowser(addr);
+  if (canOpen) openBrowser(addr);
 
   const shutdown = () => {
     console.log('\n正在停止...');

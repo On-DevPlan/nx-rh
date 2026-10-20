@@ -215,7 +215,7 @@ localStorage 持久化，刷新不丢。
 
 | 命令 | 对应 Web 操作 |
 | --- | --- |
-| `nx-rh serve [dir] [--port N] [--no-open]` | 启动面板（`dir` = 启动目录，默认当前目录） |
+| `nx-rh serve [dir] [--port N] [--no-open]` | 启动面板（`dir` = 启动目录，默认当前目录）；端口上已有本面板则直接打开它，被别的服务占用则顺延到下一个空闲端口；`NX_SERVE_NO_OPEN=1` 全局不开浏览器 |
 | `nx-rh help [模块]` / `version` / `bootstrap` / `health` | — |
 | `nx-rh routes [--module M] [--http "METHOD /api/path"]` | 命令 ↔ 路由对照；`--http` 可由端点反查命令 |
 | `nx-rh recents` / `recents add <目录>` / `recents remove <目录>` | 最近项目列表 / 登记 / 移除（面板项目下拉的数据源） |
@@ -342,9 +342,12 @@ pnpm test      # 漏登记会被 tests/unit/registry.test.mjs 断言拦下
   面板首屏就停在那里；`skill migrate` 等命令不传 `--project` 时安装位置也是它
 - `nx-rh recents`：全局跨项目的「最近目录」列表（`recents add` / `recents remove`），
   与按 cwd 隔离的数据并存——**面板的项目下拉由它驱动**，切过的项目自动出现在里面
-- **一个面板管所有项目**：`serve` 前先探测该端口上的 `/api/health`，若 `cwdScope` 字段在
-  （那是本工具独有的响应形状）说明已是 nx-rh 的面板 → 只把当前目录登记进 recents、
+- **一个面板管所有项目**：端口被占时先探测该端口上的 `/api/bootstrap`，若 `app.name` 是
+  `nx-rh`（所有 nx-xx 面板共用的认领签名）说明已是自己的面板 → 只把当前目录登记进 recents、
   打开浏览器后退出，**不再起第二个进程**。每个项目开一个端口会让「切项目」变成「切端口」
+- **端口被别的服务占用**：自动顺延到下一个空闲端口起自己的面板，并打开浏览器指向新面板——
+  不打断流程，也不把浏览器指向别人的服务。`NX_SERVE_NO_OPEN=1`（所有 nx-xx 项目通用）
+  可全局关掉自动开浏览器，单次 `--no-open` 同样有效
 - **面板右上角「最近目录」**：每次 `serve` 自动登记当前目录，也可手动「＋ 注册其他目录」；
   点击即切换激活目录——**项目级信息只针对激活的那个项目**，切换后面板整页按新作用域重拉。
   写请求带 Origin 校验：浏览器跨站写请求被拒（BLOCKED），本机程序（curl / agent）不受影响

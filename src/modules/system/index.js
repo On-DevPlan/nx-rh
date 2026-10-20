@@ -4,7 +4,7 @@
 // 其余模块之间禁止互相依赖（唯一的只读例外是 settings，见其 service 注释）。
 import { readFileSync } from 'node:fs';
 import fsp from 'node:fs/promises';
-import { storePathFromEnv, projectRoot, cwdScope } from '../../core/paths.js';
+import { APP_NAME, storePathFromEnv, projectRoot, cwdScope } from '../../core/paths.js';
 import { compileRoute } from '../../runtime/spec.js';
 import { badInput, notFound, blocked } from '../../core/errors.js';
 import * as settings from '../settings/service.js';
@@ -32,6 +32,9 @@ async function commandTable() {
 async function bootstrap() {
   const skills = await import('../skills/service.js');
   return {
+    // app 段是跨项目唯一的认领签名：别的 nx-xx 面板靠它认出「同款」，
+    // 从而复用端口上已经在跑的那个面板，而不是各起一个进程。
+    app: { name: APP_NAME, version: VERSION },
     version: VERSION,
     // A03 §1 SOP 6：bootstrap 是 zero-config 的一次性上下文聚合，
     // appStorePath 是规范字段名（agent 据此知道数据在哪、能手工修）。
