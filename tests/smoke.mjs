@@ -74,7 +74,7 @@ try {
   // ---- 1. 基础命令 ----
   const pkgVersion = JSON.parse(readFileSync(join(ROOT, '..', 'package.json'), 'utf8')).version;
   check('cli version', cli(['version']).stdout.trim() === pkgVersion);
-  check('cli help', cli(['help']).stdout.includes('repo add'));
+  check('cli help', cli(['help']).stdout.includes('wt add'));
   check('cli unknown -> exit 1', cli(['nope']).status === 1);
 
   // ---- 2. 订阅源（Skill Hub） ----
@@ -83,44 +83,12 @@ try {
   check('setting get', settings.skillHubPath === hub, String(settings.skillHubPath));
   check('skill hub sources', (cliJson(['skill', 'hub', 'sources']).sources || []).some((s) => s.path === hub && s.current));
 
-  // ---- 3. 仓库登记 CRUD ----
-  // 仓库模块只做登记，不碰 git：状态 / diff / pull / push / resolve 已随 git 能力移除。
-  check('repo add', cli(['repo', 'add', hub, '--name', 'hub-repo', '--tags', 'test,fixture']).status === 0);
-  check('repo add 重复路径报错', cli(['repo', 'add', hub]).status === 1);
-  const list = cliJson(['repo', 'list']);
-  check('repo list --json', Array.isArray(list) && list.length === 1 && list[0].name === 'hub-repo');
+  // ⚠️ 仓库登记 CRUD 的用例**整段移除**：仓库模块已于 2026-10-23 迁到 nx-kv
+  // （`nx-kv repo ...` / `nx-kv board ...`），nx-rh 侧不再有 repo/board 命令。
+  // 留着这些用例，CI 的 smoke 必挂（命令不存在 → 报「未知命令」），发布链就断了。
+  // 仓库模块的等价用例现在在 nx-kv 侧（tests/unit/repos-boards.test.mjs + 其 smoke）。
 
-  // CRUD 完备性（CLI 侧）。HTTP 侧由 tests/unit/registry.test.mjs 的 resource 断言覆盖——
-  // 那里保证五个操作同时具备 cli 与 http，这里保证它们在 CLI 上真的跑得通。
-  const repoId = list[0].id;
-  check('repo get 取单条', cliJson(['repo', 'get', repoId]).name === 'hub-repo');
-  check('repo get 不存在时失败', cli(['repo', 'get', 'r_not_exist']).status === 1);
-  check('repo update 改描述', cliJson(['repo', 'update', repoId, '--desc', '改过的']).desc === '改过的');
-  check('repo update 后再 get 能读到', cliJson(['repo', 'get', repoId]).desc === '改过的');
-  // 改路径要能定位单条，也要防重复登记（否则两条记录指向同一目录，扫描结果无从判断）
-  const renameTarget = join(tmp, 'rename-target');
-  mkdirSync(renameTarget, { recursive: true });
-  const repo2 = cliJson(['repo', 'add', project, '--name', 'proj-early']);
-  check('repo update 改路径', cliJson(['repo', 'update', repo2.id, '--path', renameTarget]).path === renameTarget);
-  check('repo update 改到已登记路径报错', cli(['repo', 'update', repo2.id, '--path', hub]).status === 1);
-
-  // 扫描：只按「有没有 .git」识别仓库，不跑任何 git 子命令
-  const scanRoot = join(tmp, 'scan-root');
-  mkdirSync(join(scanRoot, 'a', '.git'), { recursive: true });
-  mkdirSync(join(scanRoot, 'b', '.git'), { recursive: true });
-  mkdirSync(join(scanRoot, 'not-a-repo'), { recursive: true });
-  const scanned = cliJson(['repo', 'scan', scanRoot, '--depth', '2']);
-  check('repo scan 只登记含 .git 的目录', scanned.scanned === 2 && scanned.added.length === 2, JSON.stringify(scanned.added.map((x) => x.path)));
-
-  const dryScan = cliJson(['repo', 'scan', scanRoot, '--depth', '2', '--dry-run']);
-  check(
-    'repo scan --dry-run 只发现不登记（零副作用）',
-    dryScan.dryRun === true && dryScan.scanned === 2 && dryScan.added.length === 0
-      && dryScan.found.every((x) => x.known === true),
-    JSON.stringify(dryScan).slice(0, 220)
-  );
-
-  // ---- 4. 订阅源 skill 识别 ----
+  // ---- 3. 订阅源 skill 识别 ----
   const listed = cliJson(['skill', 'hub', 'list']);
   check(
     '订阅源 skill 识别（含来源）',
@@ -262,7 +230,11 @@ try {
   const inst = cliJson(['skill', 'install', '--to', skillsHome]);
   check('skill install 安装成功', inst.status === 'ok' && inst.installed === true && inst.files >= 4, JSON.stringify(inst));
   const installedMd = readFileSync(join(skillsHome, 'nx-rh', 'SKILL.md'), 'utf8');
-  check('SKILL.md 落地且含 ref-map', installedMd.includes('场景路由（ref-map）') && installedMd.includes('[[repo-registry]]'));
+  // ref-map 里不再有仓库登记（仓库模块已迁到 nx-kv），但 ref-map 本身要还在
+  check('SKILL.md 落地且含 ref-map',
+    installedMd.includes('场景路由（ref-map）') && installedMd.includes('[[skill-hub]]')
+      && !installedMd.includes('[[repo-registry]]'),
+    'ref-map 不该再指向已迁走的仓库登记');
   check('references 一并复制', existsSync(join(skillsHome, 'nx-rh', 'references', 'skill-hub.md')));
 
   const gitSyncInst = cliJson(['skill', 'install', 'rh-gitsync', '--to', skillsHome]);
@@ -460,7 +432,9 @@ try {
   const base = 'http://127.0.0.1:' + server.address().port;
 
   const boot = await (await fetch(base + '/api/bootstrap')).json();
-  check('api bootstrap', boot.ok && boot.data.repos.length === 4, JSON.stringify(boot.data.repos?.length));
+  // 仓库登记已于 2026-10-23 迁到 nx-kv，bootstrap 里**不再有** repos 字段
+  check('api bootstrap 不再有 repos 字段（仓库登记已迁到 nx-kv）',
+    boot.ok && boot.data.repos === undefined, JSON.stringify(boot.data.repos));
   check('api bootstrap 带启动目录', typeof boot.data.projectRoot === 'string' && !!boot.data.projectRoot);
   check('api bootstrap 带最近项目与作用域键',
     Array.isArray(boot.data.recents) && typeof boot.data.cwdScope === 'string');
@@ -538,14 +512,7 @@ try {
       && Array.isArray(bundledRes.data.groups)
   );
 
-  const badRes = await (
-    await fetch(base + '/api/repos', {
-      method: 'POST',
-      headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ path: hub }),
-    })
-  ).json();
-  check('api 重复添加报错', !badRes.ok && /已登记/.test(badRes.error));
+  // 仓库登记的 HTTP 路由（/api/repos）随模块一起迁到 nx-kv 了，这里不再有可测的端点。
 
   const notFound = await (await fetch(base + '/api/nothing')).json();
   check('api 404', !notFound.ok);
