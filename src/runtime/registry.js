@@ -10,14 +10,16 @@
 // tests/unit/registry.test.mjs 会断言两侧对齐，漏登记直接测试失败。
 import { cliPathsOf } from './spec.js';
 import system from '../modules/system/index.js';
-import repos from '../modules/repos/index.js';
+// 仓库模块（repos）已于 2026-10-23 迁到 nx-kv（远程清单 topic=goal 的 #72）：
+// 仓库登记是本机事实，它的价值是给「本地任务管理」当上下文，所以它跟着任务走。
+// nx-kv 侧的命令是 `nx-kv repo ...` / `nx-kv board ...`。
 import skills from '../modules/skills/index.js';
 import settings from '../modules/settings/index.js';
 import env from '../modules/env/index.js';
 import bundled from '../modules/bundled/index.js';
 import worktrees from '../modules/worktrees/index.js';
 
-export const MODULES = [system, repos, skills, settings, env, bundled, worktrees].sort(
+export const MODULES = [system, skills, settings, env, bundled, worktrees].sort(
   (a, b) => (a.order ?? 100) - (b.order ?? 100)
 );
 

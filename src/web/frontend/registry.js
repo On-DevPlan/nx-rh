@@ -6,7 +6,7 @@
 import { lazy } from 'react';
 
 export const VIEWS = [
-  { id: 'repos', title: '仓库', component: lazy(() => import('../../modules/repos/view.jsx')) },
+  // 「仓库」页已于 2026-10-23 迁到 nx-kv（远程清单 topic=goal 的 #72）
   { id: 'skills', title: 'Skill', component: lazy(() => import('../../modules/skills/view.jsx')) },
   { id: 'settings', title: '设置', component: lazy(() => import('../../modules/settings/view.jsx')) },
   { id: 'env', title: '环境变量', component: lazy(() => import('../../modules/env/view.jsx')) },

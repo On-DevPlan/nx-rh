@@ -40,14 +40,15 @@ agent_created: true
    改 PATH 一律用 `env path add|remove`，不要手拼字符串。
 9. **git 边界**：本工具不做通用 git 操作（状态 / diff / pull / push / 冲突落地）；
    **唯一例外是工作树模块 `wt`**——它独占 git-worktree 操作（add/remove/rebase/扩展文件同步），
-   仍不做远端协作。`repo` 模块继续只维护登记信息。
+   仍不做远端协作。**仓库登记模块已于 2026-10-23 迁到 nx-kv**（`nx-kv repo ...`），
+   它给本地任务当上下文用；nx-rh 只剩 worktrees / skills / env / settings。
 
 ## 主流程（最短路径）
 
 ```
-1. 定位：nx-rh repo list  ·  nx-rh skill hub list [--source <路径>] [--project <项目根>]
-2. 诊断：nx-rh repo get <id>  ·  nx-rh skill show <name>
-3. 行动：nx-rh repo add|scan|update  ·  nx-rh skill hub migrate|unmigrate|submit|materialize|purge ...
+1. 定位：nx-kv repo list  ·  nx-rh skill hub list [--source <路径>] [--project <项目根>]
+2. 诊断：nx-kv repo get <id>  ·  nx-rh skill show <name>
+3. 行动：nx-kv repo add|scan|update  ·  nx-rh skill hub migrate|unmigrate|submit|materialize|purge ...
 4. 复核：重跑第 2 步，确认状态已按预期变化
 5. 汇报：说明实际执行了什么 + 剩余风险（尤其冲突未处理项）
 ```
@@ -58,7 +59,7 @@ agent_created: true
 > 订阅源本身用 `skill hub sources | subscribe | unsubscribe | main | check`。
 >
 > 另有配套 skill **`rh-collect`**（`skill install rh-collect` 或 `skill install --group=rh-collect`）：
-> 把 agent 发现的 git 仓库**先问过用户**再登记进仓库清单。
+> 把 agent 发现的 git 仓库**先问过用户**再登记进仓库清单（登记落在 nx-kv 的 `nx-kv repo add`）。
 >
 > 还有配套 skill **`rh-worktree`**（`skill install rh-worktree` 或 `skill install --group=rh-worktree`）：
 > 自动适配主仓库/工作树，规范创建工作树并显示主项目变更；工作树内可查看主项目被 ignore 的

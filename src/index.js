@@ -6,7 +6,9 @@ export * as errors from './core/errors.js';
 export * as git from './core/git.js';
 export * as gitignore from './core/gitignore.js';
 
-export * as repos from './modules/repos/service.js';
+// 仓库模块（repos）已于 2026-10-23 迁到 nx-kv（远程清单 topic=goal 的 #72）：
+// 仓库登记是本机事实，它的价值是给「本地任务管理」当上下文，所以它跟着任务走。
+// 库用方要仓库上下文请走 nx-kv（`nx-kv repo ...` / `nx-kv board ...`）。
 export * as skills from './modules/skills/service.js';
 export * as settings from './modules/settings/service.js';
 export * as system from './modules/system/service.js';

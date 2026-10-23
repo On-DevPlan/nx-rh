@@ -33,7 +33,7 @@ description: 把 git 仓库收进 nx-rh 的仓库登记表。当你在工作过�
 用户同意后：
 
 ```bash
-nx-rh repo add <绝对路径> --desc "一句话说明它是干什么的" --tags "标签,标签"
+nx-kv repo add <绝对路径> --desc "一句话说明它是干什么的" --tags "标签,标签"
 ```
 
 `--desc` 是这条记录里最有价值的部分——**名字和路径自己会说话，描述不会**。
@@ -73,7 +73,7 @@ nx-rh repo scan <目录>        # 会真的全部登记，desc 为空 —— 之
 | `nx-rh repo get <id\|路径>` | 单条详情（id 与绝对路径都能定位） |
 | `nx-rh repo scan [目录] --dry-run [--depth n]` | **只发现**，不登记 |
 | `nx-rh repo scan [目录] [--depth n]` | 发现并全部登记（desc 为空） |
-| `nx-rh repo add <路径> --desc "…" [--tags a,b] [--notes "…"]` | 登记一条 |
+| `nx-kv repo add <路径> --desc "…" [--tags a,b] [--notes "…"]` | 登记一条 |
 | `nx-rh repo update <id\|路径> --desc "…"` | 补 / 改描述 |
 | `nx-rh repo remove <id>` | 移除登记（**不动磁盘文件**） |
 

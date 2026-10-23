@@ -11,7 +11,7 @@ const LS_KEY = 'nx-rh-ui';
 // activeScope：null = 跟随服务进程目录（serve <dir> / cwd）；否则为 recents 条目
 // { scope, path, lastUsedAt }。项目级信息只针对激活的那个项目——右上角「最近目录」切换。
 const DEFAULT_UI = {
-  view: 'repos',      // 当前 tab
+  view: 'skills',     // 当前 tab（「仓库」页已于 2026-10-23 迁到 nx-kv）
   source: '',         // Skill 页选中的订阅源（留空 = 当前主源）
   activeScope: null,  // 激活的项目目录（右上角切换）
   selSkills: [],      // Skill 页多选勾选（skill 名）

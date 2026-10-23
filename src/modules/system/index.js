@@ -8,7 +8,6 @@ import { APP_NAME, storePathFromEnv, projectRoot, cwdScope } from '../../core/pa
 import { compileRoute } from '../../runtime/spec.js';
 import { badInput, notFound, blocked } from '../../core/errors.js';
 import * as settings from '../settings/service.js';
-import * as repos from '../repos/service.js';
 import * as worktrees from '../worktrees/service.js';
 import * as recentsSvc from './service.js';
 import { listAdapters } from '../skills/adapters.js';
@@ -49,7 +48,8 @@ async function bootstrap() {
     adapters: listAdapters(),
     hub: await skills.hubInfo(),
     sources: (await skills.listSources()).sources,
-    repos: await repos.listRepos(),
+    // 仓库登记（repos）已于 2026-10-23 迁到 nx-kv（远程清单 topic=goal 的 #72），
+    // 总览里不再有 repos 字段。
     // 工作树聚合（非 git 目录安全降级为 {git:false}，不阻断 bootstrap）
     worktrees: await worktrees.overview(),
     // 命令表随 bootstrap 下发前端，面板底部的「CLI 等价」提示由此渲染，

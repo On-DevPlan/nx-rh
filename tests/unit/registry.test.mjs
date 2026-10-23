@@ -214,7 +214,9 @@ const CRUD_VERB = { list: 'list', get: 'get', create: 'add', update: 'update', r
 
 test('声明了 CRUD 资源的模块，五个操作齐备且两端可调用', () => {
   const resources = MODULES.filter((m) => m.resource);
-  assert.ok(resources.length > 0, '没有任何模块声明 resource，这条检查就形同虚设');
+  // 注：nx-rh 目前**没有**声明 resource 的模块——仓库模块（repos）已于 2026-10-23
+  // 迁到 nx-kv（远程清单 topic=goal 的 #72）。下面的循环此时是空转；
+  // 等哪天有模块再声明 resource，它会自动恢复检查力。
 
   const problems = [];
   for (const m of resources) {
@@ -331,10 +333,11 @@ test('路由排序：字面量段压过同长度的 :param 段', async () => {
 });
 
 test('routes 正查：--module 过滤，且纯 CLI 命令如实标注 http:null', async () => {
-  const repos = await routesAction.run({ module: 'repos' });
-  assert.ok(repos.length > 0);
-  assert.ok(repos.every((c) => c.module === 'repos'));
-  assert.ok(repos.every((c) => c.http && c.http.method && c.http.path));
+  // 用 worktrees 举例（仓库模块 repos 已于 2026-10-23 迁到 nx-kv）
+  const wt = await routesAction.run({ module: 'worktrees' });
+  assert.ok(wt.length > 0);
+  assert.ok(wt.every((c) => c.module === 'worktrees'));
+  assert.ok(wt.every((c) => c.http && c.http.method && c.http.path));
 
   const all = await routesAction.run({});
   const { ALL_COMMANDS } = await import(
@@ -371,12 +374,13 @@ test('routes 正查：未知模块与无匹配端点都给出可行动的报错'
 });
 
 test('help 用法串能由声明完整生成（含参数与 flag）', () => {
-  const add = ACTIONS.find((a) => a.id === 'repo.add');
+  // 仓库模块（repo.add）已于 2026-10-23 迁到 nx-kv，这里改用 worktrees 的 wt.add
+  const add = ACTIONS.find((a) => a.id === 'wt.add');
   const usage = usageOf(add);
-  assert.match(usage, /^nx-rh repo add <path>/);
-  assert.match(usage, /\[--tags <tags>\]/);
+  assert.match(usage, /^nx-rh wt add <description>/);
+  assert.match(usage, /\[--base <起点分支>\]/);
 
   // agent 失败分类依赖 help 里出现这条命令名（也见于 assets/nx-rh 的用法文档）
   const allUsage = ACTIONS.map(usageOf).join('\n');
-  assert.ok(allUsage.includes('nx-rh repo add'), 'help 必须包含 repo add');
+  assert.ok(allUsage.includes('nx-rh wt add'), 'help 必须包含 wt add');
 });

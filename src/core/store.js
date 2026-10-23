@@ -20,10 +20,10 @@ const EMPTY = () => ({
     skillHubSources: [], // 订阅源目录（可多个、可重叠）
     skillProjectCandidates: [], // 项目目录候选（下拉多选项）
   },
-  repos: [], // 仓库登记（repos 模块的所有数据）
-  // 仓库看板（主题容器）：一个看板 = 一组仓库的编排；成员关系挂 repoIds（有序），
-  // 不在任何看板里的仓库 = 未分组。看板删除只是摘容器，登记不动。
-  boards: [],
+  // 仓库登记（repos）与仓库看板（boards）已于 2026-10-23 迁到 nx-kv
+  // （远程清单 topic=goal 的 #72）：仓库登记是本机事实，它的价值是给
+  // 「本地任务管理」当上下文，所以它跟着任务走。nx-kv 侧落在 ~/.nx-kv/repos.json，
+  // 命令是 `nx-kv repo ...` / `nx-kv board ...`。
   // worktrees 模块的状态：按主仓库的 cwdScope 分桶，
   // 只存 git 不知道的东西（扩展文件登记 + 模块配置）；工作树清单本身以 git 为准。
   worktreeState: {},
@@ -106,18 +106,7 @@ function normalize(data) {
   for (const key of ARRAY_SETTINGS) {
     base.settings[key] = toArray(base.settings[key]);
   }
-  base.repos = Array.isArray(data.repos) ? data.repos : [];
-  base.boards = Array.isArray(data.boards)
-    ? data.boards
-        .filter((b) => b && typeof b === 'object' && String(b.name || '').trim())
-        .map((b) => ({
-          id: String(b.id || ''),
-          name: String(b.name).trim(),
-          desc: String(b.desc || ''),
-          createdAt: String(b.createdAt || ''),
-          repoIds: Array.isArray(b.repoIds) ? b.repoIds.map(String) : [],
-        }))
-    : [];
+  // repos / boards 已迁到 nx-kv（2026-10-23），这里不再保留它们的字段。
   base.worktreeState =
     data.worktreeState && typeof data.worktreeState === 'object' ? data.worktreeState : {};
   base.recents = Array.isArray(data.recents) ? data.recents : [];
