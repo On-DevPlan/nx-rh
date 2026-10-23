@@ -4,6 +4,34 @@
 
 ## [Unreleased]
 
+## [0.17.0] - 2026-10-23 仓库模块迁到 nx-kv（仓库上下文跟着本地任务走）
+
+### Changed
+
+- **仓库模块（`repo` / `board`）整体迁到 nx-kv**（远程 KV 清单 `topic=goal` 的 #72）。
+  仓库登记（name / path / tags / desc / notes）与看板聚合（仓库 ↔ 看板，有序）现在住在
+  **nx-kv**（`~/.nx-kv/repos.json`），命令是 `nx-kv repo ...` / `nx-kv board ...`，
+  面板多一个「仓库」页（`nx-kv serve` → 仓库）。
+  - **为什么迁**：仓库登记是**本机事实**（路径在这台机器上），而它的价值是给
+    **本地任务管理**当上下文——agent 领到任务时要知道这条任务属于哪个仓库、周围
+    关联哪些看板。任务在哪台机器上跑，仓库上下文就该跟着走。
+  - nx-kv 侧：目录路径对得上已登记仓库时，主题视图与 `localtask wait` 的返回都带
+    仓库信息；面板目录行显示「所属看板」chip，投递条上方显示仓库上下文。
+  - 你的数据已迁走（15 个仓库 + 4 块看板：nx系列 / fr常用 / 远程打字 / 完整测试），
+    来源 `~/.nx-rh/store.json` 留了一份备份 `store.json.bak-before-kv-migration`。
+- **nx-rh 侧删除**：仓库模块目录（命令 + 面板页）、`runtime/registry.js` 的注册、
+  `system` 总览里的 `repos` 字段、`core/store.js` 的 `repos` / `boards` 字段、
+  前端「仓库」页与它的 `.bd-*` 样式、skill 文档里的 `nx-rh repo ...` 引用
+  （改为 `nx-kv repo ...`）。**worktrees / skills / env / settings 不受影响**
+  （它们本来就不依赖 repos；`worktree` 模块独占 git-worktree 操作，边界不变）。
+- nx-rh 的编程入口不再导出 `repos` service（模块已迁走）。
+
+### Removed
+
+- `nx-rh repo list|get|add|update|remove|scan|open` 与
+  `nx-rh board list|get|add|update|remove|assign|import|export`
+  —— 改用 nx-kv 的同名命令（语义一致）。
+
 ## [0.16.2] - 2026-10-20 端口占用自动复用/顺延 + 统一开关 NX_SERVE_NO_OPEN
 
 ### Changed
