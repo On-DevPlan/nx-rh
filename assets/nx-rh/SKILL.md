@@ -1,10 +1,10 @@
 ---
 name: nx-rh
-description: 当用户需要登记本机仓库 / 扫描发现仓库 / 维护仓库清单（路径、描述、标签、备注），需要订阅 Skill Hub 并把 skill 迁移到用户目录或项目目录（软链接或实体复制）、把平台目录里的 skill 提交回订阅源收敛为唯一实文件、盘点项目目录里实际存在的 skill，需要查看与修改 Windows 持久化环境变量与 PATH（命令找不到、改了不生效），或需要用 git worktree 开多个工作树、在工作树里获取主项目最新上下文、登记并同步 .gitignore 里的扩展文件时使用。触发词：仓库登记、仓库扫描、Skill Hub、skill 订阅、skill 迁移、软链接、实体副本、skill 提交、平台适配器、项目里的 skill、环境变量、PATH、工作树、worktree、多工作树、扩展文件、.gitignore 同步、主项目上下文。所有能力都同时提供同构 CLI（加 --json 供程序消费）与本地 Web 面板。
+description: 当用户需要订阅 Skill Hub 并把 skill 迁移到用户目录或项目目录（软链接或实体复制）、把平台目录里的 skill 提交回订阅源收敛为唯一实文件、盘点项目目录里实际存在的 skill，需要查看与修改 Windows 持久化环境变量与 PATH（命令找不到、改了不生效），或需要用 git worktree 开多个工作树、在工作树里获取主项目最新上下文、登记并同步 .gitignore 里的扩展文件时使用。触发词：Skill Hub、skill 订阅、skill 迁移、软链接、实体副本、skill 提交、平台适配器、项目里的 skill、环境变量、PATH、工作树、worktree、多工作树、扩展文件、.gitignore 同步、主项目上下文。所有能力都同时提供同构 CLI（加 --json 供程序消费）与本地 Web 面板。
 agent_created: true
 ---
 
-# nx-rh — 本机仓库登记与 Skill 管理
+# nx-rh — 本机 Skill 管理与工作树/环境中枢
 
 ## 不适用
 
@@ -13,8 +13,7 @@ agent_created: true
 
 ## 适用场景
 
-- 需要知道本机登记了哪些仓库、它们在哪、是干什么的（仓库**目录清单**，不含 git 状态）
-- 需要把某个目录登记为受管仓库，或扫描某个目录批量发现仓库
+- 需要知道本机登记了哪些仓库、它们在哪、是干什么的 —— **已迁到 nx-kv**（`nx-kv repo list` / `nx-kv repo scan`），本工具不再负责
 - 需要订阅 Skill Hub（skill 目录），把 skill 迁移到用户目录或项目目录（软链接或实体复制）
 - 需要把平台目录里散落的 skill 收进订阅源（提交），收敛「唯一实文件 = 订阅源」
 - 需要盘点某个项目目录里实际存在哪些 skill（`skill hub project skills`，含「独立未入 Hub」标注）
@@ -57,9 +56,6 @@ agent_created: true
 > `skill hub list` 列的是**你订阅源里的 skill**。业务命令（show / cat / add / update /
 > remove / purge / migrate / unmigrate / submit / materialize）全都挂在 `skill hub` 下。
 > 订阅源本身用 `skill hub sources | subscribe | unsubscribe | main | check`。
->
-> 另有配套 skill **`rh-collect`**（`skill install rh-collect` 或 `skill install --group=rh-collect`）：
-> 把 agent 发现的 git 仓库**先问过用户**再登记进仓库清单（登记落在 nx-kv 的 `nx-kv repo add`）。
 >
 > 还有配套 skill **`rh-worktree`**（`skill install rh-worktree` 或 `skill install --group=rh-worktree`）：
 > 自动适配主仓库/工作树，规范创建工作树并显示主项目变更；工作树内可查看主项目被 ignore 的

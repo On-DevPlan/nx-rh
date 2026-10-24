@@ -212,7 +212,7 @@ try {
     'skill list 是内置可装清单（B04 形状：skills 名字数组 + defaultGroup + groups）',
     Array.isArray(bundleList.skills) && bundleList.skills.includes('nx-rh')
       && bundleList.skills.includes('rh-gitsync') && bundleList.defaultGroup === 'nx-rh'
-      && Array.isArray(bundleList.groups) && bundleList.groups.includes('rh-collect'),
+      && Array.isArray(bundleList.groups) && bundleList.groups.includes('rh-worktree'),
     JSON.stringify(bundleList).slice(0, 220)
   );
   check('skill install --list 仍是别名（形状随主命令）',
@@ -222,7 +222,7 @@ try {
     'skill groups 给出 group → skills 映射',
     Array.isArray(bundleGroups.groups)
       && (bundleGroups.groupSkills['nx-rh'] || []).includes('nx-rh')
-      && (bundleGroups.groupSkills['rh-collect'] || []).includes('rh-collect')
+      && (bundleGroups.groupSkills['rh-worktree'] || []).includes('rh-worktree')
       && (bundleGroups.groupSkills['rh-gitsync'] || []).includes('rh-gitsync'),
     JSON.stringify(bundleGroups).slice(0, 220)
   );
@@ -258,12 +258,14 @@ try {
   check('非法包名被拒', cli(['skill', 'install', '../evil', '--to', skillsHome]).status === 1);
   check('旧名 repo-hub 仍可作别名', cli(['skill', 'install', 'repo-hub', '--to', skillsHome]).status === 0);
 
-  const groupInst = cliJson(['skill', 'install', '--group=rh-collect', '--to', skillsHome]);
+  const groupInst = cliJson(['skill', 'install', '--group=rh-worktree', '--to', skillsHome]);
   check(
     'skill install --group 装该组全部 skill（聚合形状用显式 group 字段判别）',
-    groupInst.group === 'rh-collect' && groupInst.skills.length === 1 && groupInst.skills[0].name === 'rh-collect',
+    groupInst.group === 'rh-worktree' && groupInst.skills.length === 1 && groupInst.skills[0].name === 'rh-worktree',
     JSON.stringify(groupInst).slice(0, 220)
   );
+  // rh-collect（仓库收集）已随仓库模块一起删除——模块迁去 nx-kv 时这个 skill 失去了依附
+  check('已删除的 skill 不再可装', cli(['skill', 'install', 'rh-collect', '--to', skillsHome]).status === 1);
   check('未知 group 报错并列可用', cli(['skill', 'install', '--group=bogus', '--to', skillsHome]).status === 1);
   check('<name> 与 --group 互斥', cli(['skill', 'install', 'nx-rh', '--group=nx-rh', '--to', skillsHome]).status === 1);
 

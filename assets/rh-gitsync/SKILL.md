@@ -9,7 +9,7 @@ description: 批量检查 git 仓库与远端的同步状态，并只对安全�
 一台机器上登记了十几个仓库，过一阵总有几个忘了推、几个忘了拉。
 本 skill 用一个零依赖的 Python 脚本（只依赖 git 与标准库，无任何 pip 包）把
 「逐个仓库 `git fetch` / `status` / 数提交」压成一次调用：**先看清每个仓库与远端的
-关系，再只对绝对安全的场景动手**。与 `nx-rh repo list` 配合，登记表里的仓库可以
+关系，再只对绝对安全的场景动手**。与 `nx-kv repo list` 配合，登记表（已迁 nx-kv）里的仓库可以
 一条命令全部巡检——nx-rh 本体照旧不做 git 操作，git 的事交给 git 自己 + 这个脚本。
 
 自动化的安全边界只有一条，写死在脚本里（没有开关）：
@@ -24,7 +24,7 @@ description: 批量检查 git 仓库与远端的同步状态，并只对安全�
 python3 ~/.claude/skills/rh-gitsync/scripts/gitsync.py --json
 ```
 
-- 省略路径 = 当前目录；可传多个路径；`nx-rh repo list --json` 里每条的 `path` 可直接拿来喂：
+- 省略路径 = 当前目录；可传多个路径；`nx-kv repo list --json` 里每条的 `path` 可直接拿来喂：
   `python3 …/gitsync.py "D:/code/a" "D:/code/b" --json`，路径多时用 `-` 从 stdin 逐行读。
 - `--json` 是给 agent 的机器契约（每仓库一个对象 + 顶层 summary）；不加则是人读报表。
 - 退出码：`0` 全部就绪 / 已自动同步；`1` 有 needs-human；`2` 环境错误（git 不可用等）。

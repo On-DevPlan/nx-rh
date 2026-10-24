@@ -1,6 +1,6 @@
 # nx-rh · npx-repo-hub
 
-本机仓库登记与 Agent Skill 的管理中枢。一个 `npx` 命令起一个 Web 面板，
+本机 Agent Skill 与工作树的管理中枢。一个 `npx` 命令起一个 Web 面板，
 同时提供同构 CLI——**面板上的每个按钮，底层都是同一条 CLI 命令**，
 输出 `--json` 即可被任何 agent 直接消费。
 
@@ -22,16 +22,17 @@
 用户就不再跑 `git status` 了；而那是个只看了 porcelain 首行、没管 stash /
 submodule / worktree / 未跟踪目录的实现。「看着像知道，实际不知道」比空白更糟。
 
-所以边界划在这里：**本工具维护「有哪些仓库、在哪、干什么用」这份登记表**，
-git 的事交给 git 自己。登记表是 git 给不了的东西——它跨仓库、带标签与描述，
-让 agent 不必每次重新问「这个是哪个项目」。
+所以边界划在这里：本工具的各功能域（skill 订阅 / 工作树 / 环境变量）都不碰通用 git
+操作；git 的事交给 git 自己。**「有哪些仓库、在哪、干什么用」这份登记表已于 0.17.0
+迁到 [nx-kv](https://github.com/On-DevPlan/nx-kv)**（`nx-kv repo ...` / `nx-kv board ...`）——
+仓库登记的价值是给本地任务当上下文，它跟着任务走，不再由本工具维护。
 
 > **唯一例外：工作树模块 `wt`**。它独占 git-worktree 操作——开/删工作树、
 > rebase / fanout、把 `.gitignore` 里不进工作树的文件/目录登记为**扩展文件**。
 > **nx-rh 只做「登记 + 提醒」，不复制、不链接任何文件**——工作树里用 `wt context`
 > 看主项目变更与扩展文件的主项目全路径（如 `.tool` 本地工具目录），只读参考；
 > 需要内容时 agent 自己复制（`Copy-Item` / `cp`）。
-> 即便如此，它仍不做通用 status/diff/pull/push 与远端协作；`repo` 模块继续不碰 git。
+> 即便如此，它仍不做通用 status/diff/pull/push 与远端协作。
 > 设计上工作树清单的真相始终在 git（`git worktree list` 现查），store 只存 git 不知道的
 > 扩展文件全路径与模块配置。配套 skill **`rh-worktree`** 把这套标准流程交给 agent 自动执行。
 
@@ -79,16 +80,16 @@ pnpm test
 **一条 action 同时声明 CLI 命令路径与 HTTP 路由**，二者写在同一处：
 
 ```js
-// src/modules/repos/index.js
+// src/modules/env/index.js
 {
-  id: 'repo.add',
-  cli: ['repo', 'add'],           // → nx-rh repo add <path>
-  http: ['POST', '/api/repos'],   // → POST /api/repos
-  summary: '登记一个仓库',         // → 自动进入 nx-rh help
-  args: ['path'],
-  flags: { name: { type: 'string' }, tags: { type: 'array' } },
-  run: (ctx) => service.addRepo(ctx),
-  render: (r) => `已登记: ${r.name} -> ${r.path}`,
+  id: 'env.set',
+  cli: ['env', 'set'],             // → nx-rh env set <name> <value>
+  http: ['PUT', '/api/env/:name'], // → PUT /api/env/:name
+  summary: '写入变量（upsert；已存在的变量保留其原始大小写与类型）', // → 自动进入 nx-rh help
+  args: [{ name: 'name' }, { name: 'value', required: false }],
+  flags: { value: { type: 'string', hint: '值（值以 -- 开头时用这个）' } },
+  run: (ctx) => service.setVariable(ctx),
+  render: (r) => `已写入: ${r.name}`,
 }
 ```
 
@@ -123,7 +124,7 @@ src/
     envvars.js           # 环境变量平台驱动（PowerShell ↔ Windows 注册表；posix 位置已预留）
   modules/               # 功能域，每个自包含
     system/              # bootstrap / health（聚合模块，无视图）
-    repos/  skills/  settings/  env/  bundled/  worktrees/
+    skills/  settings/  env/  bundled/  worktrees/
       index.js           #   action 声明（CLI + HTTP + help）；渲染多了拆 renders.js
       renders.js         #   CLI 人读渲染（render* 函数，只做数据→文本）
       service.js         #   service barrel：export * from './svc/*.js'
@@ -142,7 +143,7 @@ src/
       registry.js        # 视图注册表（新增面板 = 写组件 + 登记一行）
       App / store / components / api/client
     public/              # vite build 产物（gitignore）
-assets/repo-hub/         # 随包发布的 agent 使用说明
+assets/                 # 随包发布的 agent 使用说明（assets/<name>/SKILL.md，可 skill install）
 tests/
   smoke.mjs              # 端到端：CLI 全链路 + HTTP API + 静态页
   unit/                  # 单元测试 + 注册表一致性断言
@@ -184,18 +185,6 @@ localStorage 持久化，刷新不丢。
     "skillHubSources": ["D:/a_other/md/sl/skills"],
     "skillProjectCandidates": []
   },
-  "repos": [
-    {
-      "id": "r_xxx",
-      "name": "nx-rh",
-      "path": "D:/code/js/proj/nx-rh",
-      "desc": "仓库登记与 Skill 中枢",
-      "tags": ["tool"],
-      "notes": "",
-      "addedAt": "...",
-      "updatedAt": "..."
-    }
-  ],
   "recents": [
     { "scope": "d:\\a_js\\js_proj\\nx-rh", "path": "D:/a_js/js_proj/nx-rh", "lastUsedAt": "..." }
   ]
@@ -219,13 +208,6 @@ localStorage 持久化，刷新不丢。
 | `nx-rh help [模块]` / `version` / `bootstrap` / `health` | — |
 | `nx-rh routes [--module M] [--http "METHOD /api/path"]` | 命令 ↔ 路由对照；`--http` 可由端点反查命令 |
 | `nx-rh recents` / `recents add <目录>` / `recents remove <目录>` | 最近项目列表 / 登记 / 移除（面板项目下拉的数据源） |
-| `nx-rh repo list` | 仓库页：清单 |
-| `nx-rh repo get <id\|path>` | 单条登记信息 |
-| `nx-rh repo add <path> [--name N] [--desc D] [--tags a,b] [--notes T]` | 添加仓库 |
-| `nx-rh repo update <id> [...]` | 编辑登记（含 `--path` 改路径） |
-| `nx-rh repo remove <id>` | 删除登记（不动磁盘） |
-| `nx-rh repo scan [root] [--depth 3] [--dry-run]` | 扫描发现 git 仓库；**`--dry-run` 只列出**（发现模式，零副作用），不带则全部登记。`root` 缺省当前目录 |
-| `nx-rh repo open <id>` | 在文件管理器中打开 |
 | `nx-rh skill hub adapters [--project <目录>]` | 平台清单 + 每平台的**项目级 / 用户级绝对安装位置** |
 | `nx-rh skill hub list [--source <路径>] [--project <项目根>] [--long]` | 零启动盘点：名称 / 来源目录 / 描述（`--long` 完整）+ 迁移状态 + 不在订阅源的 skill |
 | `nx-rh skill hub show <name> [--project <项目根>]` | 完整描述 + 目录 + 各平台安装状态与形态 |
@@ -292,17 +274,14 @@ REST API 与命令**严格一一对应**：每条路由都由某条 action 的 `
 
 ```bash
 nx-rh routes                              # 全量对照表
-nx-rh routes --module repos               # 按模块过滤
+nx-rh routes --module env                 # 按模块过滤
 nx-rh routes --http "POST /api/skills/migrate"  # 反向：有端点，查该敲哪条命令
 nx-rh routes --json                       # 含每条的完整签名（位置参数与 flag）
 ```
 
 反向查找复用路由编译时的正则，所以带参路由也能匹配具体实例
-（`DELETE /api/repos/r_abc` → `nx-rh repo remove`）。
+（`DELETE /api/env/JAVA_HOME` → `nx-rh env remove`）。
 `http: null` 的命令（如 `setting get`）会如实标注为「仅 CLI」。
-
-> `repo` 模块只管登记（路径 / 名称 / 描述 / 标签 / 备注 / 扫描发现），
-> 不含任何 git 操作——原因见上面的[「为什么不管 git」](#为什么不管-git)。
 
 > Git Bash 注意：`--http /api/x` 这种以 `/` 开头的值会被 MSYS 改写成 Windows 路径。
 > 加上方法前缀（`--http "GET /api/x"`）或设 `MSYS_NO_PATHCONV=1` 即可。
@@ -378,16 +357,15 @@ nx-rh skill get nx-rh skill-hub     # 裸名 ref → references/skill-hub.md
 ```
 
 - 安装是**三态**的：不存在 → 安装；存在且一致 → `skipped`；存在且不同 → `conflict` 列文件清单（须显式 `--force`）
-- 结构遵循渐进式披露：主 `SKILL.md` 只放**核心原则 + ref-map**，场景细节全部在 `references/`（`repo-registry` / `skill-hub` / `env-manage` / `agent-workflow`）
+- 结构遵循渐进式披露：主 `SKILL.md` 只放**核心原则 + ref-map**，场景细节全部在 `references/`（`skill-hub` / `env-manage` / `worktree-manage` / `agent-workflow`）
 - 扩展方式：新增 `assets/nx-rh/references/<场景>.md` 并在主文档路由表补一行「何时读取」
 - `skill get` 与 `skill install` 是**互补能力**：install 让本机 agent 学得会用，get 让**不读
   `~/.claude/skills` 的外部 agent**一键拿全上下文；`get` 永远给文档，目标端 conflict 只作为附带信息返回
 - 旧名 `repo-hub` 仍可作为 `--name` 别名使用
 - Web 面板「Skill」页底部「内置手册」区块：导出上下文 / 安装到本机
 
-包内另有三个面向特定任务的配套 skill（同样可 `skill install <名>`）：
+包内另有两个面向特定任务的配套 skill（同样可 `skill install <名>`）：
 
-- **rh-collect**：把发现的 git 仓库先问过用户再登记进仓库清单。
 - **rh-worktree**：自动适配主仓库/工作树——主仓库里按需求登记扩展文件并创建工作树（不复制），
   工作树里显示主项目地址、本树信息与被 ignore 的关注项（如 `.tool` 本地工具目录）的主项目全路径，只读参考。
 - **rh-gitsync**：批量检查登记仓库与远端的同步状态——工作区干净且差异单向（只领先 / 只落后）

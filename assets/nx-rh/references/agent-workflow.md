@@ -46,7 +46,7 @@ nx-rh routes --http "POST /api/skills/migrate"   # 手里有端点，反查该�
 ### 1. 先诊断，再行动
 
 ```bash
-# 仓库登记清单一（路径 / 名称 / 描述 / 标签）——仓库模块已迁到 nx-kv
+# 仓库登记清单一（路径 / 名称 / 描述）——仓库模块已迁到 nx-kv（无标签，分组走看板）
 nx-kv repo list --json
 
 # 订阅源里的 skill 及各目标迁移状态
@@ -71,8 +71,8 @@ done
 ### 3. 结果聚合成报告
 
 ```bash
-# 仓库按标签归类计数
-nx-kv repo list --json | jq 'group_by(.tags[]) | map({tag: .[0].tags[0], n: length})'
+# 仓库按看板（领域分组）归类计数——仓库没有标签，分组只走看板
+nx-kv board list --json | jq '.boards | map({name, n: (.repos | length)})'
 ```
 
 向用户汇报时给出：**做了什么**（动作清单）+ **剩余风险**（未处理的冲突、被跳过的项及原因）。
