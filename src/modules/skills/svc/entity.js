@@ -156,6 +156,37 @@ export async function purgeSkill({ name, project, force, dryRun } = {}) {
   return { status: 'ok', dryRun: false, name, plan, removed };
 }
 
+// 批量彻底删除：逐个走 purgeSkill，单条的「未找到 / 阻塞」不挡其余
+// （与 migrate / submit 的批量同款语义：部分成功也是成功，逐条如实上报）。
+// 全部 ok → status 'ok'；有阻塞或失败 → 'partial'，调用方按 results 处理。
+export async function purgeSkills({ names, project, force, dryRun } = {}) {
+  const list = (Array.isArray(names) ? names : [names])
+    .map((n) => String(n || '').trim())
+    .filter(Boolean);
+  if (!list.length) throw badInput('缺少要删除的 skill 名（<name...>）');
+  const results = [];
+  for (const name of list) {
+    try {
+      results.push(await purgeSkill({ name, project, force, dryRun }));
+    } catch (e) {
+      results.push({
+        status: 'error',
+        name,
+        plan: { name, sources: [], targets: [], copies: 0 },
+        removed: [],
+        reason: String((e && e.message) || e),
+      });
+    }
+  }
+  return {
+    status: results.every((r) => r.status === 'ok') ? 'ok' : 'partial',
+    dryRun: !!dryRun,
+    results,
+    purged: results.filter((r) => r.status === 'ok' && !r.dryRun).length,
+    copies: results.reduce((n, r) => n + (r.plan?.copies || 0), 0),
+  };
+}
+
 // 唯一化一个跨源重复/冲突的 skill：以 --source 那份实文件为准，处理其余来源的实文件。
 //   as=link   → 其余转为指向准份的链接：来源目录里仍能看到这个 skill，但链接不算来源
 //               （见 scan 的 realOnly），冲突与重复随之消失——「勋章」形态：一份实文件 + N 处链接

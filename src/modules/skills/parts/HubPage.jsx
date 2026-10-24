@@ -4,7 +4,7 @@ import { api } from '../../../web/frontend/api/client.js';
 import { useStore } from '../../../web/frontend/store.jsx';
 import { useToast, useGuard } from '../../../web/frontend/components/ui.jsx';
 import { Crumbs, SkillCard, useSkillsData, useSel, makeHit, sourceLabel } from './shared.jsx';
-import { MigrateToDialog } from './dialogs.jsx';
+import { MigrateToDialog, BatchPurgeDialog } from './dialogs.jsx';
 import { goSkill } from './routes.js';
 
 export function HubPage({ hubPath, tick }) {
@@ -16,6 +16,7 @@ export function HubPage({ hubPath, tick }) {
   // 批量迁移与详情页走同一款 MigrateToDialog（平台复选 + 形态），
   // 这里只记点到的是哪半边按钮；平台选择不塞在页头下拉里。
   const [migrateTo, setMigrateTo] = useState(null); // 'project' | 'user' | null
+  const [purgeOpen, setPurgeOpen] = useState(false); // 批量彻底删除
 
   const sel = useSel();
   const skills = data?.skills || [];
@@ -62,6 +63,8 @@ export function HubPage({ hubPath, tick }) {
             <button className="btn ghost" onClick={() => patchUi({ selSkills: [] })}>清空勾选</button>
             <button className="btn" onClick={() => setMigrateTo('project')}>迁移勾选 → 项目…</button>
             <button className="btn" onClick={() => setMigrateTo('user')}>迁移勾选 → 用户…</button>
+            <button className="btn danger" title="连各平台安装位置与订阅源实文件一起删，不可恢复（先预演再确认）"
+              onClick={() => setPurgeOpen(true)}>彻底删除…</button>
           </> : null}
         </div>
       </div>
@@ -101,6 +104,14 @@ export function HubPage({ hubPath, tick }) {
           boot={boot}
           onClose={() => setMigrateTo(null)}
           onDone={async () => { setMigrateTo(null); patchUi({ selSkills: [] }); await reload(); }}
+        />
+      ) : null}
+
+      {purgeOpen ? (
+        <BatchPurgeDialog
+          names={checked}
+          onClose={() => setPurgeOpen(false)}
+          onDone={async () => { setPurgeOpen(false); patchUi({ selSkills: [] }); await reload(); refreshBoot(); }}
         />
       ) : null}
     </>

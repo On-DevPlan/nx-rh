@@ -226,22 +226,28 @@ export default {
       // 与 skill remove 分开：remove 只下架订阅源那份（目标侧还引用就 blocked），
       // purge 是「这个名字不该存在了」——连各平台安装位置一起删。
       // **不在订阅源的 skill 只有这一条路能删**（订阅源里根本没有它，remove 是 NOT_FOUND）。
+      // <name...> 可给多个：批量语义与 migrate 同款——单条的失败/阻塞不挡其余，逐条上报。
       id: 'skill.purge',
       cli: [['skill', 'hub', 'purge'], ['skill', 'purge']],
       http: ['POST', '/api/skills/purge'],
-      summary: '彻底删除 skill：所有平台安装位置 + 订阅源里的实文件（--dry-run 先看清单）',
-      args: ['name'],
+      summary: '彻底删除 skill：所有平台安装位置 + 订阅源里的实文件（<name...> 可批量；--dry-run 先看清单）',
+      args: [{ name: 'name', rest: true }],
       flags: {
         force: { type: 'boolean', hint: '安装位置里有实体副本时必须加（可能含本地改动）' },
         project: { type: 'string' },
         'dry-run': { type: 'boolean', hint: '只列出将删除的路径，不落盘' },
       },
-      run: (ctx) => service.purgeSkill({
-        name: ctx.name,
-        force: ctx.force,
-        project: projectOf(ctx),
-        dryRun: ctx['dry-run'] === true,
-      }),
+      run: (ctx) => {
+        const common = { force: ctx.force, project: projectOf(ctx), dryRun: ctx['dry-run'] === true };
+        // CLI 的 rest 位置参数恒为数组；HTTP 详情页传单个字符串（历史形状，保持不变）。
+        // 数组长度 1 也走单条：CLI `purge <name>` 的输出形状向后兼容。
+        if (Array.isArray(ctx.name)) {
+          if (ctx.name.length === 1) return service.purgeSkill({ name: ctx.name[0], ...common });
+          if (!ctx.name.length) throw badInput(`用法: nx-rh skill hub purge <name...> —— 至少给一个 skill 名`);
+          return service.purgeSkills({ names: ctx.name, ...common });
+        }
+        return service.purgeSkill({ name: ctx.name, ...common });
+      },
       render: renderPurge,
     },
 

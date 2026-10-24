@@ -1,9 +1,9 @@
-// Skill 页的弹窗：编辑器、「收进订阅源」选源、迁移选平台、Skill 域设置。
-import { useEffect, useState } from 'react';
+// Skill 页的弹窗：编辑器、「收进订阅源」选源、迁移选平台、批量彻底删除、Skill 域设置。
+import { useCallback, useEffect, useState } from 'react';
 import { api } from '../../../web/frontend/api/client.js';
 import { useStore } from '../../../web/frontend/store.jsx';
 import { useToast, useGuard, useDialog, Modal } from '../../../web/frontend/components/ui.jsx';
-import { sourceLabel } from '../shared.js';
+import { SCOPE_MARK, sourceLabel } from '../shared.js';
 
 // skill 编辑器（新建 / 编辑，弹窗）
 export function SkillEditor({ mode, skill = {}, close, reload }) {
@@ -197,6 +197,117 @@ export function MigrateToDialog({ names, to, boot, onClose, onDone }) {
       <div className="dlg-acts">
         <button className="btn ghost" onClick={onClose}>取消</button>
         <button className="btn" disabled={busy || !ids.size} onClick={ok}>{busy ? '迁移中…' : '迁移'}</button>
+      </div>
+    </Modal>
+  );
+}
+
+// 批量彻底删除：打开先 --dry-run 拉每个 skill 的删除清单（各平台安装位置 + 订阅源实文件），
+// 人工确认后一次执行。实体副本（可能含本地改动）服务端默认挡下，需勾「连实体副本一起删」。
+// 部分完成后弹窗不关：没删掉的留在列表里（自动重新预演），勾上 force 可原地重试；
+// 有删成功过，关闭时走 onDone 让列表刷新并清掉勾选。
+export function BatchPurgeDialog({ names, onClose, onDone }) {
+  const toast = useToast();
+  const guard = useGuard();
+  const [pending, setPending] = useState(names); // 还没删掉的（部分完成后收窄）
+  const [plan, setPlan] = useState(null);        // dry-run 结果：{ results:[…] } 或 { error }
+  const [force, setForce] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [purgedN, setPurgedN] = useState(0);     // 本次弹窗里已成功删除的个数
+
+  const loadPlan = useCallback(async (list) => {
+    setPlan(null);
+    try {
+      const r = await api('/api/skills/purge', { method: 'POST', body: { name: list, 'dry-run': true } });
+      setPlan(r.results ? r : { results: [r] });
+    } catch (e) {
+      setPlan({ error: String((e && e.message) || e) });
+    }
+  }, []);
+
+  useEffect(() => { loadPlan(pending); }, [pending, loadPlan]);
+
+  const results = plan?.results || [];
+  const copies = results.reduce((n, r) => n + (r.plan?.copies || 0), 0);
+  const plannedN = results.filter((r) => r.status === 'ok').length;
+
+  const ok = () => guard(async () => {
+    setBusy(true);
+    try {
+      const r = await api('/api/skills/purge', { method: 'POST', body: { name: pending, force } });
+      const rs = r.results || [r];
+      const doneN = rs.filter((x) => x.status === 'ok' && !x.dryRun).length;
+      const restNames = rs.filter((x) => x.status !== 'ok' || x.dryRun).map((x) => x.name);
+      if (!restNames.length) {
+        toast(`已彻底删除 ${doneN + purgedN} 个 skill`);
+        onDone();
+        return;
+      }
+      setPurgedN((n) => n + doneN);
+      setPending(restNames);
+      setForce(false);
+      toast(`已删除 ${doneN} 个；剩 ${restNames.length} 个被阻止（多含实体副本，勾选后可重试）`);
+    } finally {
+      setBusy(false);
+    }
+  });
+
+  const close = () => { if (purgedN) onDone(); else onClose(); };
+
+  return (
+    <Modal title={`彻底删除 · ${pending.length} 个 skill`} onClose={close}>
+      <div className="vlegend">
+        彻底删除 = <strong>各平台安装位置 + 订阅源实文件</strong>一起删，不可恢复。
+        {purgedN ? <span> 本次已删 {purgedN} 个，剩余见下。</span> : null}
+      </div>
+
+      {plan?.error ? (
+        <div className="tag bad" style={{ whiteSpace: 'pre-wrap' }}>{plan.error}</div>
+      ) : !plan ? (
+        <div className="muted" style={{ padding: '10px 2px' }}>正在预演删除清单…</div>
+      ) : (
+        <>
+          <div className="list" style={{ border: '1px solid var(--soft-2)', borderRadius: 6, maxHeight: 300, overflow: 'auto' }}>
+            {results.map((r) => {
+              const tip = [
+                ...(r.plan?.sources || []).map((s) => `订阅源  ${s.dir}`),
+                ...(r.plan?.targets || []).map((c) => `安装位置  ${SCOPE_MARK[c.scope] || c.scope}·${c.platformName || c.platform}  ${c.path}${c.linkType ? '（链接）' : '（实体副本）'}`),
+              ].join('\n');
+              return (
+                <div key={r.name} className="row" style={{ padding: '6px 10px' }}>
+                  <span className="name" title={r.name}>{r.name}</span>
+                  {r.status === 'error' ? (
+                    <span className="tag bad" title={r.reason}>删除清单失败</span>
+                  ) : (
+                    <>
+                      <span className="desc muted" title={tip || '（订阅源与各平台目录里都没有）'}>
+                        {r.plan?.targets?.length ? `安装 ${r.plan.targets.length} 处` : '未安装'}
+                        {r.plan?.sources?.length ? ` · 订阅源 ${r.plan.sources.length} 份` : ''}
+                      </span>
+                      {r.plan?.copies ? <span className="tag bad">实体副本 {r.plan.copies}</span> : null}
+                    </>
+                  )}
+                </div>
+              );
+            })}
+            {!results.length ? <div className="row muted">（没有可删的项）</div> : null}
+          </div>
+
+          {copies ? (
+            <label className="row" style={{ marginTop: 8, cursor: 'pointer' }}>
+              <input type="checkbox" checked={force} onChange={(e) => setForce(e.target.checked)} />
+              <span className="name">连实体副本一起删（--force）</span>
+              <span className="desc muted">其中 {copies} 处是实体副本，可能含本地改动</span>
+            </label>
+          ) : null}
+        </>
+      )}
+
+      <div className="dlg-acts">
+        <button className="btn ghost" onClick={close}>取消</button>
+        <button className="btn danger" disabled={busy || plan?.error || !plannedN} onClick={ok}>
+          {busy ? '删除中…' : `彻底删除 ${plannedN} 个`}
+        </button>
       </div>
     </Modal>
   );

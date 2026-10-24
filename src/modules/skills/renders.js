@@ -185,6 +185,24 @@ export function renderShow(d) {
 }
 
 export function renderPurge(d) {
+  // 批量形状（<name...> 多个）：逐条一行，成功/阻塞/失败各自如实标注
+  if (d.results) {
+    const lines = [];
+    if (d.dryRun) lines.push(`预演（--dry-run，未改动磁盘）: 共 ${d.results.length} 个 skill`);
+    else lines.push(`已彻底删除 ${d.purged}/${d.results.length} 个`);
+    for (const r of d.results) {
+      if (r.status === 'ok') {
+        lines.push(r.dryRun
+          ? `  预演    ${r.name}（安装 ${r.plan.targets.length} 处 · 订阅源 ${r.plan.sources.length} 份）`
+          : `  已删除  ${r.name}（${r.removed.length} 处）`);
+      }
+      else if (r.status === 'blocked') lines.push(`  已阻止  ${r.name}: ${r.reason}`);
+      else if (r.status === 'error') lines.push(`  失败    ${r.name}: ${r.reason}`);
+      else lines.push(`  ${r.name}: ${r.status}`);
+    }
+    if (d.status === 'partial') lines.push('部分完成——被阻止的多含实体副本，确认后加 --force 重跑那几个。');
+    return lines.join('\n');
+  }
   const lines = [];
   if (d.status === 'blocked') lines.push(`已阻止: ${d.reason}`);
   else if (d.dryRun) lines.push(`预演（--dry-run，未改动磁盘）: 将彻底删除 ${d.plan.name}`);
