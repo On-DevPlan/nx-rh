@@ -62,10 +62,10 @@ export function renderSkillList(d, ctx) {
 }
 
 export function renderSources(d) {
-  if (!d.sources.length) return '（暂无订阅源，用 nx-rh skill hub subscribe <path|owner/repo> 添加）';
+  if (!d.sources.length) return '（暂无订阅源，用 nx-rh skill hub subscribe <path> 添加；外部 skill 走 skill hub remote import）';
   return d.sources
     .map((s) => {
-      const remote = s.remote ? `  ← 远程 ${s.remote.spec}${s.remote.ref ? '@' + s.remote.ref : ''}` : '';
+      const remote = s.remote ? '  ← 远程订阅' : '';
       return `${s.current ? '*' : ' '} ${s.path}  (${s.count} 个)${s.exists ? '' : '  [目录不存在]'}${remote}`;
     })
     .join('\n');
@@ -328,17 +328,17 @@ export function renderSearch(d) {
   return lines.join('\n');
 }
 
-// 远程 Hub 清单：skill 名 + 版本指纹（8 位）+ 来源/形态 + 更新时间
+// 远程订阅 清单：skill 名 + 版本指纹（8 位）+ 来源/形态 + 更新时间
 export function renderRemoteHub(d) {
   if (!d.skills.length) {
     return [
-      `远程 Hub 还是空的: ${d.dir}`,
+      `远程订阅 还是空的: ${d.dir}`,
       '导入: nx-rh skill hub remote import <owner/repo|git URL>',
       '手写定义: nx-rh skill hub remote add <name>',
       '软链: nx-rh skill hub remote link <name> <目标目录>',
     ].join('\n');
   }
-  const lines = [`远程 Hub: ${d.dir}  (${d.skills.length} 个 skill)`];
+  const lines = [`远程订阅: ${d.dir}  (${d.skills.length} 个 skill)`];
   for (const s of d.skills) {
     const from = s.linkType ? `软链 → ${s.dir}` : s.manual ? '（手写定义）' : `${s.spec}${s.ref ? '@' + s.ref : ''}`;
     lines.push(`${s.name.padEnd(28)} ${String(s.hash).slice(0, 8)}  ${from}  ·  更新于 ${s.updatedAt || '—'}`);
@@ -346,10 +346,10 @@ export function renderRemoteHub(d) {
   return lines.join('\n');
 }
 
-// 远程 Hub 更新结果：变了 / 没变 / 上游没了 / 跳过 / 失败
+// 远程订阅 更新结果：变了 / 没变 / 上游没了 / 跳过 / 失败
 export function renderRemoteUpdate(d) {
   if (d.note) return d.note;
-  const lines = ['远程 Hub 更新:'];
+  const lines = ['远程订阅 更新:'];
   for (const r of d.results) {
     if (r.status === 'updated') lines.push(`  ~ ${r.name}  ${String(r.from).slice(0, 8)} → ${String(r.hash).slice(0, 8)}`);
     else if (r.status === 'unchanged') lines.push(`  = ${r.name}  无变化`);

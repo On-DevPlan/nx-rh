@@ -12,15 +12,14 @@ export const STORE_PATH = join(APP_DIR, 'store.json');
 // 混在配置目录里会让「这是配置还是备份」变得分不清。
 export const ENV_SNAPSHOT_DIR = join(APP_DIR, 'env_snapshots');
 export const DEFAULT_PORT = 7800;
-// 远程订阅源的落地目录：clone / 下载的内容物化在这里，再注册为普通订阅源。
-// 与 store.json 同处 ~/.nx-rh/；测试与多实例用 NX_RH_REMOTE_DIR 覆盖（对齐 storePathFromEnv）。
-export const REMOTE_SKILLS_DIR = join(APP_DIR, 'remote-skills');
+// 远程拉取的暂存区：clone/下载先落这里，再把需要的 skill 取进「远程订阅」仓库。
+// 与 store.json 同处 ~/.nx-rh/；测试用 NX_RH_REMOTE_DIR 覆盖。
+export const REMOTE_SKILLS_DIR = join(APP_DIR, '.staging');
 
-// 远程 Hub：唯一一个「装着外部 skill」的容器（实体目录，非链接）。
-// 落位 nx-rh 自己的领域目录 ~/.nx-rh/remote-hub/，skill 直接放在其下
-// （<hub>/<name>/SKILL.md）；Hub 里也可以放**软链**——链到别处的 skill 同样可用，
-// 便于「同一份源码多处分发」。
-export const REMOTE_HUB_DIR = join(APP_DIR, 'remote-hub');
+// 远程订阅仓库：唯一一个「装着外部 skill」的容器，落位 nx-rh 自己的领域目录，
+// 名字固定（不随来源派生）—— ~/.nx-rh/远程订阅/<name>/SKILL.md。
+// 它与本地 skill hub **同级**：两者都是订阅源，远程这份由本工具托管。
+export const REMOTE_HUB_DIR = join(APP_DIR, '远程订阅');
 
 export function remoteSkillsDir() {
   return process.env.NX_RH_REMOTE_DIR || REMOTE_SKILLS_DIR;

@@ -34,9 +34,9 @@ const EMPTY = () => ({
   // 键是注册进 skillHubSources 的那个路径；值只记「这个源从哪来、何时拉的」，
   // 内容真相始终在磁盘（remote-skills/<id>/）。R2 的 sync 按它对比变更。
   remoteSources: {},
-  // 远程 Hub：唯一一个装着外部 skill 的容器（落位 ~/.nx-rh/remote-hub/）。
-  // skills: { [skill名]: { spec, url, ref, skillPath, hash, importedAt, updatedAt } }
-  // —— hash 就是这个 skill 的「版本」，updatedAt 是「何时更新的」。
+  // 远程订阅仓库元数据：<仓库目录> → { spec, url, ref, hash, importedAt, updatedAt }。
+  // hash 就是这个 skill 的「版本」，importedAt/updatedAt 是「何时导入/更新」。
+  // 键是 skill 名（仓库内一个 skill 一条），值记「从哪来、什么版本」。
   remoteHub: { dir: '', skills: {} },
 });
 
@@ -53,8 +53,14 @@ export async function loadStore(explicitPath) {
     const st = await fsp.stat(p);
     if (cache && cacheMtime === st.mtimeMs) return cache;
     const raw = await fsp.readFile(p, 'utf8');
-    cache = normalize(JSON.parse(raw));
+    const data = JSON.parse(raw);
+    cache = normalize(data);
     cacheMtime = st.mtimeMs;
+    // 旧模型（每个远程规格各建一个源）的登记在 normalize 里被摘掉了——
+    // 顺手把清理结果落盘，否则磁盘上会一直留着那个悬空源。
+    if (hasLegacyRemoteSource(data)) {
+      await saveStore(cache, explicitPath);
+    }
     return cache;
   } catch {
     // 文件不存在或损坏：返回空结构（首次运行 / 允许外部修复后恢复）
@@ -62,6 +68,12 @@ export async function loadStore(explicitPath) {
     cacheMtime = -1;
     return cache;
   }
+}
+
+// 磁盘上的 store 里是否还有旧模型的远程源登记
+function hasLegacyRemoteSource(data) {
+  const list = data?.settings?.skillHubSources;
+  return Array.isArray(list) && list.some((p) => /[\\/]remote-skills[\\/]/i.test(String(p)));
 }
 
 export async function saveStore(next, explicitPath) {
@@ -120,6 +132,18 @@ function normalize(data) {
   base.recents = Array.isArray(data.recents) ? data.recents : [];
   base.remoteSources =
     data.remoteSources && typeof data.remoteSources === 'object' ? data.remoteSources : {};
+  // 「每个远程规格各建一个源」的旧模型（0.18 前的开发期形态）已废弃：
+  // 远程内容统一进固定名的「远程订阅」仓库。旧登记自动摘掉，避免留下悬空源。
+  const legacy = base.settings.skillHubSources.filter((p) => /[\\/]remote-skills[\\/]/i.test(p));
+  if (legacy.length) {
+    base.settings.skillHubSources = base.settings.skillHubSources.filter(
+      (p) => !/[\\/]remote-skills[\\/]/i.test(p)
+    );
+    if (base.settings.skillHubPath && legacy.some((p) => p.toLowerCase() === base.settings.skillHubPath.toLowerCase())) {
+      base.settings.skillHubPath = '';
+    }
+  }
+  base.remoteSources = {};
   base.remoteHub =
     data.remoteHub && typeof data.remoteHub === 'object'
       ? { dir: String(data.remoteHub.dir || ''), skills: data.remoteHub.skills && typeof data.remoteHub.skills === 'object' ? data.remoteHub.skills : {} }

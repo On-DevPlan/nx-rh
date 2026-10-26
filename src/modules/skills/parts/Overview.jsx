@@ -22,7 +22,7 @@ export function Overview({ data, openCreate }) {
       title: '订阅 skill 目录',
       input: true,
       placeholder: '本地目录（目录下直接是各 skill）',
-      message: '外部 skill 走「远程 Hub」页（搜索导入 / 添加定义 / 版本更新）。',
+      message: '外部 skill 走「远程订阅」页（搜索导入 / 添加定义 / 版本更新）。',
     });
     if (!p) return;
     await api('/api/skills/sources', { method: 'POST', body: { path: p }, timeoutMs: 120000 });
@@ -39,7 +39,7 @@ export function Overview({ data, openCreate }) {
           </div>
         </div>
         <div className="acts">
-          <button className="btn ghost" onClick={goRemote}>远程 Hub…</button>
+          <button className="btn ghost" onClick={goRemote}>远程订阅…</button>
           <button className="btn ghost" onClick={() => setCheckOpen(true)}>检查订阅源…</button>
           <button className="btn ghost" onClick={() => setSettingsOpen(true)}>Skill 设置</button>
           {data?.hub?.path ? <button className="btn" onClick={openCreate}>＋ 新建</button> : null}
@@ -53,7 +53,7 @@ export function Overview({ data, openCreate }) {
         {sources.map((s) => (
           <div key={s.path} className="entry-card" onClick={() => (s.remote ? goRemote() : goHub(s.path))}>
             <div className="ec-top">
-              <span className="ec-name">{s.remote ? '远程 Hub' : sourceLabel(s.path, srcPaths)}</span>
+              <span className="ec-name">{s.remote ? '远程订阅' : sourceLabel(s.path, srcPaths)}</span>
               {s.current ? <span className="tag strong">主源</span> : null}
               {s.remote ? <span className="tag">外部 skill</span> : null}
               {!s.exists ? <span className="tag bad">不存在</span> : null}

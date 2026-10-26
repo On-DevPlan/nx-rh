@@ -1,16 +1,17 @@
-// 远程 Hub：唯一一个装着「外部 skill」的容器（落位 ~/.nx-rh/remote-hub/）。
+// 远程订阅仓库：唯一一个装着「外部 skill」的容器，落位 ~/.nx-rh/远程订阅/（名字固定）。
 //
 // 模型（与「多个远程订阅源」是两回事）：
-//   - 远程 Hub 是**一个**订阅源，目录布局 <hub>/<name>/SKILL.md
-//   - Hub 里既有**实体**（从网上导入或手写定义），也可以有**软链**（链到别处，
+//   - 「远程订阅」是**一个**独立仓库（与本地 skill hub 同级、各自一个源），
+//     目录布局 <repo>/<name>/SKILL.md
+//   - 仓库里既有**实体**（从网上导入或手写定义），也可以有**软链**（链到别处，
 //     便于同一份源码多处使用）——链接不参与版本管理，但能像实体一样被迁移/引用
 //   - 每个实体带自己的来源与版本元数据：{ spec, url, ref, hash, importedAt, updatedAt }
 //     hash 就是它的「版本」，updatedAt 就是「何时更新的」
 //   - 支持的操作：搜索（skills.sh）→ 确认导入；添加定义；按版本更新；移除；加软链
-//   - Hub 本身参与本地流程：它的 skill 可以照常 migrate 到各平台目录
+//   - 它参与本地流程：里面的 skill 可以照常 migrate 到各平台目录
 //
 // 导入与更新的共同骨架是 remote.js 的 materializeRemote（拉取到 staging）——
-// 与普通订阅同一条落地路径，只是落地终点从「源目录」变成「Hub 里的某个 skill」。
+// 与普通订阅同一条落地路径，只是落地终点从「源目录」变成「远程订阅仓库里的某个 skill」。
 import fsp from 'node:fs/promises';
 import { join } from 'node:path';
 import { remoteHubDir } from '../../../core/paths.js';
@@ -23,7 +24,7 @@ import { resolveSkillsRoot, scanSkillsRoot, skillDirHash, readSkill } from './sc
 
 const now = () => new Date().toISOString();
 
-// Hub 目录 + 登记为订阅源（幂等）：Hub 的 skill 之后能像普通源一样被 migrate
+// 远程订阅仓库目录 + 登记为订阅源（幂等）：它的 skill 之后能像普通源一样被 migrate
 export async function ensureHub() {
   const dir = remoteHubDir();
   await fsp.mkdir(dir, { recursive: true });
@@ -40,7 +41,7 @@ export async function hubState() {
   return s.remoteHub || { dir: remoteHubDir(), skills: {} };
 }
 
-// Hub 里的 skill 清单：实体 + 软链，各带版本元数据（hubContents —— 不叫 listHubSkills，
+// 远程订阅仓库里的 skill 清单：实体 + 软链，各带版本元数据（hubContents —— 不叫 listHubSkills，
 // 那个名字已被 sources.js 的「订阅源 skill 列表」占用，barrel 的 export * 会静默丢弃重名）
 export async function hubContents() {
   const st = await hubState();
@@ -74,11 +75,11 @@ export async function hubContents() {
   return { dir, skills: out };
 }
 
-// 导入：把远程规格里的 skill 拉进 Hub（默认整仓导入，name 只导一个）
+// 导入：把远程规格里的 skill 拉进远程订阅仓库（默认整仓导入，name 只导一个）
 export async function importToHub(spec, { name } = {}) {
   const parsed = parseSource(spec);
   if (parsed.type === 'local') {
-    throw badInput('远程 Hub 只收远程规格（owner/repo、git URL、归档 URL）；手写定义用 skill hub remote add');
+    throw badInput('远程订阅仓库只收远程规格（owner/repo、git URL、归档 URL）；手写定义用 skill hub remote add');
   }
   parsed.spec = spec;
   const dir = await ensureHub();
@@ -93,10 +94,13 @@ export async function importToHub(spec, { name } = {}) {
     const stamp = now();
     const imported = [];
     for (const sk of wanted) {
-      const hash = await skillDirHash(join(root, sk.name));
+      // sk.dir 是**上游目录**（可能与 frontmatter 的 name 不同：目录叫
+      // composition-patterns、name 却是 vercel-composition-patterns），
+      // 实体拷贝按目录走，Hub 里的落位名用 name（这样列表/migrate 对得上）。
+      const hash = await skillDirHash(sk.dir);
       const target = join(dir, sk.name);
       await fsp.rm(target, { recursive: true, force: true });
-      await fsp.cp(join(root, sk.name), target, { recursive: true });
+      await fsp.cp(sk.dir, target, { recursive: true });
       imported.push({
         name: sk.name,
         description: sk.description,
@@ -120,13 +124,13 @@ export async function importToHub(spec, { name } = {}) {
   }
 }
 
-// 手工添加定义：在 Hub 里新建一个 skill（自己写 SKILL.md）——不是从任何地方导入
+// 手工添加定义：在远程订阅仓库里新建一个 skill（自己写 SKILL.md）——不是从任何地方导入
 export async function addHubDefinition(name, { description, content } = {}) {
   if (!name) throw badInput('用法: nx-rh skill hub remote add <name> [--description <描述>] [--content <正文>]');
   const dir = await ensureHub();
   const target = join(dir, name);
   if (await fsp.stat(target).catch(() => null)) {
-    throw conflict('远程 Hub 里已经有这个 skill: ' + name);
+    throw conflict('远程订阅仓库里已经有这个 skill: ' + name);
   }
   const desc = description || '（手工添加的定义）';
   const body = content || `# ${name}\n`;
@@ -145,13 +149,13 @@ export async function addHubDefinition(name, { description, content } = {}) {
   return { dir, name, hash, imported: [name] };
 }
 
-// 加软链：把 Hub 里的某个 skill 链到别处已有的目录（同一份源码多处可用）
+// 加软链：把远程订阅仓库里的某个 skill 链到别处已有的目录（同一份源码多处可用）
 export async function linkIntoHub(name, target) {
   if (!name || !target) throw badInput('用法: nx-rh skill hub remote link <name> <目标目录>');
   const dir = await ensureHub();
   const link = join(dir, name);
   if (await fsp.lstat(link).catch(() => null)) {
-    throw conflict('远程 Hub 里已经有这个名字: ' + name);
+    throw conflict('远程订阅仓库里已经有这个名字: ' + name);
   }
   const abs = target;
   const info = await readSkill(abs);
@@ -167,7 +171,7 @@ export async function updateHub(names) {
   const wanted = Array.isArray(names) && names.length ? names : null;
   const targets = wanted ? entries.filter(([n]) => wanted.includes(n)) : entries;
   if (!targets.length) {
-    return { status: 'ok', results: [], note: '远程 Hub 里还没有可更新的 skill（先 import 或 add）' };
+    return { status: 'ok', results: [], note: '远程订阅仓库里还没有可更新的 skill（先 import 或 add）' };
   }
   // 同一来源只拉一次
   const bySpec = new Map();
@@ -195,14 +199,14 @@ export async function updateHub(names) {
           results.push({ name, status: 'removed', reason: '上游已没有这个 skill' });
           continue;
         }
-        const hash = await skillDirHash(join(root, name));
+        const hash = await skillDirHash(up.dir);
         if (hash === meta.hash) {
           results.push({ name, status: 'unchanged', hash });
           continue;
         }
         const target = join(remoteHubDir(), name);
         await fsp.rm(target, { recursive: true, force: true });
-        await fsp.cp(join(root, name), target, { recursive: true });
+        await fsp.cp(up.dir, target, { recursive: true });
         await mutateStore((s) => {
           s.remoteHub.skills[name] = { ...meta, hash, updatedAt: now() };
         });
@@ -217,7 +221,7 @@ export async function updateHub(names) {
   return { status: 'ok', results };
 }
 
-// 从 Hub 移除（只动 Hub 里的条目 + 元数据；平台侧副本另行 purge）
+// 从远程订阅仓库移除（只动仓库里的条目 + 元数据；平台侧副本另行 purge）
 export async function removeFromHub(names) {
   const list = Array.isArray(names) ? names : names ? [names] : [];
   if (!list.length) throw badInput('用法: nx-rh skill hub remote remove <name...>');

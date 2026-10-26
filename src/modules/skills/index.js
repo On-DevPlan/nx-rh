@@ -78,11 +78,11 @@ export default {
       render: renderSources,
     },
     {
-      // 本地目录 = 订阅一个源；远程规格 = 导入远程 Hub（唯一容器，逐 skill 记版本）
+      // 本地目录 = 订阅一个源；远程规格 = 导入远程订阅（唯一容器，逐 skill 记版本）
       id: 'skill.hub.add',
       cli: ['skill', 'hub', 'subscribe'],
       http: ['POST', '/api/skills/sources'],
-      summary: '订阅一个 skill 目录（本地路径），或把远程规格导入远程 Hub（owner/repo、git URL、归档 URL）',
+      summary: '订阅一个 skill 目录（本地路径），或把远程规格导入远程订阅（owner/repo、git URL、归档 URL）',
       args: ['path'],
       run: async (ctx) => {
         if (service.peekRemote(ctx.path)) {
@@ -94,7 +94,7 @@ export default {
       },
       render: (d) => {
         if (d.imported) {
-          return `已导入远程 Hub: ${d.count} 个 skill（${d.imported.join(', ')}）\n  落位: ${d.dir}\n  清单与更新: nx-rh skill hub remote list / update`;
+          return `已导入远程订阅: ${d.count} 个 skill（${d.imported.join(', ')}）\n  落位: ${d.dir}\n  清单与更新: nx-rh skill hub remote list / update`;
         }
         return `已订阅: ${d.path}`;
       },
@@ -279,12 +279,12 @@ export default {
       render: renderSearch,
     },
 
-    // ---- 远程 Hub（唯一装着外部 skill 的容器） ----
+    // ---- 远程订阅（唯一装着外部 skill 的容器） ----
     {
       id: 'skill.hub.remote.list',
       cli: [['skill', 'hub', 'remote', 'list'], ['skill', 'remote', 'list']],
       http: ['GET', '/api/skills/remote'],
-      summary: '远程 Hub 内容：skill 及其来源 / 版本指纹 / 导入与更新时间',
+      summary: '远程订阅 内容：skill 及其来源 / 版本指纹 / 导入与更新时间',
       run: () => service.hubContents(),
       render: renderRemoteHub,
     },
@@ -292,27 +292,27 @@ export default {
       id: 'skill.hub.remote.import',
       cli: [['skill', 'hub', 'remote', 'import'], ['skill', 'remote', 'import']],
       http: ['POST', '/api/skills/remote/import'],
-      summary: '从远程规格导入到远程 Hub（owner/repo、git URL、归档 URL；--name 只导一个）',
+      summary: '从远程规格导入到远程订阅（owner/repo、git URL、归档 URL；--name 只导一个）',
       args: ['spec'],
       flags: { name: { type: 'string', hint: '只导入这一个 skill' } },
       run: (ctx) => service.importToHub(ctx.spec, { name: ctx.name }),
-      render: (d) => `已导入 ${d.count} 个到远程 Hub: ${d.imported.join(', ')}\n  落位: ${d.dir}`,
+      render: (d) => `已导入 ${d.count} 个到远程订阅: ${d.imported.join(', ')}\n  落位: ${d.dir}`,
     },
     {
       id: 'skill.hub.remote.add',
       cli: [['skill', 'hub', 'remote', 'add'], ['skill', 'remote', 'add']],
       http: ['POST', '/api/skills/remote'],
-      summary: '在远程 Hub 里添加一个手写定义（--description / --content）',
+      summary: '在远程订阅 里添加一个手写定义（--description / --content）',
       args: ['name'],
       flags: { description: { type: 'string' }, content: { type: 'string' } },
       run: (ctx) => service.addHubDefinition(ctx.name, { description: ctx.description, content: ctx.content }),
-      render: (d) => `已在远程 Hub 添加定义: ${d.name}\n  落位: ${d.dir}`,
+      render: (d) => `已在远程订阅 添加定义: ${d.name}\n  落位: ${d.dir}`,
     },
     {
       id: 'skill.hub.remote.link',
       cli: [['skill', 'hub', 'remote', 'link'], ['skill', 'remote', 'link']],
       http: ['POST', '/api/skills/remote/link'],
-      summary: '在远程 Hub 里放一个软链（<name> <目标目录>：链到别处已有的 skill，同一份源码多处可用）',
+      summary: '在远程订阅 里放一个软链（<name> <目标目录>：链到别处已有的 skill，同一份源码多处可用）',
       args: ['name', 'target'],
       run: (ctx) => service.linkIntoHub(ctx.name, ctx.target),
       render: (d) => `已加软链: ${d.name} → ${d.target}  (${d.linkType})`,
@@ -321,7 +321,7 @@ export default {
       id: 'skill.hub.remote.update',
       cli: [['skill', 'hub', 'remote', 'update'], ['skill', 'remote', 'update']],
       http: ['POST', '/api/skills/remote/update'],
-      summary: '按来源重拉更新远程 Hub（版本指纹变了才换；<name...> 只更新指定）',
+      summary: '按来源重拉更新远程订阅（版本指纹变了才换；<name...> 只更新指定）',
       args: [{ name: 'name', rest: true, required: false }],
       run: (ctx) => {
         const names = Array.isArray(ctx.name) ? ctx.name : ctx.name ? [ctx.name] : [];
@@ -333,13 +333,13 @@ export default {
       id: 'skill.hub.remote.remove',
       cli: [['skill', 'hub', 'remote', 'remove'], ['skill', 'remote', 'remove']],
       http: ['POST', '/api/skills/remote/remove'],
-      summary: '从远程 Hub 移除 skill（<name...> 批量；平台侧副本另行 purge）',
+      summary: '从远程订阅 移除 skill（<name...> 批量；平台侧副本另行 purge）',
       args: [{ name: 'name', rest: true }],
       run: (ctx) => {
         const names = Array.isArray(ctx.name) ? ctx.name : ctx.name ? [ctx.name] : [];
         return service.removeFromHub(names);
       },
-      render: (d) => `已从远程 Hub 移除: ${d.removed.join(', ') || '（无）'}`,
+      render: (d) => `已从远程订阅 移除: ${d.removed.join(', ') || '（无）'}`,
     },
 
     {

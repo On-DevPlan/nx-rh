@@ -1,9 +1,9 @@
-// ② 级子页：远程 Hub（#/skills/remote）——唯一一个装着外部 skill 的容器。
+// ② 级子页：远程订阅（#/skills/remote）——唯一一个装着外部 skill 的容器。
 //
 // 页面三块，与其他子页同款组件：
-//   ① Hub 内容：实体 / 软链 / 手写定义，带版本指纹与更新时间；逐个更新、移除、加软链
+//   ① 远程订阅内容：实体 / 软链 / 手写定义，带版本指纹与更新时间；逐个更新、移除、加软链
 //   ② 发现：搜 skills.sh，结果逐条「导入」——导入前先预览（确认是否导入）
-//   ③ 添加定义：手写一个 skill 放进 Hub
+//   ③ 添加定义：手写一个 skill 放进远程订阅
 //
 // 数据全部走既有 action（svc/remote-hub.js）：每个 Web 操作都有 CLI 等价。
 import { useCallback, useEffect, useState } from 'react';
@@ -22,8 +22,8 @@ const ago = (iso) => {
   return `${Math.floor(s / 86400)} 天前`;
 };
 
-// Hub 内容的行：名字 + 形态 + 版本 + 来源 + 更新时间 + 操作
-function HubRow({ s, busy, onUpdate, onRemove, onLink }) {
+// 远程订阅内容的行：名字 + 形态 + 版本 + 来源 + 更新时间 + 操作
+function RepoRow({ s, busy, onUpdate, onRemove, onLink }) {
   const kind = s.linkType ? '软链' : s.manual ? '手写定义' : '导入';
   return (
     <div className="row">
@@ -102,8 +102,8 @@ export function RemotePage({ tick }) {
 
   const removeOne = (s) => guard(async () => {
     const ok = await dialog({
-      title: '从远程 Hub 移除',
-      message: `${s.name}\n${s.dir}\n\n只动 Hub 里的这一份；平台目录里的副本请另行 purge。`,
+      title: '从远程订阅 移除',
+      message: `${s.name}\n${s.dir}\n\n只动远程订阅里的这一份；平台目录里的副本请另行 purge。`,
       danger: true,
       okText: '移除',
     });
@@ -119,7 +119,7 @@ export function RemotePage({ tick }) {
       title: '加软链',
       input: true,
       placeholder: '目标目录（含 SKILL.md 的目录）',
-      message: `把「${s.name}」链到别处的目录；也可填别处 skill 的目录，Hub 里会多一个指向它的链接。`,
+      message: `把「${s.name}」链到别处的目录；也可填别处 skill 的目录，远程订阅里会多一个指向它的链接。`,
     });
     if (!target) return;
     await api('/api/skills/remote/link', { method: 'POST', body: { name: s.name, target }, timeoutMs: 30000 });
@@ -153,8 +153,8 @@ export function RemotePage({ tick }) {
   // 导入前先确认（"确认是否导入"）：展示将要导入的来源与名字，确认后才拉
   const confirmImport = (r) => guard(async () => {
     const ok = await dialog({
-      title: '导入到远程 Hub',
-      message: `来源: ${r.source}\nskill: ${r.name}\n\n拉取后进 ~/.nx-rh/remote-hub/，之后可 migrate 到各平台。`,
+      title: '导入到远程订阅',
+      message: `来源: ${r.source}\nskill: ${r.name}\n\n拉取后进 ~/.nx-rh/远程订阅/，之后可 migrate 到各平台。`,
       okText: '导入',
     });
     if (!ok) return;
@@ -170,11 +170,11 @@ export function RemotePage({ tick }) {
 
   return (
     <>
-      <Crumbs trail={[{ label: '远程 Hub' }]} />
+      <Crumbs trail={[{ label: '远程订阅' }]} />
       <div className="sub-head">
         <div>
-          <div style={{ fontSize: 15, fontWeight: 700 }}>远程 Hub</div>
-          <div className="sub-meta mono">{hub?.dir || '~/.nx-rh/remote-hub/'} · 外部 skill 都在这里，版本可比可更</div>
+          <div style={{ fontSize: 15, fontWeight: 700 }}>远程订阅</div>
+          <div className="sub-meta mono">{hub?.dir || '~/.nx-rh/远程订阅/'} · 外部 skill 都在这里，版本可比可更</div>
         </div>
         <div className="acts">
           <button className="btn ghost" onClick={updateAll} disabled={!!busy || !skills.length}>
@@ -184,12 +184,12 @@ export function RemotePage({ tick }) {
         </div>
       </div>
 
-      <div className="section-label">Hub 内容
+      <div className="section-label">远程订阅内容
         <span className="hint">{skills.length} 个 · 实体/软链都可迁移到平台；导入的才有上游可更新</span>
       </div>
       <div className="list">
         {skills.map((s) => (
-          <HubRow key={s.name} s={s} busy={busy === s.name} onUpdate={updateOne} onRemove={removeOne} onLink={linkOne} />
+          <RepoRow key={s.name} s={s} busy={busy === s.name} onUpdate={updateOne} onRemove={removeOne} onLink={linkOne} />
         ))}
         {hub && !skills.length ? <div className="muted">（Hub 还是空的——用下面的搜索导入，或「＋ 添加定义」）</div> : null}
         {!hub && !err ? <div className="muted">读取中…</div> : null}
