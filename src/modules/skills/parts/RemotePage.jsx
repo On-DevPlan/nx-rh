@@ -12,6 +12,7 @@ import { useStore } from '../../../web/frontend/store.jsx';
 import { useToast, useGuard, useDialog } from '../../../web/frontend/components/ui.jsx';
 import { CliHints } from '../../../web/frontend/components/CliHints.jsx';
 import { Crumbs } from './shared.jsx';
+import { goHub } from './routes.js';
 
 const ago = (iso) => {
   if (!iso) return '—';
@@ -177,6 +178,11 @@ export function RemotePage({ tick }) {
           <div className="sub-meta mono">{hub?.dir || '~/.nx-rh/远程订阅/'} · 外部 skill 都在这里，版本可比可更</div>
         </div>
         <div className="acts">
+          {/* 与本地源同构：内容浏览在订阅源页（同 #/skills/hub/<path>），
+              这一页只管「从哪来」——发现、导入、容器维护 */}
+          {hub?.dir ? (
+            <button className="btn ghost" onClick={() => goHub(hub.dir)}>看内容…</button>
+          ) : null}
           <button className="btn ghost" onClick={updateAll} disabled={!!busy || !skills.length}>
             {busy === '*' ? '更新中…' : '全部更新'}
           </button>

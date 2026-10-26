@@ -39,7 +39,6 @@ export function Overview({ data, openCreate }) {
           </div>
         </div>
         <div className="acts">
-          <button className="btn ghost" onClick={goRemote}>远程订阅…</button>
           <button className="btn ghost" onClick={() => setCheckOpen(true)}>检查订阅源…</button>
           <button className="btn ghost" onClick={() => setSettingsOpen(true)}>Skill 设置</button>
           {data?.hub?.path ? <button className="btn" onClick={openCreate}>＋ 新建</button> : null}
@@ -60,6 +59,16 @@ export function Overview({ data, openCreate }) {
             </div>
             <div className="ec-path" title={s.path}>{s.path}</div>
             <div className="ec-stats"><span><b>{s.count}</b> 个 skill</span></div>
+            {/* 远程订阅的「管理」（发现/搜索/导入/更新/定义）在它自己的页里做——
+                卡片上给一个直达入口，不在顶栏另开一个同目标的按钮 */}
+            {s.remote ? (
+              <div
+                style={{ display: 'flex', gap: 5, marginTop: 8, paddingTop: 8, borderTop: '1px solid var(--line,#e5e5ee)' }}
+                onClick={(e) => e.stopPropagation()}
+              >
+                <button className="btn small ghost" onClick={goRemote}>管理…</button>
+              </div>
+            ) : null}
           </div>
         ))}
         <div className="entry-card add-tile" onClick={subscribe}>＋ 订阅新目录</div>
