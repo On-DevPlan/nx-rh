@@ -21,6 +21,8 @@ import { detectLinkType } from '../../../core/link.js';
 import { parseSource } from './remote-parse.js';
 import { materializeRemote } from './remote.js';
 import { resolveSkillsRoot, scanSkillsRoot, skillDirHash, readSkill } from './scan.js';
+import { resolveTargets } from './targets.js';
+import { pathExists } from '../../../core/fstree.js';
 
 const now = () => new Date().toISOString();
 
@@ -75,14 +77,33 @@ export async function remoteContents() {
   return { dir, skills: out };
 }
 
+// 远程订阅内容 + 安装状态（cells）：与本地源的 skill 行同投影，Web 卡片直接用。
+export async function remoteContentsWithCells({ project } = {}) {
+  const { skills, dir } = await remoteContents();
+  const targets = await resolveTargets({ to: 'all', project });
+  const out = [];
+  for (const s of skills) {
+    const cells = [];
+    for (const t of targets) {
+      const p = join(t.dir, s.name);
+      const on = await pathExists(p);
+      cells.push({
+        platform: t.platform, platformName: t.platformName, scope: t.scope, dir: p, on,
+        linkType: on ? await detectLinkType(p) : '',
+      });
+    }
+    out.push({ ...s, cells });
+  }
+  return { dir, skills: out };
+}
+
 // 导入：把远程规格里的 skill 拉进远程订阅仓库（默认整仓导入，name 只导一个）
-export async function importToRemote(spec, { name } = {}) {
+export async function importToRemote(spec, { name, dryRun } = {}) {
   const parsed = parseSource(spec);
   if (parsed.type === 'local') {
     throw badInput('远程订阅仓库只收远程规格（owner/repo、git URL、归档 URL）；手写定义用 skill hub remote add');
   }
   parsed.spec = spec;
-  const dir = await ensureRemote();
   const { staging, sourceDir } = await materializeRemote(parsed);
   try {
     const root = await resolveSkillsRoot(sourceDir);
@@ -91,6 +112,22 @@ export async function importToRemote(spec, { name } = {}) {
     const wanted = name ? skills.filter((s) => s.name === name) : skills;
     if (name && !wanted.length) throw notFound('上游里没有这个 skill: ' + name + '（' + spec + '）');
 
+    // --dry-run（对标参考实现的 add --list）：先看清上游有什么再决定导不导。
+    // staging 已拉完，只列不拷——Web 确认弹窗也走这条。
+    if (dryRun) {
+      const preview = [];
+      for (const sk of wanted) {
+        preview.push({
+          name: assertSafeName(sk.name, '上游 skill 名称'),
+          description: sk.description,
+          hash: await skillDirHash(sk.dir),
+        });
+      }
+      preview.sort((a, b) => a.name.localeCompare(b.name));
+      return { status: 'ok', dryRun: true, spec, dir: '', url: parsed.url, ref: parsed.ref || '', skills: preview, count: preview.length };
+    }
+
+    const dir = await ensureRemote();
     const stamp = now();
     const imported = [];
     for (const sk of wanted) {
@@ -294,5 +331,31 @@ export async function syncRemoteMeta(name, mode) {
     if (mode === 'linked') {
       s.remoteRepo.skills[name] = { ...s.remoteRepo.skills[name], spec: '', url: '', ref: '' };
     }
+  });
+}
+
+// submit 落入远程订阅仓库时的台账登记：与 import/add/link 一样，凡是写方都登记。
+// 用户从平台侧收进来的 skill 没有上游（spec 空 = 手写定义语义），更新时自然跳过；
+// 但指纹要记——下次 update 的 unchanged/changed 判定才有基准。
+export async function upsertRemoteSubmitMeta(name, fromDir) {
+  const dir = await ensureRemote();
+  const info = await readSkill(join(dir, name));
+  const hash = await skillDirHash(join(dir, name));
+  const stamp = now();
+  await mutateStore((s) => {
+    s.remoteRepo.dir = dir;
+    const prev = s.remoteRepo.skills[name] || {};
+    s.remoteRepo.skills[name] = {
+      name,
+      description: info?.description || '',
+      hash,
+      spec: prev.spec || '',
+      url: prev.url || '',
+      ref: prev.ref || '',
+      skillPath: name,
+      importedAt: prev.importedAt || stamp,
+      updatedAt: stamp,
+      submittedFrom: fromDir,
+    };
   });
 }

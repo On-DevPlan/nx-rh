@@ -229,6 +229,14 @@ localStorage 持久化，刷新不丢。
 | `nx-rh skill hub merge --base F --a F --b F` | diff3 合并原语 |
 | `nx-rh skill hub sources\|subscribe\|unsubscribe\|main` | 订阅源清单 / 订阅 / 取消订阅 / 切主源 |
 | `nx-rh skill hub check` | 来源健康诊断：目录缺失 / 空源 / 嵌套订阅 / 重复根 / 跨源同名冲突 |
+| `nx-rh skill hub search <词>` | 搜 skills.sh 注册表（--owner 限定组织；结果可直接 remote import） |
+| `nx-rh skill hub remote import <spec>` | 导入远程规格到远程订阅（--dry-run 先列清单；--name 只导一个） |
+| `nx-rh skill hub remote list` | 远程订阅内容（来源 / 版本指纹 / 安装状态） |
+| `nx-rh skill hub remote update [name...]` | 按来源重拉更新（指纹变了才换） |
+| `nx-rh skill hub remote add <name>` | 在远程订阅里手写一个定义 |
+| `nx-rh skill hub remote link <name> <dir>` | 软链：别处的 skill 链进远程订阅 |
+| `nx-rh skill hub remote link-out <name> <dir>` | 软链：远程订阅里的 skill 链到别处 |
+| `nx-rh skill hub remote remove <name...>` | 从远程订阅移除（平台侧副本另行 purge） |
 | `nx-rh skill hub project list\|add\|remove <path>` | 项目目录候选 |
 | `nx-rh skill hub project skills` | 当前项目目录里实际存在的 skill（扫全部适配器项目级目录，标注是否已在订阅源；面板 Skill 页的「当前项目」子页同源） |
 | `nx-rh skill hub platform [ids...]` | 启用的平台范围 / 默认平台 |
@@ -412,6 +420,23 @@ nx-rh skill get nx-rh skill-hub     # 裸名 ref → references/skill-hub.md
   内置手册走 `skill get`（三段拼接 + 顺手安装），见下节
 - **三方合并**：`skill merge --base --a --b` 暴露 diff3-lite 原语（`core/diff.js`）：仅单侧变更的区域自动采用；双侧相同自动取一；双侧不同输出 `<<<<<<< / ======= / >>>>>>>` 冲突块
 - **防护**：skill 名称校验拒绝路径穿越；链接创建前做 realpath 自指检测（防止误删源目录）；父目录为链接时先解析真实父目录再计算相对目标；路径同一性比较走 `realpath`（原因见 `core/link.js` 的 `sameRealPath` 注释）
+
+### 远程订阅
+
+外部 skill 的唯一入口是**远程订阅**——固定仓库 `~/.nx-rh/远程订阅/`，与本地订阅源同级、同权
+（`list / show / cat / migrate / submit / check` 照常可用，总览页也是一张普通源卡片）：
+
+- **导入**：`skill hub remote import <owner/repo | git URL | 归档 URL>`（`--dry-run` 先列清单
+  再决定；`--name` 只导一个）。发现靠 `skill hub search <关键词> [--owner <组织>]`（搜 skills.sh）
+- **版本**：每个 skill 记来源与目录指纹（hash 即版本）；`skill hub remote update [name...]`
+  按来源重拉，指纹变了才换，上游没了如实报告
+- **其它**：`remote add` 手写定义、`remote link / link-out` 软链、`remote remove` 移除
+  （平台侧副本另行 `skill purge`）
+
+`skill hub subscribe` 只收本地目录；远程规格一律走 `remote import`。拉取有安全边界
+（下载/解压限额、路径穿越拒绝、上游 name 安全校验）。移植自
+[vercel-labs/skills](https://github.com/vercel-labs/skills)（MIT）：源解析、归档解包、
+终端转义清洗等纯逻辑按字节级移植，交互层为本仓库自己的 action/渲染形态。
 
 ### 适配器
 

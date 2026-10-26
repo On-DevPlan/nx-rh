@@ -34,6 +34,7 @@
 | `skill hub list` / `show` / `cat` / `add` / `update` / `remove` / `purge` | 你订阅源里的 skill（本 ref 讲的就是这一套） |
 | `skill hub migrate` / `unmigrate` / `submit` / `materialize` | 订阅源 ↔ 平台目录的搬运 |
 | `skill hub sources` / `subscribe` / `unsubscribe` / `main` / `check` | 订阅源本身 |
+| `skill hub search` / `skill hub remote ...` | **远程订阅**：从网络装外部 skill（见「远程订阅」节） |
 
 一句话：`skill list` 列的是**包里能装的**，`skill hub list` 列的是**你订阅源里的**。
 旧路径（`skill list` 指业务清单、`skill hub add/remove` 指订阅源）已验证过的别名仍可用，
@@ -138,11 +139,32 @@ nx-rh skill materialize <name> --to user|project [--platform P]
 ## 订阅源管理
 
 ```bash
-nx-rh skill hub sources                          # 订阅源清单（* 为当前主源）
+nx-rh skill hub sources                          # 订阅源清单（* 为当前主源；远程订阅恒排最后）
 nx-rh skill hub subscribe <路径>                 # 订阅一个 skill 目录（并设为主源）
 nx-rh skill hub unsubscribe <路径>               # 取消订阅（不动磁盘）
 nx-rh skill hub main [<路径>]                    # 查看 / 切换当前主源
 ```
+
+## 远程订阅（外部 skill）
+
+需要**从网络装 skill**（skills.sh 搜到的、别人仓库里的）时走这条线。远程订阅是一个固定仓库
+`~/.nx-rh/远程订阅/`，与普通订阅源同权——里面的 skill 照常 `show / cat / migrate / submit`。
+
+```bash
+nx-rh skill hub search <关键词> [--owner <组织>]      # 搜 skills.sh 注册表（结果里的 source 可直接导入）
+nx-rh skill hub remote import <spec> --dry-run        # 先看清上游有什么（列名称/描述/版本），不拷贝
+nx-rh skill hub remote import <spec> [--name <skill>] # 导入（spec: owner/repo、git URL、归档 URL）
+nx-rh skill hub remote list                           # 内容清单（来源 / 版本指纹 / 安装状态）
+nx-rh skill hub remote update [<name...>]             # 按来源重拉更新（指纹变了才换）
+nx-rh skill hub remote add <name>                     # 手写一个定义放进远程订阅
+nx-rh skill hub remote link <name> <目录>             # 软链：别处的 skill 链进来
+nx-rh skill hub remote link-out <name> <目录>         # 软链：远程订阅里的 skill 链出去
+nx-rh skill hub remote remove <name...>               # 移除（平台侧副本另行 skill purge）
+```
+
+- `subscribe` 只收**本地目录**；远程规格一律 `remote import`（给错了会提示）
+- 每个 skill 记来源与版本指纹，`update` 只换有变化的；上游删了的如实报告
+- `migrate --all-sources` 可把**全部订阅源**（含远程订阅）铺到平台
 
 ## 批量选择（全量迁移，不手点）
 
@@ -283,6 +305,8 @@ DoubaoWork（豆包办公，桌面端）与「豆包」是同族不同产品：�
 | 现象 | 原因 | 处理 |
 | --- | --- | --- |
 | `未设置 Skill Hub 订阅源` | 没有设置主源 | `nx-rh skill hub subscribe <路径>` |
+| `这是远程规格：用 skill hub remote import …` | `subscribe` 只收本地目录，远程规格（owner/repo、URL）走导入 | 按提示改用 `nx-rh skill hub remote import <spec>` |
+| `上游里没有找到 skill` / 下载失败 | spec 形态不对、网络不通、或上游仓库没有 skill | 先 `--dry-run` 核对；owner/repo / git URL / 归档 URL 三种形态任选 |
 | `订阅源里没有该 skill` | 主源缺该 skill，且各平台目录里也没有 | 换主源；或从平台目录 `skill submit <name>` 收进源 |
 | `目标目录里没有该 skill` | `--to` 选的那一侧没有它（不在订阅源的 skill 多半在**用户级**） | `skill submit` 缺省已是 `--to all`；核对 `skill show <name>` 的安装状态矩阵 |
 | `… 的安装位置是断链：<位置> → <目标>（目标已不存在）` | 链接指向的目标被删/被移走了（常见于订阅源目录改名后留下的残留） | `skill purge <name>` 清掉；`skill show` 里 `broken: true` 就是这个原因 |

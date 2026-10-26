@@ -463,5 +463,6 @@ export async function skillContent({ name, ref, project } = {}) {
     contentBytes: Buffer.byteLength(content, 'utf8'),
     outline,
     stats: mdStats(content, outline),
+    upstream: await upstreamOf(name),
   };
 }

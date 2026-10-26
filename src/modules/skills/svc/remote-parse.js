@@ -98,9 +98,12 @@ export function parseSource(input) {
     return { type: 'local', url: resolvedPath, localPath: resolvedPath };
   }
 
-  // file:// 本地 git 仓库（测试夹具 / 内网裸仓库）
+  // file:// 本地 git 仓库（测试夹具 / 内网裸仓库）。支持 #ref：file URL 的
+  // fragment 不会传给 git，先剥出来当 ref（file:///repo#branch 这种写法要能用）。
   if (input.startsWith('file://')) {
-    return { type: 'git', url: input };
+    const hash = input.indexOf('#');
+    if (hash < 0) return { type: 'git', url: input };
+    return { type: 'git', url: input.slice(0, hash), ref: input.slice(hash + 1) };
   }
 
   const { inputWithoutFragment, ref: fragmentRef } = parseFragmentRef(input);

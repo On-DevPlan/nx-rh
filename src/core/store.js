@@ -137,12 +137,19 @@ function normalize(data) {
     }
   }
   base.remoteRepo =
+    // 键迁移：开发期叫 remoteHub（loop-5 第 1 轮统一命名改 remoteRepo），
+    // 老用户的台账不能因为改名丢——remoteRepo 缺位时从 remoteHub 平移。
     data.remoteRepo && typeof data.remoteRepo === 'object'
       ? {
           dir: String(data.remoteRepo.dir || ''),
           skills: data.remoteRepo.skills && typeof data.remoteRepo.skills === 'object' ? data.remoteRepo.skills : {},
         }
-      : { dir: '', skills: {} };
+      : data.remoteHub && typeof data.remoteHub === 'object' && data.remoteHub.skills
+        ? {
+            dir: String(data.remoteHub.dir || ''),
+            skills: typeof data.remoteHub.skills === 'object' ? data.remoteHub.skills : {},
+          }
+        : { dir: '', skills: {} };
   return base;
 }
 

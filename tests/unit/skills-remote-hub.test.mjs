@@ -173,3 +173,36 @@ test('purge 远程仓库里的 skill 后，update 不会把它复活', async () 
   const again = (await svc.remoteContents()).skills.map((s) => s.name);
   assert.ok(!again.includes('alpha'), '没有复活');
 });
+
+test('import --dry-run：只列清单不拷贝（对标 add --list）', async () => {
+  const before = (await svc.remoteContents()).skills.length;
+  // 夹具上游 HEAD 还留着 ../../evil 那个 skill——安全校验应让整次导入被拒
+  await assert.rejects(
+    () => svc.importToRemote(spec, { dryRun: true }),
+    (err) => err.code === 'INVALID_INPUT'
+  );
+  const after = (await svc.remoteContents()).skills.length;
+  assert.equal(after, before, '磁盘没动');
+  // 换干净的上游（evil 之前的提交，打 tag 再按 tag 拉）验证正常列出
+  execFileSync('git', ['-C', fixture, 'tag', 'clean', 'HEAD~1']);
+  const r = await svc.importToRemote(spec + '#clean', { dryRun: true });
+  assert.equal(r.dryRun, true);
+  assert.ok(r.count >= 2, '列出了上游 skill');
+  assert.ok(r.skills.every((s) => s.name && s.hash), '每项带名称与版本指纹');
+});
+
+test('submit 落入远程订阅：登记台账（不再是幽灵实体）', async () => {
+  // 造一个平台侧实体，submit --into 远程订阅目录
+  const proj = join(tmp, 'submit-proj');
+  mkdirSync(join(proj, '.claude', 'skills', 'alpha'), { recursive: true });
+  writeFileSync(join(proj, '.claude', 'skills', 'alpha', 'SKILL.md'), '---\nname: alpha\ndescription: 平台侧改动版\n---\n\n# alpha local\n');
+  const repoDir = process.env.NX_RH_REMOTE_REPO_DIR;
+  await svc.submitSkill({ name: 'alpha', to: 'project', platform: 'claude-code', project: proj, force: true, keepTarget: true, into: repoDir });
+  const { skills } = await svc.remoteContents();
+  const alpha = skills.find((s) => s.name === 'alpha');
+  assert.ok(alpha, 'submit 后在远程订阅里');
+  // 台账有这条（manual=false 之类判定不适用——spec 保留原上游），且 update 以它为基准
+  const r = await svc.updateRemote(['alpha']);
+  const one = r.results.find((x) => x.name === 'alpha');
+  assert.ok(one && one.status !== 'error', 'update 认得出这条（不再是幽灵）');
+});

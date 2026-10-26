@@ -10,6 +10,7 @@ import { getSettings, requireHubPath } from '../../settings/service.js';
 import { resolveSkillsRoot } from './scan.js';
 import { listSources, sourceEntriesFor } from './sources.js';
 import { resolveTargets } from './targets.js';
+import { upsertRemoteSubmitMeta } from './remote-repo.js';
 import { selectSourceSkills, nameList, applyFilters, collectTargetSkills } from './select.js';
 import { listAllSkills } from './queries.js';
 
@@ -193,7 +194,7 @@ export async function materializeSkill({ name, to, platform, project } = {}) {
 // 把平台目录里的实体 skill 收进订阅源，然后**删除目标的实文件**、
 // 改回指向订阅源的链接 —— 收敛「唯一实文件 = 订阅源」这条规范。
 
-async function submitOne(name, { targets, hubRoot, force, keepTarget, dryRun }) {
+async function submitOne(name, { targets, hubRoot, hubIsRemote, force, keepTarget, dryRun }) {
   name = assertSafeName(name);
 
   // 优先挑「实体」形态的来源（链接没什么可提交的）
@@ -224,6 +225,13 @@ async function submitOne(name, { targets, hubRoot, force, keepTarget, dryRun }) 
   await fsp.mkdir(dirname(dst), { recursive: true });
   await fsp.cp(picked.path, dst, { recursive: true, dereference: true, force: true });
 
+  // 落入远程订阅仓库时同步写台账——import / add / link 都登记、删改有 syncRemoteMeta
+  // 兜底，唯独 submit 这条路曾经裸写：落入的条目显示为「手写定义」但台账里查无此人，
+  // remote update 对它失明（列表读 meta={} 才标 manual，台账没有这条就是「幽灵实体」）。
+  if (hubIsRemote) {
+    await upsertRemoteSubmitMeta(name, picked.path);
+  }
+
   // 删除目标实文件；默认改回软链接，保持项目可用（keepTarget=true 则只删不建链）
   let relinked = null;
   if (!keepTarget) {
@@ -247,6 +255,7 @@ export async function submitSkill({
 } = {}) {
   const { sources } = await listSources();
   let hub;
+  let hubIsRemote = false; // --into 落进远程订阅仓库时，要同步写它的版本台账
   if (into) {
     const hit = sources.find((x) => samePath(x.path, resolve(String(into))));
     if (!hit) {
@@ -254,6 +263,7 @@ export async function submitSkill({
     }
     if (!hit.exists) throw notFound('--into 指定的订阅源目录不存在: ' + hit.path);
     hub = hit.path;
+    hubIsRemote = !!hit.remote;
   } else {
     hub = await requireHubPath();
   }
@@ -275,7 +285,7 @@ export async function submitSkill({
 
   const results = [];
   for (const { name: n } of chosen) {
-    results.push(await submitOne(n, { targets, hubRoot, force, keepTarget, dryRun }));
+    results.push(await submitOne(n, { targets, hubRoot, hubIsRemote, force, keepTarget, dryRun }));
   }
   const conflicts = results.filter((r) => r.status === 'conflict');
   return {

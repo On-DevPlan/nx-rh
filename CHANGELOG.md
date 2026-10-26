@@ -4,6 +4,22 @@
 
 ## [Unreleased]
 
+### Added
+
+- **远程订阅：从网络导入外部 skill**（固定仓库 `~/.nx-rh/远程订阅/`，唯一装外部 skill 的容器，
+  与本地订阅源同级同权）。`skill hub remote import <spec>` 接受 owner/repo、git URL、归档 URL
+  （`--dry-run` 先列清单再决定；`--name` 只导一个）；`remote list` 带来源 / 版本指纹 / 安装状态；
+  `remote update` 按来源重拉、指纹变了才换；`remote add` 手写定义、`remote link / link-out` 软链、
+  `remote remove` 移除。新增 `skill hub search` 搜 skills.sh 注册表。导入落位、版本追踪、软链、
+  归档解包等纯逻辑**移植自 [vercel-labs/skills](https://github.com/vercel-labs/skills)，MIT**。
+
+### Changed
+
+- **`skill hub subscribe` 只收本地目录**：远程规格会提示改用 `skill hub remote import`
+  （此前两条路都能导远程，语义重叠）。
+- **submit 落入远程订阅写台账**：`skill submit --into <远程订阅>` 收进的 skill 现在登记进
+  版本台账（此前裸拷，`remote list` 显示为手写定义、update 对它失明）。
+
 ## [0.17.1] - 2026-10-25
 
 ### Changed

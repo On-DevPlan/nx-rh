@@ -11,8 +11,8 @@ import { api } from '../../../web/frontend/api/client.js';
 import { useStore } from '../../../web/frontend/store.jsx';
 import { useToast, useGuard, useDialog } from '../../../web/frontend/components/ui.jsx';
 import { CliHints } from '../../../web/frontend/components/CliHints.jsx';
-import { Crumbs } from './shared.jsx';
-import { goHub } from './routes.js';
+import { Crumbs, SkillCard, useSel, makeHit } from './shared.jsx';
+import { goHub, goSkill } from './routes.js';
 
 const ago = (iso) => {
   if (!iso) return '—';
@@ -23,37 +23,40 @@ const ago = (iso) => {
   return `${Math.floor(s / 86400)} 天前`;
 };
 
-// 远程订阅内容的行：名字 + 形态 + 版本 + 来源 + 更新时间 + 操作
-function RepoRow({ s, busy, onUpdate, onRemove, onLink }) {
+// 远程订阅内容的行：与本地源同投影（SkillCard），显示形态 / 上游 / 版本 / 安装状态。
+function RepoRow({ s, checked, busy, onToggle, onUpdate, onRemove, onLink }) {
   const kind = s.linkType ? '软链' : s.manual ? '手写定义' : '导入';
+  const on = (s.cells || []).filter((c) => c.on).length;
   return (
-    <div className="row">
-      <div className="name">
-        {s.name}
-        <span className="tag" style={{ marginLeft: 6 }}>{kind}</span>
-      </div>
-      <div className="desc mono" title={s.spec || s.dir}>
-        {s.linkType ? s.dir : s.manual ? '（无上游）' : `${s.spec}${s.ref ? '@' + s.ref : ''}`}
-        {`  ·  v${String(s.hash).slice(0, 8)}  ·  ${ago(s.updatedAt)}`}
-      </div>
-      <div className="acts">
-        {s.manual ? null : (
-          <button className="btn small ghost" disabled={busy} onClick={() => onUpdate(s)}>
-            {busy ? '更新中…' : '更新'}
-          </button>
-        )}
-        <button className="btn small ghost" onClick={() => onLink(s)}>加软链…</button>
-        <button className="btn small danger" onClick={() => onRemove(s)}>移除</button>
-      </div>
-    </div>
+    <SkillCard
+      name={s.name} description={s.description || ''}
+      checked={checked} onToggle={onToggle}
+      onClick={() => goSkill(s.name)}
+    >
+      <span className="tag">{kind}</span>
+      {!s.manual && s.spec ? <span className="tag" title={s.spec}>{`↑${s.spec.split('/').slice(-1)[0]}@${String(s.hash).slice(0, 6)}`}</span> : null}
+      <span className={'tag' + (s.cells?.length && on === s.cells.length ? ' strong' : '')}>
+        {s.cells?.length ? `已安装 ${on}/${s.cells.length}` : '未安装'}
+      </span>
+      <span className="muted" title={s.updatedAt}>{ago(s.updatedAt)}</span>
+      <span className="spacer"></span>
+      {s.manual ? null : (
+        <span className="sc-mini" onClick={(e) => { e.stopPropagation(); onUpdate(s); }}>{busy ? '更新中…' : '更新'}</span>
+      )}
+      <span className="sc-mini" onClick={(e) => { e.stopPropagation(); onLink(s); }}>加软链…</span>
+      <span className="sc-mini" style={{ color: 'var(--bad,#c33)' }} onClick={(e) => { e.stopPropagation(); onRemove(s); }}>移除</span>
+    </SkillCard>
   );
 }
 
 export function RemotePage({ tick }) {
-  const { refreshBoot } = useStore();
+  const { patchUi, refreshBoot } = useStore();
   const toast = useToast();
   const guard = useGuard();
   const { dialog, node: dlgNode } = useDialog();
+  const sel = useSel();
+  const [filter, setFilter] = useState('');        // 本列表的名称/描述过滤（与本地源同款）
+  const hit = makeHit(filter);
 
   const [hub, setHub] = useState(null);            // { dir, skills[] }
   const [err, setErr] = useState('');
@@ -151,11 +154,19 @@ export function RemotePage({ tick }) {
     } finally { setSearching(false); }
   });
 
-  // 导入前先确认（"确认是否导入"）：展示将要导入的来源与名字，确认后才拉
+  // 导入前先「看清楚再确认」：--dry-run 拉预览（列名称/描述/版本），确认后才真导。
   const confirmImport = (r) => guard(async () => {
+    setImporting(r.source);
+    let preview;
+    try {
+      preview = await api('/api/skills/remote/import', {
+        method: 'POST', body: { spec: r.source, 'dry-run': true }, timeoutMs: 300000,
+      });
+    } finally { setImporting(''); }
+    const list = (preview.skills || []).map((s) => `  · ${s.name} — ${(s.description || '').slice(0, 56)}`).join('\n');
     const ok = await dialog({
-      title: '导入到远程订阅',
-      message: `来源: ${r.source}\nskill: ${r.name}\n\n拉取后进 ~/.nx-rh/远程订阅/，之后可 migrate 到各平台。`,
+      title: `导入到远程订阅（${preview.count} 个 skill）`,
+      message: `来源: ${r.source}\n\n${list}\n\n拉取后进远程订阅仓库，之后可 migrate 到各平台。`,
       okText: '导入',
     });
     if (!ok) return;
@@ -168,6 +179,7 @@ export function RemotePage({ tick }) {
   });
 
   const skills = hub?.skills || [];
+  const visible = skills.filter((s) => hit(s.name, s.description));
 
   return (
     <>
@@ -193,11 +205,35 @@ export function RemotePage({ tick }) {
       <div className="section-label">远程订阅内容
         <span className="hint">{skills.length} 个 · 实体/软链都可迁移到平台；导入的才有上游可更新</span>
       </div>
-      <div className="list">
-        {skills.map((s) => (
-          <RepoRow key={s.name} s={s} busy={busy === s.name} onUpdate={updateOne} onRemove={removeOne} onLink={linkOne} />
+      <div className="toolbar">
+        <label className="chk-all">
+          <input
+            type="checkbox" title="全选（用于批量操作）"
+            checked={visible.length > 0 && visible.every((s) => sel.has(s.name))}
+            onChange={(e) => patchUi((u) => {
+              const set = new Set(u.selSkills);
+              for (const s of visible) e.target.checked ? set.add(s.name) : set.delete(s.name);
+              return { selSkills: [...set] };
+            })}
+          />
+          全选
+        </label>
+        <input className="search grow" placeholder="过滤名称 / 描述…" value={filter} spellCheck="false" onChange={(e) => setFilter(e.target.value)} />
+      </div>
+      <div className="skl-grid">
+        {visible.map((s) => (
+          <RepoRow
+            key={s.name} s={s} checked={sel.has(s.name)} busy={busy === s.name}
+            onToggle={() => patchUi((u) => {
+              const set = new Set(u.selSkills);
+              set.has(s.name) ? set.delete(s.name) : set.add(s.name);
+              return { selSkills: [...set] };
+            })}
+            onUpdate={updateOne} onRemove={removeOne} onLink={linkOne}
+          />
         ))}
-        {hub && !skills.length ? <div className="muted">（Hub 还是空的——用下面的搜索导入，或「＋ 添加定义」）</div> : null}
+        {hub && !skills.length ? <div className="muted">（远程订阅还是空的——用下面的搜索导入，或「＋ 添加定义」）</div> : null}
+        {hub && skills.length && !visible.length ? <div className="muted">（没有匹配过滤条件的 skill）</div> : null}
         {!hub && !err ? <div className="muted">读取中…</div> : null}
         {err ? <div className="dlg-msg">{err}</div> : null}
       </div>
