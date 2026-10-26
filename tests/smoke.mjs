@@ -97,7 +97,14 @@ try {
     if (g.status !== 0) throw new Error('git fixture 失败: ' + g.stderr);
   }
   const remoteUrl = 'file:///' + remoteFixture.replace(/\\/g, '/');
-  check('远程规格导入远程 Hub', cli(['skill', 'hub', 'remote', 'import', remoteUrl]).status === 0);
+  check('远程规格导入远程订阅', cli(['skill', 'hub', 'remote', 'import', remoteUrl]).status === 0);
+  // subscribe 只管本地目录：给远程规格要明确报错并指向 remote import
+  const subscribeRemote = cli(['skill', 'hub', 'subscribe', remoteUrl]);
+  check(
+    'subscribe 遇远程规格 → 提示改用 remote import',
+    subscribeRemote.status === 1 && /remote import/.test(subscribeRemote.stdout + subscribeRemote.stderr),
+    (subscribeRemote.stdout + subscribeRemote.stderr).slice(0, 160)
+  );
   const hubList = cliJson(['skill', 'hub', 'remote', 'list']);
   check(
     'Hub 清单含 skill 与版本指纹',

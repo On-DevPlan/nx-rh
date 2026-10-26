@@ -30,14 +30,9 @@ const EMPTY = () => ({
   // 「最近项目」：全局跨作用域的一份列表（最多 20 条，最近在前）。
   // 与按 cwd 隔离的桶并存——切项目的入口数据源就是它。
   recents: [],
-  // 远程订阅源元数据：sourceDir → { spec, type, url, ref?, subpath?, id, fetchedAt }。
-  // 键是注册进 skillHubSources 的那个路径；值只记「这个源从哪来、何时拉的」，
-  // 内容真相始终在磁盘（remote-skills/<id>/）。R2 的 sync 按它对比变更。
-  remoteSources: {},
-  // 远程订阅仓库元数据：<仓库目录> → { spec, url, ref, hash, importedAt, updatedAt }。
+  // 远程订阅仓库元数据：{ dir, skills: { [skill名]: { spec, url, ref, hash, importedAt, updatedAt } } }。
   // hash 就是这个 skill 的「版本」，importedAt/updatedAt 是「何时导入/更新」。
-  // 键是 skill 名（仓库内一个 skill 一条），值记「从哪来、什么版本」。
-  remoteHub: { dir: '', skills: {} },
+  remoteRepo: { dir: '', skills: {} },
 });
 
 let cache = null;
@@ -130,8 +125,6 @@ function normalize(data) {
   base.worktreeState =
     data.worktreeState && typeof data.worktreeState === 'object' ? data.worktreeState : {};
   base.recents = Array.isArray(data.recents) ? data.recents : [];
-  base.remoteSources =
-    data.remoteSources && typeof data.remoteSources === 'object' ? data.remoteSources : {};
   // 「每个远程规格各建一个源」的旧模型（0.18 前的开发期形态）已废弃：
   // 远程内容统一进固定名的「远程订阅」仓库。旧登记自动摘掉，避免留下悬空源。
   const legacy = base.settings.skillHubSources.filter((p) => /[\\/]remote-skills[\\/]/i.test(p));
@@ -143,10 +136,12 @@ function normalize(data) {
       base.settings.skillHubPath = '';
     }
   }
-  base.remoteSources = {};
-  base.remoteHub =
-    data.remoteHub && typeof data.remoteHub === 'object'
-      ? { dir: String(data.remoteHub.dir || ''), skills: data.remoteHub.skills && typeof data.remoteHub.skills === 'object' ? data.remoteHub.skills : {} }
+  base.remoteRepo =
+    data.remoteRepo && typeof data.remoteRepo === 'object'
+      ? {
+          dir: String(data.remoteRepo.dir || ''),
+          skills: data.remoteRepo.skills && typeof data.remoteRepo.skills === 'object' ? data.remoteRepo.skills : {},
+        }
       : { dir: '', skills: {} };
   return base;
 }

@@ -39,11 +39,17 @@ export function applyFilters(list, { include, exclude, match } = {}) {
 // 从订阅源里筛出要操作的 skill。
 // 显式点名 → 在**全部**已订阅源里找（名字就是明确意图；少一个就报错，
 // 避免批量里静默漏迁移；同名不同内容仍由 migrate 判 blocked / --source）。
-// --all / --include 全量 → 只取**当前主源**（「把主源铺出去」的语义，
-// 不然订阅十个源时 --all 会把所有源全铺一遍，谁都 hold 不住）。
-export async function selectSourceSkills({ names, all, include, exclude, match } = {}) {
+// --all / --include 全量 → 默认只取**当前主源**（「把主源铺出去」的语义，
+// 不然订阅十个源时 --all 会把所有源全铺一遍，谁都 hold 不住）；
+// --all-sources → 铺开**全部**订阅源（远程订阅仓库通常不是主源，
+// 想把它整体铺到平台时用它）。
+export async function selectSourceSkills({ names, all, allSources, include, exclude, match } = {}) {
   const wanted = nameList(names);
-  const pool = wanted.length ? await listAllSourceSkills() : await listHubSkills();
+  const pool = wanted.length
+    ? await listAllSourceSkills()
+    : allSources
+      ? await listAllSourceSkills()
+      : await listHubSkills();
   const byName = new Map(pool.map((s) => [s.name, s]));
 
   let chosen;

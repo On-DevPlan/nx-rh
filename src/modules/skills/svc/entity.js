@@ -4,7 +4,7 @@
 // 所以这里不需要「同步到目标」。
 // 刻意不声明 resource: 'skill'——`skill get` 这个 CLI 已被内置手册占用（bundled 模块），
 // CRUD 断言要求的 get 动词没法按 A00 命名；不改名就不硬凑。
-import { join, resolve } from 'node:path';
+import { basename, join, resolve } from 'node:path';
 import fsp from 'node:fs/promises';
 import { exists, pathExists } from '../../../core/fstree.js';
 import { parseFrontmatter } from '../../../core/frontmatter.js';
@@ -16,6 +16,7 @@ import { resolveSkillsRoot } from './scan.js';
 import { sourceEntriesFor } from './sources.js';
 import { resolveTargets } from './targets.js';
 import { sourceAudit } from './queries.js';
+import { syncRemoteMeta } from './remote-repo.js';
 
 // 组装 SKILL.md：frontmatter（name/description）+ 正文
 function buildSkillMd(name, description, body) {
@@ -97,6 +98,8 @@ export async function removeSkill({ name, force, project } = {}) {
     };
   }
   await fsp.rm(found.dir, { recursive: true, force: true });
+  // 远程订阅仓库里的实体被删 → 同步删元数据，否则 remote update 会把它**复活**
+  await syncRemoteMeta(name, 'removed');
   return { status: 'ok', name, removed: found.dir, dangling: refs };
 }
 
@@ -153,6 +156,8 @@ export async function purgeSkill({ name, project, force, dryRun } = {}) {
     await fsp.rm(s.dir, { recursive: true, force: true });
     removed.push({ kind: 'source', path: s.dir, source: s.source });
   }
+  // 远程订阅仓库里的实体被删 → 同步删元数据，否则 remote update 会把它**复活**
+  await syncRemoteMeta(name, 'removed');
   return { status: 'ok', dryRun: false, name, plan, removed };
 }
 
@@ -248,11 +253,15 @@ async function applyDedupeGroup(winnerDir, others, as) {
     await fsp.rm(o.dir, { recursive: true, force: true });
     if (as === 'delete') {
       removed.push({ ...o });
+      // 被删的那份若在远程订阅仓库里 → 同步删元数据（否则 update 会复活它）
+      await syncRemoteMeta(basename(o.dir), 'removed');
       continue;
     }
     const r = await createSkillLink(winnerDir, o.dir);
     if (r.ok) {
       linked.push({ ...o, linkType: r.linkType });
+      // 原地变成链接：上游追踪就此失效（链接没有自己的来源）→ 清 spec
+      await syncRemoteMeta(basename(o.dir), 'linked');
     } else {
       await fsp.cp(winnerDir, o.dir, { recursive: true, dereference: true, force: true });
       removed.push({ ...o, degraded: true, reason: r.error });

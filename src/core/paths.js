@@ -25,8 +25,8 @@ export function remoteSkillsDir() {
   return process.env.NX_RH_REMOTE_DIR || REMOTE_SKILLS_DIR;
 }
 
-export function remoteHubDir() {
-  return process.env.NX_RH_REMOTE_HUB_DIR || REMOTE_HUB_DIR;
+export function remoteRepoDir() {
+  return process.env.NX_RH_REMOTE_REPO_DIR || REMOTE_HUB_DIR;
 }
 
 export function envSnapshotDir() {

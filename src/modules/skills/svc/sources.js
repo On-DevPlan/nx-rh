@@ -20,7 +20,7 @@ import { resolveSkillsRoot, scanSkillsRoot, readSkill } from './scan.js';
 export async function listSources() {
   const s = await getSettings();
   const current = s.skillHubPath ? resolve(s.skillHubPath) : '';
-  const hubDir = (await loadStore()).remoteHub?.dir || '';
+  const hubDir = (await loadStore()).remoteRepo?.dir || '';
   const out = [];
   for (const p of s.skillHubSources) {
     const abs = resolve(p);

@@ -9,6 +9,7 @@ import { assertSafeName, assertSafeRelPath, projectRoot, cwdScope } from '../../
 import { notFound } from '../../../core/errors.js';
 import { mdOutline, mdStats } from '../../../core/mdoutline.js';
 import { getSettings } from '../../settings/service.js';
+import { loadStore } from '../../../core/store.js';
 import { scanSkillsRoot, readSkill } from './scan.js';
 import { listSources, hubInfo, listAllSourceSkills, sourceEntriesFor, findSourceSkill } from './sources.js';
 import { resolveTargets, scanTargetDir, SCOPE_IDS } from './targets.js';
@@ -150,7 +151,10 @@ export async function listAllSkills({ project, source, platform } = {}) {
       });
     }
     const conflict = conflicts.find((c) => c.name === sk.name) || null;
-    rows.push({ ...sk, cells, current: sk.source === current, conflict });
+    // 上游信息（远程订阅仓库里的 skill 才有）——让 hub list 与 remote list
+    // 成为同一份数据的两个投影，而不是两条互不相交的信息源
+    const up = await upstreamOf(sk.name);
+    rows.push({ ...sk, cells, current: sk.source === current, conflict, upstream: up });
   }
 
   // 目标目录里存在、但订阅源没有的 skill —— 待「提交到 Hub」
@@ -405,11 +409,30 @@ export async function skillInfo({ name, project } = {}) {
     broken,
     alsoIn: found ? found.alsoIn || [] : [],
     md5: found ? found.md5 : (local?.md5 || ''),
+    // 上游信息（远程订阅仓库里的 skill 才有）：来源 / 版本指纹 / 导入与更新时间
+    upstream: await upstreamOf(name),
     conflict,
     outline,
     stats: mdStats(raw, outline),
     files: dir && !broken ? await listSkillFiles(dir) : [],
     cells,
+  };
+}
+
+// 某个 skill 的上游元数据（来自远程订阅仓库登记）；不在远程仓库里返回 null
+export async function upstreamOf(name) {
+  const st = await loadStore();
+  const meta = st.remoteRepo?.skills?.[name];
+  if (!meta) return null;
+  return {
+    spec: meta.spec || '',
+    url: meta.url || '',
+    ref: meta.ref || '',
+    hash: meta.hash || '',
+    importedAt: meta.importedAt || '',
+    updatedAt: meta.updatedAt || meta.importedAt || '',
+    link: meta.link || '',
+    manual: !meta.spec,
   };
 }
 

@@ -1,4 +1,4 @@
-// 远程 Hub 的下载面回归：git 源（file:// 夹具）、归档 URL、单 SKILL.md URL。
+// 远程订阅 的下载面回归：git 源（file:// 夹具）、归档 URL、单 SKILL.md URL。
 // 全程不碰外网：git 用本地夹具，HTTP 用进程内服务。
 import { test, after } from 'node:test';
 import assert from 'node:assert/strict';
@@ -14,7 +14,7 @@ const home = join(tmp, 'home');
 mkdirSync(home, { recursive: true });
 process.env.NX_RH_STORE = join(tmp, 'store.json');
 process.env.NX_RH_REMOTE_DIR = join(tmp, 'staging');
-process.env.NX_RH_REMOTE_HUB_DIR = join(tmp, 'remote-hub');
+process.env.NX_RH_REMOTE_REPO_DIR = join(tmp, 'remote-hub');
 process.env.HOME = home;
 process.env.USERPROFILE = home;
 
@@ -82,37 +82,37 @@ after(() => {
 });
 
 test('git 源（file://）：clone → 进 Hub → 清单可读', async () => {
-  const r = await svc.importToHub('file:///' + fixture.replace(/\\/g, '/'));
+  const r = await svc.importToRemote('file:///' + fixture.replace(/\\/g, '/'));
   assert.equal(r.count, 1);
   assert.ok(existsSync(join(r.dir, 'fixture-skill', 'SKILL.md')));
 
-  const { skills } = await svc.hubContents();
+  const { skills } = await svc.remoteContents();
   const sk = skills.find((s) => s.name === 'fixture-skill');
   assert.ok(sk, 'Hub 清单里有它');
   assert.ok(sk.spec.startsWith('file://'), '来源记下来了');
 });
 
 test('归档 URL：下载 → 解包 → 剥外壳 → 进 Hub', async () => {
-  const r = await svc.importToHub(`http://127.0.0.1:${port}/bundle.tar.gz`);
+  const r = await svc.importToRemote(`http://127.0.0.1:${port}/bundle.tar.gz`);
   assert.equal(r.count, 1);
-  const { skills } = await svc.hubContents();
+  const { skills } = await svc.remoteContents();
   assert.ok(skills.some((s) => s.name === 'arc-skill'));
 });
 
 test('单个 SKILL.md URL：按 frontmatter name 建目录', async () => {
-  await svc.importToHub(`http://127.0.0.1:${port}/single.md`);
-  const { skills } = await svc.hubContents();
+  await svc.importToRemote(`http://127.0.0.1:${port}/single.md`);
+  const { skills } = await svc.remoteContents();
   const sk = skills.find((s) => s.name === 'single-skill');
   assert.ok(sk);
   assert.ok(readFileSync(join(sk.dir, 'SKILL.md'), 'utf8').includes('name: single-skill'));
 });
 
 test('404 下载 → EXTERNAL 失败，Hub 里不留半截', async () => {
-  const before = (await svc.hubContents()).skills.length;
+  const before = (await svc.remoteContents()).skills.length;
   await assert.rejects(
-    () => svc.importToHub(`http://127.0.0.1:${port}/nope.zip`),
+    () => svc.importToRemote(`http://127.0.0.1:${port}/nope.zip`),
     (err) => err.code === 'EXTERNAL'
   );
-  const afterCount = (await svc.hubContents()).skills.length;
+  const afterCount = (await svc.remoteContents()).skills.length;
   assert.equal(afterCount, before, '失败的导入不落盘');
 });

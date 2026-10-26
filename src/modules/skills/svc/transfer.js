@@ -56,13 +56,13 @@ async function placeAt(srcDir, name, target, mode, dryRun) {
 // 迁移 skill 到目标集。选择方式：<name...> / --all / --include，再叠加 --exclude / --match。
 // 目的仓库不做冲突检测（直接覆盖）；跨**订阅源**的冲突会 blocked，可用 --source 指定用哪一份。
 export async function migrateSkill({
-  name, names, all, include, exclude, match,
+  name, names, all, allSources, include, exclude, match,
   to, platform, mode, project, source, dryRun,
 } = {}) {
   const s = await getSettings();
   const m = mode === 'copy' || mode === 'symlink' ? mode : s.skillSyncMode;
   const targets = await resolveTargets({ to, platform, project });
-  const list = await selectSourceSkills({ names: names ?? name, all, include, exclude, match });
+  const list = await selectSourceSkills({ names: names ?? name, all, allSources, include, exclude, match });
 
   const results = [];
   const blocked = [];

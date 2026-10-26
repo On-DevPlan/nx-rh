@@ -36,6 +36,7 @@ const projectOf = (ctx) => ctx.project || projectRoot();
 // 全量迁移的真需求是「全都要，除了某几个」——所以 --exclude 是一等参数。
 const SELECT = {
   all: { type: 'boolean' },
+  'all-sources': { type: 'boolean', hint: '铺开全部订阅源（远程订阅仓库通常不是主源）' },
   include: { type: 'array', hint: '模式' },
   exclude: { type: 'array', hint: '模式' },
   match: { type: 'string', hint: '描述关键词' },
@@ -45,10 +46,11 @@ const SELECT = {
 // 至少要给出一种选择方式：点名 / --all / --include
 function hasSelection(ctx) {
   const names = Array.isArray(ctx.name) ? ctx.name : ctx.name ? [ctx.name] : [];
-  return names.length > 0 || ctx.all === true || (Array.isArray(ctx.include) ? ctx.include.length > 0 : !!ctx.include);
+  return names.length > 0 || ctx.all === true || ctx['all-sources'] === true
+    || (Array.isArray(ctx.include) ? ctx.include.length > 0 : !!ctx.include);
 }
 
-const SELECT_USAGE = '<name...> | --all | --include <模式>（可叠加 --exclude <模式> / --match <描述关键词>）';
+const SELECT_USAGE = '<name...> | --all | --all-sources | --include <模式>（可叠加 --exclude <模式> / --match <描述关键词>）';
 
 export default {
   id: 'skills',
@@ -78,26 +80,21 @@ export default {
       render: renderSources,
     },
     {
-      // 本地目录 = 订阅一个源；远程规格 = 导入远程订阅（唯一容器，逐 skill 记版本）
+      // 本地目录 = 订阅一个源。远程规格走 `skill hub remote import`（唯一入口）
+      // ——两条路都导会让人分不清哪条算数。
       id: 'skill.hub.add',
       cli: ['skill', 'hub', 'subscribe'],
       http: ['POST', '/api/skills/sources'],
-      summary: '订阅一个 skill 目录（本地路径），或把远程规格导入远程订阅（owner/repo、git URL、归档 URL）',
+      summary: '订阅一个 skill 目录（本地路径）；外部 skill 用 skill hub remote import 导入远程订阅',
       args: ['path'],
       run: async (ctx) => {
         if (service.peekRemote(ctx.path)) {
-          const r = await service.importToHub(ctx.path);
-          return { path: ctx.path, imported: true, ...r };
+          throw badInput('这是远程规格：用 nx-rh skill hub remote import ' + ctx.path + '（导入远程订阅仓库）');
         }
         const d = await service.addSource(ctx.path);
         return { path: ctx.path, ...d };
       },
-      render: (d) => {
-        if (d.imported) {
-          return `已导入远程订阅: ${d.count} 个 skill（${d.imported.join(', ')}）\n  落位: ${d.dir}\n  清单与更新: nx-rh skill hub remote list / update`;
-        }
-        return `已订阅: ${d.path}`;
-      },
+      render: (d) => `已订阅: ${d.path}`,
     },
     {
       id: 'skill.hub.remove',
@@ -285,7 +282,7 @@ export default {
       cli: [['skill', 'hub', 'remote', 'list'], ['skill', 'remote', 'list']],
       http: ['GET', '/api/skills/remote'],
       summary: '远程订阅 内容：skill 及其来源 / 版本指纹 / 导入与更新时间',
-      run: () => service.hubContents(),
+      run: () => service.remoteContents(),
       render: renderRemoteHub,
     },
     {
@@ -295,7 +292,7 @@ export default {
       summary: '从远程规格导入到远程订阅（owner/repo、git URL、归档 URL；--name 只导一个）',
       args: ['spec'],
       flags: { name: { type: 'string', hint: '只导入这一个 skill' } },
-      run: (ctx) => service.importToHub(ctx.spec, { name: ctx.name }),
+      run: (ctx) => service.importToRemote(ctx.spec, { name: ctx.name }),
       render: (d) => `已导入 ${d.count} 个到远程订阅: ${d.imported.join(', ')}\n  落位: ${d.dir}`,
     },
     {
@@ -305,7 +302,7 @@ export default {
       summary: '在远程订阅 里添加一个手写定义（--description / --content）',
       args: ['name'],
       flags: { description: { type: 'string' }, content: { type: 'string' } },
-      run: (ctx) => service.addHubDefinition(ctx.name, { description: ctx.description, content: ctx.content }),
+      run: (ctx) => service.addRemoteDefinition(ctx.name, { description: ctx.description, content: ctx.content }),
       render: (d) => `已在远程订阅 添加定义: ${d.name}\n  落位: ${d.dir}`,
     },
     {
@@ -314,8 +311,17 @@ export default {
       http: ['POST', '/api/skills/remote/link'],
       summary: '在远程订阅 里放一个软链（<name> <目标目录>：链到别处已有的 skill，同一份源码多处可用）',
       args: ['name', 'target'],
-      run: (ctx) => service.linkIntoHub(ctx.name, ctx.target),
+      run: (ctx) => service.linkIntoRemote(ctx.name, ctx.target),
       render: (d) => `已加软链: ${d.name} → ${d.target}  (${d.linkType})`,
+    },
+    {
+      id: 'skill.hub.remote.link-out',
+      cli: [['skill', 'hub', 'remote', 'link-out']],
+      http: ['POST', '/api/skills/remote/link-out'],
+      summary: '把远程订阅里的某份 skill 链到别处（<name> <目标目录>：仓库里这份不动）',
+      args: ['name', 'target'],
+      run: (ctx) => service.linkFromRemote(ctx.name, ctx.target),
+      render: (d) => `已加软链: ${d.from} → ${d.to}  (${d.linkType})`,
     },
     {
       id: 'skill.hub.remote.update',
@@ -325,7 +331,7 @@ export default {
       args: [{ name: 'name', rest: true, required: false }],
       run: (ctx) => {
         const names = Array.isArray(ctx.name) ? ctx.name : ctx.name ? [ctx.name] : [];
-        return service.updateHub(names);
+        return service.updateRemote(names);
       },
       render: renderRemoteUpdate,
     },
@@ -337,7 +343,7 @@ export default {
       args: [{ name: 'name', rest: true }],
       run: (ctx) => {
         const names = Array.isArray(ctx.name) ? ctx.name : ctx.name ? [ctx.name] : [];
-        return service.removeFromHub(names);
+        return service.removeFromRemote(names);
       },
       render: (d) => `已从远程订阅 移除: ${d.removed.join(', ') || '（无）'}`,
     },
@@ -408,7 +414,12 @@ export default {
       run: (ctx) => {
         if (!hasSelection(ctx)) throw badInput(`用法: nx-rh skill hub migrate ${SELECT_USAGE}`);
         // CLI flag 名是 --dry-run（连字符），service 参数是 dryRun（驼峰）——在这一处映射
-        return service.migrateSkill({ ...ctx, dryRun: ctx['dry-run'] === true, project: projectOf(ctx) });
+        return service.migrateSkill({
+          ...ctx,
+          allSources: ctx['all-sources'] === true,
+          dryRun: ctx['dry-run'] === true,
+          project: projectOf(ctx),
+        });
       },
       render: renderMigrate,
     },

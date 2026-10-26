@@ -40,6 +40,7 @@ export function renderSkillList(d, ctx) {
       lines.push(s.name);
       lines.push(`  目录: ${s.dir}`);
       lines.push(`  来源: ${s.source}`);
+      if (s.upstream?.spec) lines.push(`  上游: ${s.upstream.spec}${s.upstream.ref ? '@' + s.upstream.ref : ''}  ·  版本 ${String(s.upstream.hash).slice(0, 8)}`);
       if (s.alsoIn?.length) lines.push(`  同时存在于: ${s.alsoIn.join(', ')}`);
       lines.push(`  描述: ${s.description}`);
       lines.push(`  安装: ${cellText(s.cells) || '未安装'}`);
@@ -47,7 +48,8 @@ export function renderSkillList(d, ctx) {
       continue;
     }
     const tag = multi ? `  [${sourceLabel(s.source, srcAll)}]` : '';
-    lines.push(`${s.name.padEnd(28)} ${(s.description || '').slice(0, 48)}${tag}`.trimEnd());
+    const up = s.upstream?.spec ? `  ↑${s.upstream.spec}` : '';
+    lines.push(`${s.name.padEnd(28)} ${(s.description || '').slice(0, 48)}${tag}${up}`.trimEnd());
   }
   if (d.orphans?.length) {
     lines.push('');
@@ -167,6 +169,14 @@ export function renderShow(d) {
   if (d.dir) lines.push(`  目录: ${d.dir}`);
   if (d.alsoIn?.length) lines.push(`  同时存在于: ${d.alsoIn.join(', ')}`);
   lines.push(`  描述: ${d.description}`);
+  // 上游（远程订阅仓库里的 skill 才有）：来源 / 版本 / 导入与更新时间
+  if (d.upstream) {
+    const u = d.upstream;
+    lines.push(`  上游: ${u.spec || '（无，手写定义或软链）'}${u.ref ? '@' + u.ref : ''}`);
+    if (u.hash) lines.push(`  版本: ${String(u.hash).slice(0, 8)}`);
+    if (u.updatedAt) lines.push(`  导入: ${u.importedAt || '—'}  ·  更新: ${u.updatedAt}`);
+    if (u.link) lines.push(`  软链: ${u.link}`);
+  }
   if (d.outline?.length) {
     lines.push(`  结构（${d.stats?.sections ?? d.outline.length} 节 · ${d.stats?.lines ?? '?'} 行）:`);
     for (const h of d.outline) lines.push(`    ${'  '.repeat(h.level - 1)}${'#'.repeat(h.level)} ${h.text}`);
@@ -291,29 +301,6 @@ export function renderAdapters(list) {
 
 // skill hub sync 的结果：每源一节，+ 新增 / - 移除 / ~ 变更。
 // 软链迁移的副本换入后自动指向新内容；copy 形态的旧副本不自动跟，需要时重迁移。
-export function renderSync(d) {
-  if (d.note) return d.note;
-  const lines = [];
-  if (d.dryRun) lines.push('预演（--dry-run，未改动磁盘）:');
-  else lines.push('远程源同步完成:');
-  for (const r of d.results) {
-    if (r.error) {
-      lines.push(`  ! ${r.spec || r.source}  失败: ${r.error}`);
-      continue;
-    }
-    const mark = r.clean ? '（无变化）' : '';
-    lines.push(`  ${r.spec}${r.dryRun ? '（预演）' : ''}  ${mark}`);
-    if (r.added.length) lines.push(`    + 新增: ${r.added.join(', ')}`);
-    if (r.removed.length) lines.push(`    - 移除: ${r.removed.join(', ')}`);
-    if (r.changed.length) lines.push(`    ~ 变更: ${r.changed.join(', ')}`);
-    if (!r.added.length && !r.removed.length && !r.changed.length) lines.push('    （内容一致）');
-  }
-  const anyChanged = d.results.some((r) => !r.error && !r.clean);
-  if (anyChanged && !d.dryRun) {
-    lines.push('', '软链迁移的 skill 自动指向新内容；copy 形态的旧副本不自动跟新，需要时重迁移。');
-  }
-  return lines.join('\n');
-}
 
 // skill hub search：每行 name@source + 安装量，尾部给可直接回填的 subscribe 命令。
 export function renderSearch(d) {
@@ -324,7 +311,7 @@ export function renderSearch(d) {
   for (const r of d.results) {
     lines.push(`${String(r.name).padEnd(32)} ${r.source.padEnd(44)} ${r.installs} 次安装`);
   }
-  lines.push('', '订阅：nx-rh skill hub subscribe <上面任意 source>');
+  lines.push('', '导入到远程订阅：nx-rh skill hub remote import <上面任意 source>');
   return lines.join('\n');
 }
 

@@ -51,7 +51,7 @@ export function Overview({ data, openCreate }) {
       </div>
       <div className="entry-grid">
         {sources.map((s) => (
-          <div key={s.path} className="entry-card" onClick={() => (s.remote ? goRemote() : goHub(s.path))}>
+          <div key={s.path} className="entry-card" onClick={() => goHub(s.path)}>
             <div className="ec-top">
               <span className="ec-name">{s.remote ? '远程订阅' : sourceLabel(s.path, srcPaths)}</span>
               {s.current ? <span className="tag strong">主源</span> : null}
