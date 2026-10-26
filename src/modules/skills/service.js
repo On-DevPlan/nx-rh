@@ -19,3 +19,4 @@ export * from './svc/select.js';
 export * from './svc/entity.js';
 export * from './svc/transfer.js';
 export * from './svc/remote.js';
+export * from './svc/sync.js';

@@ -2,7 +2,7 @@
 // 来源只认**实文件**，目标侧照常识别链接形态——这条规则决定谁是真相源。
 import { basename, join } from 'node:path';
 import fsp from 'node:fs/promises';
-import { exists, md5Of } from '../../../core/fstree.js';
+import { exists, md5Of, walkFiles } from '../../../core/fstree.js';
 import { parseFrontmatter } from '../../../core/frontmatter.js';
 import { detectLinkType } from '../../../core/link.js';
 
@@ -82,5 +82,25 @@ export async function scanSkillsRoot(root, { source, realOnly } = {}) {
       });
     }
   }
+  return out;
+}
+
+// ─── 目录内容指纹（sync 的变更判定基础） ──────────────────────────────
+// 思路对齐 vercel-labs/skills 的 skill-lock.ts tree SHA：目录里**任何文件**变了，
+// 指纹就变。本地实现用「排序后的 相对路径\0文件md5 行拼接 → 整体 md5」——
+// 不依赖 git，对 clone 与下载两种落地形态一视同仁。
+export async function skillDirHash(dir) {
+  const files = await walkFiles(dir);
+  const lines = [...files.entries()].map(([rel, f]) => rel + '\0' + f.md5).sort();
+  return md5Of(Buffer.from(lines.join('\n'), 'utf8'));
+}
+
+// 一个 skills 根目录的快照：{ [skill名]: 目录指纹 }。subscribe / sync 落盘进
+// store.remoteSources[path].skills，下次拉取前后对比即得 新增/移除/变更。
+export async function snapshotSkills(dir) {
+  const root = await resolveSkillsRoot(dir);
+  const skills = await scanSkillsRoot(root, { realOnly: true });
+  const out = {};
+  for (const s of skills) out[s.name] = await skillDirHash(join(root, s.name));
   return out;
 }

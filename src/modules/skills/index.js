@@ -22,6 +22,7 @@ import {
   renderPurge,
   renderDedupe,
   renderDedupeAll,
+  renderSync,
 } from './renders.js';
 
 // `--to`：user（用户级 ~/）· global（= user，口头语）· project（项目级，缺省）· all（两者）
@@ -90,7 +91,7 @@ export default {
       render: (d) => {
         if (d.remote) {
           const ref = d.ref ? `@${d.ref}` : '';
-          return `已订阅远程源: ${d.spec}${ref}\n  落位: ${d.dir}  (${d.count} 个 skill)\n  后续照常: skill hub list / migrate —— sync 更新留待 skill hub sync`;
+          return `已订阅远程源: ${d.spec}${ref}\n  落位: ${d.dir}  (${d.count} 个 skill)\n  后续照常: skill hub list / migrate；上游更新用 skill hub sync 拉新`;
         }
         return `已订阅: ${d.path}`;
       },
@@ -258,6 +259,19 @@ export default {
         return service.purgeSkill({ name: ctx.name, ...common });
       },
       render: renderPurge,
+    },
+
+    {
+      // 版本追踪与更新（远程源专用）：重新拉取 → 目录指纹对比 → 换入并刷新快照。
+      // 本地源没有上游，传本地源路径会 INVALID_INPUT。
+      id: 'skill.hub.sync',
+      cli: [['skill', 'hub', 'sync'], ['skill', 'sync']],
+      http: ['POST', '/api/skills/sync'],
+      summary: '重新拉取远程订阅源，按目录指纹报告新增/移除/变更（[source]=路径/规格/id，缺省全部；--dry-run 只看清单）',
+      args: [{ name: 'source', required: false }],
+      flags: { 'dry-run': { type: 'boolean', hint: '拉到 staging 对比后弃置，不落盘' } },
+      run: (ctx) => service.syncSource(ctx.source, { dryRun: ctx['dry-run'] === true }),
+      render: renderSync,
     },
 
     {

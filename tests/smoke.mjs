@@ -111,7 +111,33 @@ try {
   check('主源切回本地 hub', cli(['skill', 'hub', 'main', hub]).status === 0);
   // 退订远程源恢复原状（磁盘副本留在临时 home 里随目录一起清理），
   // 不然后面「skills.length === 1」的池断言会数进 remote-demo。
-  check('skill hub unsubscribe 远程源', remoteHit && cli(['skill', 'hub', 'unsubscribe', remoteHit.path]).status === 0);
+  // ---- 2c. 远程源 sync（上游提 v2：remote-demo 改 + 新增 remote-second） ----
+  writeFileSync(
+    join(remoteFixture, 'skills', 'remote-demo', 'SKILL.md'),
+    '---\nname: remote-demo\ndescription: v2 updated\n---\n\n# Remote v2\n'
+  );
+  mkdirSync(join(remoteFixture, 'skills', 'remote-second'), { recursive: true });
+  writeFileSync(
+    join(remoteFixture, 'skills', 'remote-second', 'SKILL.md'),
+    '---\nname: remote-second\ndescription: added in v2\n---\n\n# Second\n'
+  );
+  for (const args of [['add', '.'], ['commit', '--quiet', '-m', 'v2']]) {
+    const g = spawnSync('git', ['-c', 'user.email=t@t', '-c', 'user.name=t', ...args], { cwd: remoteFixture, encoding: 'utf8' });
+    if (g.status !== 0) throw new Error('git fixture v2 失败: ' + g.stderr);
+  }
+  // 退订放在 sync 用例之后做，避免下一段又得重新订阅
+  const synced = cliJson(['skill', 'hub', 'sync', remoteUrl]);
+  check(
+    'skill hub sync 报告变更',
+    synced.status === 'ok' && synced.results.length === 1 &&
+      synced.results[0].changed.includes('remote-demo') && synced.results[0].added.includes('remote-second'),
+    JSON.stringify(synced.results)
+  );
+  check('sync 后 skill 池含新 skill', (cliJson(['skill', 'hub', 'list']).skills || []).some((s) => s.name === 'remote-second'));
+  // sync 的换入会再设一次主源（同 subscribe 语义），退订前切回本地 hub，
+  // 否则退订远程源会把主源清空，后面 submit 用例会「未设置 Skill Hub 订阅源」。
+  check('sync 后主源切回本地 hub', cli(['skill', 'hub', 'main', hub]).status === 0);
+  check('skill hub unsubscribe 远程源', cli(['skill', 'hub', 'unsubscribe', remoteHit.path]).status === 0);
   check('退订后远程源不在清单', !(cliJson(['skill', 'hub', 'sources']).sources || []).some((s) => s.remote));
 
 

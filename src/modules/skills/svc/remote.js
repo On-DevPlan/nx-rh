@@ -20,7 +20,7 @@ import { loadStore, mutateStore } from '../../../core/store.js';
 import { readArchive } from '../../../core/archive.js';
 import { parseFrontmatter } from '../../../core/frontmatter.js';
 import { parseSource, remoteSourceId } from './remote-parse.js';
-import { resolveSkillsRoot, scanSkillsRoot } from './scan.js';
+import { snapshotSkills } from './scan.js';
 import { addCandidate } from '../../settings/service.js';
 
 const execFileAsync = promisify(execFile);
@@ -199,25 +199,16 @@ export function peekRemote(spec) {
   return parsed.type === 'local' ? null : parsed;
 }
 
-async function countSkills(dir) {
-  const root = await resolveSkillsRoot(dir);
-  return (await scanSkillsRoot(root, { realOnly: true })).length;
-}
-
-// 远程源元数据（store.remoteSources）：sourceDir → { spec, url, type, ref, subpath, fetchedAt }
+// 远程源元数据（store.remoteSources）：sourceDir → { spec, url, type, ref, subpath, skills, fetchedAt }
 export async function remoteMetaMap() {
   const s = await loadStore();
   return s.remoteSources || {};
 }
 
-export async function subscribeRemote(spec) {
-  const parsed = parseSource(spec);
-  if (parsed.type === 'local') {
-    throw badInput('本地路径请直接 skill hub subscribe <path>（远程订阅收 owner/repo、git URL、归档 URL）');
-  }
+// 拉取到 staging：不动最终目录、不注册——sync 的 --dry-run 靠它对比后弃置。
+export async function materializeRemote(parsed) {
   const id = remoteSourceId(parsed);
   const baseDir = remoteSkillsDir();
-  const finalDir = join(baseDir, id);
   const staging = join(baseDir, '.' + id + '.staging');
   await fsp.rm(staging, { recursive: true, force: true });
   await fsp.mkdir(baseDir, { recursive: true });
@@ -231,13 +222,21 @@ export async function subscribeRemote(spec) {
         await fsp.rm(staging, { recursive: true, force: true });
         throw notFound('仓库里没有这个子路径: ' + parsed.subpath + '（' + parsed.url + '）');
       }
+      sourceDir = sub;
+    } else {
+      sourceDir = staging;
     }
-    sourceDir = parsed.subpath ? join(staging, parsed.subpath) : staging;
   } else {
     sourceDir = await downloadSource(parsed.url, staging);
   }
+  return { id, staging, sourceDir };
+}
 
-  // 原子换入：成功之后才动旧目录，失败时旧内容原样保留
+// staging → 最终目录的原子换入 + 注册 + 元数据落盘。
+// skills 快照（{ [skill名]: 目录指纹 }）此刻记下——它是下次 sync 的对比基准。
+export async function commitRemote(parsed, staging, sourceDir, skillsSnapshot) {
+  const id = remoteSourceId(parsed);
+  const finalDir = join(remoteSkillsDir(), id);
   await fsp.rm(finalDir, { recursive: true, force: true });
   // sourceDir 可能是 staging 里的子路径：换入的是**整份 staging**，
   // 注册路径按同一段相对位移映射到 finalDir
@@ -248,13 +247,14 @@ export async function subscribeRemote(spec) {
   await addCandidate('hub', registered);
   const fetchedAt = new Date().toISOString();
   const meta = {
-    spec,
+    spec: parsed.spec || parsed.url,
     type: parsed.type,
     url: parsed.url,
     ...(parsed.ref ? { ref: parsed.ref } : {}),
     ...(parsed.subpath ? { subpath: parsed.subpath } : {}),
     id,
     fetchedAt,
+    ...(skillsSnapshot ? { skills: skillsSnapshot } : {}),
   };
   await mutateStore((s) => {
     s.remoteSources = s.remoteSources || {};
@@ -265,6 +265,26 @@ export async function subscribeRemote(spec) {
     s.remoteSources[registered] = meta;
     return meta;
   });
+  return { registered, meta };
+}
 
-  return { spec, remote: true, id, dir: registered, url: parsed.url, ref: parsed.ref || '', count: await countSkills(registered), fetchedAt };
+export async function subscribeRemote(spec) {
+  const parsed = parseSource(spec);
+  if (parsed.type === 'local') {
+    throw badInput('本地路径请直接 skill hub subscribe <path>（远程订阅收 owner/repo、git URL、归档 URL）');
+  }
+  parsed.spec = spec;
+  const { id, staging, sourceDir } = await materializeRemote(parsed);
+  const snapshot = await snapshotSkills(sourceDir);
+  const { registered } = await commitRemote(parsed, staging, sourceDir, snapshot);
+  return {
+    spec,
+    remote: true,
+    id,
+    dir: registered,
+    url: parsed.url,
+    ref: parsed.ref || '',
+    count: Object.keys(snapshot).length,
+    fetchedAt: new Date().toISOString(),
+  };
 }

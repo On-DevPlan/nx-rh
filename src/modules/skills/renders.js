@@ -288,3 +288,29 @@ export function renderAdapters(list) {
     })
     .join('\n');
 }
+
+// skill hub sync 的结果：每源一节，+ 新增 / - 移除 / ~ 变更。
+// 软链迁移的副本换入后自动指向新内容；copy 形态的旧副本不自动跟，需要时重迁移。
+export function renderSync(d) {
+  if (d.note) return d.note;
+  const lines = [];
+  if (d.dryRun) lines.push('预演（--dry-run，未改动磁盘）:');
+  else lines.push('远程源同步完成:');
+  for (const r of d.results) {
+    if (r.error) {
+      lines.push(`  ! ${r.spec || r.source}  失败: ${r.error}`);
+      continue;
+    }
+    const mark = r.clean ? '（无变化）' : '';
+    lines.push(`  ${r.spec}${r.dryRun ? '（预演）' : ''}  ${mark}`);
+    if (r.added.length) lines.push(`    + 新增: ${r.added.join(', ')}`);
+    if (r.removed.length) lines.push(`    - 移除: ${r.removed.join(', ')}`);
+    if (r.changed.length) lines.push(`    ~ 变更: ${r.changed.join(', ')}`);
+    if (!r.added.length && !r.removed.length && !r.changed.length) lines.push('    （内容一致）');
+  }
+  const anyChanged = d.results.some((r) => !r.error && !r.clean);
+  if (anyChanged && !d.dryRun) {
+    lines.push('', '软链迁移的 skill 自动指向新内容；copy 形态的旧副本不自动跟新，需要时重迁移。');
+  }
+  return lines.join('\n');
+}
