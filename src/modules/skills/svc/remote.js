@@ -65,6 +65,16 @@ async function runGit(args, { cwd } = {}) {
       cwd,
       timeout: remoteLimits().cloneTimeoutMs,
       windowsHide: true,
+      // 加固（移植自 skills src/git.ts 的 clone 环境约束）：
+      // - 无凭据不挂起等终端输入（Web 面板里就是永久转圈）
+      // - 传输协议白名单；ext:: 这类可执行传输由 parseSource 前置拒绝，这里是第二道
+      // - 跳过 LFS smudge：没装 git-lfs 的机器 clone 含 LFS 的仓库 checkout 会失败
+      env: {
+        ...process.env,
+        GIT_TERMINAL_PROMPT: '0',
+        GIT_ALLOW_PROTOCOL: 'https:http:ssh:git:file',
+        GIT_LFS_SKIP_SMUDGE: '1',
+      },
     });
   } catch (err) {
     const message = String((err && err.stderr) || err.message || err);
@@ -73,6 +83,9 @@ async function runGit(args, { cwd } = {}) {
     }
     if (isMissingRefError(message)) {
       throw badInput('远程分支/标签不存在: ' + message.trim().slice(0, 300));
+    }
+    if (/timed? out|ETIMEDOUT/i.test(message)) {
+      throw external('git 超时（可设 NX_RH_CLONE_TIMEOUT_MS 提额，默认 300000ms）: ' + message.trim().slice(0, 200));
     }
     throw external('git 失败（git ' + args.join(' ').slice(0, 80) + '…）: ' + message.trim().slice(0, 300));
   }
@@ -117,11 +130,30 @@ async function downloadBytes(url) {
   if (declared > maxDownloadBytes) {
     throw badInput('下载体超过上限 ' + maxDownloadBytes + ' 字节（' + declared + '），如信任来源可设 NX_RH_REMOTE_MAX_BYTES 覆写');
   }
-  const buf = Buffer.from(await res.arrayBuffer());
-  if (buf.byteLength > maxDownloadBytes) {
-    throw badInput('下载体超过上限 ' + maxDownloadBytes + ' 字节，如信任来源可设 NX_RH_REMOTE_MAX_BYTES 覆写');
+  // 流式读 + 边收边断（对齐 skills src/download-source.ts）：content-length 撒谎时
+  // 不会先把整个体吃进内存才发现超限
+  if (!res.body) {
+    const buf = Buffer.from(await res.arrayBuffer());
+    if (buf.byteLength > maxDownloadBytes) {
+      throw badInput('下载体超过上限 ' + maxDownloadBytes + ' 字节，如信任来源可设 NX_RH_REMOTE_MAX_BYTES 覆写');
+    }
+    return buf;
   }
-  return buf;
+  const reader = res.body.getReader();
+  const chunks = [];
+  let got = 0;
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    got += value.byteLength;
+    if (got > maxDownloadBytes) {
+      await reader.cancel().catch(() => {});
+      throw badInput('下载体超过上限 ' + maxDownloadBytes + ' 字节，如信任来源可设 NX_RH_REMOTE_MAX_BYTES 覆写');
+    }
+    chunks.push(Buffer.from(value));
+  }
+  if (!got) throw badInput('下载体为空: ' + url);
+  return Buffer.concat(chunks);
 }
 
 // 归档条目统一剥掉单一顶层目录（github archive 的 repo-<sha>/ 外壳）

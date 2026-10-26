@@ -19,6 +19,7 @@ import { Overview } from './parts/Overview.jsx';
 import { PlatformPage } from './parts/PlatformPage.jsx';
 import { HubPage } from './parts/HubPage.jsx';
 import { ProjectPage } from './parts/ProjectPage.jsx';
+import { RemotePage } from './parts/RemotePage.jsx';
 import { SkillDetail } from './parts/SkillDetail.jsx';
 import { SkillEditor } from './parts/dialogs.jsx';
 
@@ -51,6 +52,8 @@ export default function SkillsView() {
     body = <HubPage hubPath={route.arg} tick={tick} />;
   } else if (route.level === 'project') {
     body = <ProjectPage tick={tick} />;
+  } else if (route.level === 'remote') {
+    body = <RemotePage tick={tick} />;
   } else if (route.level === 'skill') {
     body = <SkillDetail name={route.arg} tick={tick} />;
   } else {

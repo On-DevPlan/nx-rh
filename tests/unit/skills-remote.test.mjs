@@ -143,3 +143,22 @@ test('取消订阅清掉远程元数据，磁盘保留', async () => {
 test('本地路径交给 subscribeRemote 会明确报错（入口分流由 action 做）', async () => {
   await assert.rejects(() => svc.subscribeRemote(fixture), (err) => err.code === 'INVALID_INPUT');
 });
+
+test('订阅源清单：远程源恒排最后（本地源在前、登记序不变）', async () => {
+  // 此刻已有一批远程源（git/归档/单文件）；再补两个本地源，后登记也要排在前面
+  const localA = join(tmp, 'local-a');
+  const localB = join(tmp, 'local-b');
+  for (const [dir, name] of [[localA, 'la-skill'], [localB, 'lb-skill']]) {
+    mkdirSync(join(dir, name), { recursive: true });
+    writeFileSync(join(dir, name, 'SKILL.md'), `---\nname: ${name}\ndescription: 本地\n---\n\n# ${name}\n`);
+  }
+  await svc.addSource(localA);
+  await svc.addSource(localB);
+  const { sources } = await svc.listSources();
+  const kinds = sources.map((s) => (s.remote ? 'remote' : 'local'));
+  // 恒等式：一旦出现 remote，后面不许再出现 local
+  const firstRemote = kinds.indexOf('remote');
+  assert.ok(firstRemote >= 0, '有远程源');
+  assert.ok(kinds.slice(firstRemote).every((k) => k === 'remote'), `远程源没有排最后: ${kinds}`);
+  assert.equal(kinds.indexOf('local'), 0, '首个本地源在前');
+});

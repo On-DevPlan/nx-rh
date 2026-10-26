@@ -314,3 +314,16 @@ export function renderSync(d) {
   }
   return lines.join('\n');
 }
+
+// skill hub search：每行 name@source + 安装量，尾部给可直接回填的 subscribe 命令。
+export function renderSearch(d) {
+  if (!d.results.length) {
+    return `（没有匹配「${d.query}」的结果${d.owner ? `，owner=${d.owner}` : ''}）`;
+  }
+  const lines = [`skills.sh 搜索「${d.query}」${d.owner ? `（owner: ${d.owner}）` : ''}，${d.results.length} 条:`];
+  for (const r of d.results) {
+    lines.push(`${String(r.name).padEnd(32)} ${r.source.padEnd(44)} ${r.installs} 次安装`);
+  }
+  lines.push('', '订阅：nx-rh skill hub subscribe <上面任意 source>');
+  return lines.join('\n');
+}

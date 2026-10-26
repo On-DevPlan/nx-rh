@@ -4,7 +4,7 @@ import { api } from '../../../web/frontend/api/client.js';
 import { useGuard, useDialog } from '../../../web/frontend/components/ui.jsx';
 import { CliHints } from '../../../web/frontend/components/CliHints.jsx';
 import { sourceLabel, lastSeg } from './shared.jsx';
-import { goOverview, goPlatform, goHub, goProject } from './routes.js';
+import { goOverview, goPlatform, goHub, goProject, goRemote } from './routes.js';
 import { SkillSettingsDialog } from './dialogs.jsx';
 import { HubCheckDialog } from './HubCheckDialog.jsx';
 
@@ -18,9 +18,14 @@ export function Overview({ data, openCreate }) {
   const summary = data?.platformSummary || [];
 
   const subscribe = () => guard(async () => {
-    const p = await dialog({ title: '订阅一个 skill 目录（目录下直接是各 skill）', input: true });
+    const p = await dialog({
+      title: '订阅 skill 目录或远程源',
+      input: true,
+      placeholder: '本地目录 · owner/repo · git URL · 归档 URL',
+      message: '远程规格自动识别，拉取到 ~/.nx-rh/remote-skills/ 后注册为普通订阅源。\n订阅后将成为主源。',
+    });
     if (!p) return;
-    await api('/api/skills/sources', { method: 'POST', body: { path: p } });
+    await api('/api/skills/sources', { method: 'POST', body: { path: p }, timeoutMs: 120000 });
     goOverview();
   });
 
@@ -34,6 +39,7 @@ export function Overview({ data, openCreate }) {
           </div>
         </div>
         <div className="acts">
+          <button className="btn ghost" onClick={goRemote}>远程源…</button>
           <button className="btn ghost" onClick={() => setCheckOpen(true)}>检查订阅源…</button>
           <button className="btn ghost" onClick={() => setSettingsOpen(true)}>Skill 设置</button>
           {data?.hub?.path ? <button className="btn" onClick={openCreate}>＋ 新建</button> : null}
@@ -47,8 +53,9 @@ export function Overview({ data, openCreate }) {
         {sources.map((s) => (
           <div key={s.path} className="entry-card" onClick={() => goHub(s.path)}>
             <div className="ec-top">
-              <span className="ec-name">{sourceLabel(s.path, srcPaths)}</span>
+              <span className="ec-name">{s.remote ? s.remote.spec : sourceLabel(s.path, srcPaths)}</span>
               {s.current ? <span className="tag strong">主源</span> : null}
+              {s.remote ? <span className="tag" title={`拉取于 ${s.remote.fetchedAt || '—'}`}>远程</span> : null}
               {!s.exists ? <span className="tag bad">不存在</span> : null}
             </div>
             <div className="ec-path" title={s.path}>{s.path}</div>

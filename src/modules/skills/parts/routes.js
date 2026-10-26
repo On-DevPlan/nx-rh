@@ -11,4 +11,5 @@ export const goOverview = () => { location.hash = '#/skills'; };
 export const goPlatform = (id) => { location.hash = `#/skills/platform/${id}`; };
 export const goHub = (path) => { location.hash = `#/skills/hub/${encodeURIComponent(path)}`; };
 export const goProject = () => { location.hash = '#/skills/project'; };
+export const goRemote = () => { location.hash = '#/skills/remote'; };
 export const goSkill = (name) => { location.hash = `#/skills/skill/${encodeURIComponent(name)}`; };

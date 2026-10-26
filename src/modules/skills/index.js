@@ -23,6 +23,7 @@ import {
   renderDedupe,
   renderDedupeAll,
   renderSync,
+  renderSearch,
 } from './renders.js';
 
 // `--to`：user（用户级 ~/）· global（= user，口头语）· project（项目级，缺省）· all（两者）
@@ -259,6 +260,21 @@ export default {
         return service.purgeSkill({ name: ctx.name, ...common });
       },
       render: renderPurge,
+    },
+
+    {
+      // 发现：搜 skills.sh 注册表。非交互（交互式发现由 Web 面板的远程源页承担）。
+      id: 'skill.hub.search',
+      cli: [['skill', 'hub', 'search'], ['skill', 'search']],
+      http: ['GET', '/api/skills/search'],
+      summary: '搜 skills.sh 注册表（[--owner <o>] 限定组织/用户；结果含来源与安装量，可直接 subscribe）',
+      args: [{ name: 'query', rest: true, required: false }],
+      flags: { owner: { type: 'string', hint: 'GitHub 组织/用户名' }, limit: { type: 'string', hint: '最多返回条数（默认 20）' } },
+      run: async (ctx) => {
+        const words = Array.isArray(ctx.query) ? ctx.query : ctx.query ? [ctx.query] : [];
+        return service.searchRegistry({ query: words.join(' '), owner: ctx.owner, limit: ctx.limit });
+      },
+      render: renderSearch,
     },
 
     {

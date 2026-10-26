@@ -16,6 +16,7 @@ import { resolveSkillsRoot, scanSkillsRoot, readSkill } from './scan.js';
 
 // 订阅源清单，附带解析后的 skills 根、是否存在、skill 数、是否当前主源。
 // remote 字段：远程订阅源的元数据（spec/url/ref/fetchedAt），本地源为 null。
+// 排序约定：本地源在前（登记序不变），远程源恒排最后——总览页与 CLI 清单共用此序。
 export async function listSources() {
   const s = await getSettings();
   const current = s.skillHubPath ? resolve(s.skillHubPath) : '';
@@ -34,6 +35,7 @@ export async function listSources() {
       remote: remoteMeta[abs] || null,
     });
   }
+  out.sort((a, b) => Number(!!a.remote) - Number(!!b.remote)); // 稳定排序：同组内保持登记序
   return { current, sources: out };
 }
 
