@@ -327,3 +327,36 @@ export function renderSearch(d) {
   lines.push('', '订阅：nx-rh skill hub subscribe <上面任意 source>');
   return lines.join('\n');
 }
+
+// 远程 Hub 清单：skill 名 + 版本指纹（8 位）+ 来源/形态 + 更新时间
+export function renderRemoteHub(d) {
+  if (!d.skills.length) {
+    return [
+      `远程 Hub 还是空的: ${d.dir}`,
+      '导入: nx-rh skill hub remote import <owner/repo|git URL>',
+      '手写定义: nx-rh skill hub remote add <name>',
+      '软链: nx-rh skill hub remote link <name> <目标目录>',
+    ].join('\n');
+  }
+  const lines = [`远程 Hub: ${d.dir}  (${d.skills.length} 个 skill)`];
+  for (const s of d.skills) {
+    const from = s.linkType ? `软链 → ${s.dir}` : s.manual ? '（手写定义）' : `${s.spec}${s.ref ? '@' + s.ref : ''}`;
+    lines.push(`${s.name.padEnd(28)} ${String(s.hash).slice(0, 8)}  ${from}  ·  更新于 ${s.updatedAt || '—'}`);
+  }
+  return lines.join('\n');
+}
+
+// 远程 Hub 更新结果：变了 / 没变 / 上游没了 / 跳过 / 失败
+export function renderRemoteUpdate(d) {
+  if (d.note) return d.note;
+  const lines = ['远程 Hub 更新:'];
+  for (const r of d.results) {
+    if (r.status === 'updated') lines.push(`  ~ ${r.name}  ${String(r.from).slice(0, 8)} → ${String(r.hash).slice(0, 8)}`);
+    else if (r.status === 'unchanged') lines.push(`  = ${r.name}  无变化`);
+    else if (r.status === 'removed') lines.push(`  - ${r.name}  ${r.reason}`);
+    else if (r.status === 'skipped') lines.push(`  · ${r.name}  ${r.reason}`);
+    else lines.push(`  ! ${r.name}  失败: ${r.error}`);
+  }
+  if (!d.results.length) lines.push('  （没有可更新的 skill）');
+  return lines.join('\n');
+}

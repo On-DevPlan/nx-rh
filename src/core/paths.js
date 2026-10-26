@@ -16,8 +16,18 @@ export const DEFAULT_PORT = 7800;
 // 与 store.json 同处 ~/.nx-rh/；测试与多实例用 NX_RH_REMOTE_DIR 覆盖（对齐 storePathFromEnv）。
 export const REMOTE_SKILLS_DIR = join(APP_DIR, 'remote-skills');
 
+// 远程 Hub：唯一一个「装着外部 skill」的容器（实体目录，非链接）。
+// 落位 nx-rh 自己的领域目录 ~/.nx-rh/remote-hub/，skill 直接放在其下
+// （<hub>/<name>/SKILL.md）；Hub 里也可以放**软链**——链到别处的 skill 同样可用，
+// 便于「同一份源码多处分发」。
+export const REMOTE_HUB_DIR = join(APP_DIR, 'remote-hub');
+
 export function remoteSkillsDir() {
   return process.env.NX_RH_REMOTE_DIR || REMOTE_SKILLS_DIR;
+}
+
+export function remoteHubDir() {
+  return process.env.NX_RH_REMOTE_HUB_DIR || REMOTE_HUB_DIR;
 }
 
 export function envSnapshotDir() {

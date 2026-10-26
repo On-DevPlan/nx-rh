@@ -1,5 +1,5 @@
-// 远程订阅源：把外部 skill 仓库（git）或归档/单文件 URL 拉到本机自有目录，
-// 注册为**普通订阅源**——此后 list/show/migrate 走的全是既有本地流程。
+// 远程拉取原语：把外部 skill 仓库（git）或归档/单文件 URL 拉到本机 staging。
+// 供「远程 Hub」的导入与更新共用（svc/remote-hub.js）。
 //
 // 移植自 vercel-labs/skills（https://github.com/vercel-labs/skills，MIT License）：
 // 源解析（src/source-parser.ts → remote-parse.js）、zip 解包（src/archive.ts →
@@ -7,21 +7,17 @@
 // 零依赖的 execFile 直调）、下载限额思路（README「Direct download URLs」节）。
 //
 // 落地契约：
-// - 内容只进 ~/.nx-rh/remote-skills/<id>/（remoteSkillsDir()），绝不写平台目录
-// - 重复订阅同一源 = 原地刷新（staging 目录成功后原子换入），幂等
-// - 元数据记在 store.remoteSources（R2 的 sync 按它对比哈希）
+// - 只落 staging，由调用方决定取什么（Hub 只收需要的 skill，不留整仓）
+// - 绝不写平台目录
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 import fsp from 'node:fs/promises';
 import { join, dirname } from 'node:path';
 import { remoteSkillsDir, assertSafeName } from '../../../core/paths.js';
 import { badInput, external, notFound } from '../../../core/errors.js';
-import { loadStore, mutateStore } from '../../../core/store.js';
 import { readArchive } from '../../../core/archive.js';
 import { parseFrontmatter } from '../../../core/frontmatter.js';
-import { parseSource, remoteSourceId } from './remote-parse.js';
-import { snapshotSkills } from './scan.js';
-import { addCandidate } from '../../settings/service.js';
+import { remoteSourceId, parseSource } from './remote-parse.js';
 
 const execFileAsync = promisify(execFile);
 
@@ -223,21 +219,15 @@ async function downloadSource(url, targetDir) {
   return targetDir;
 }
 
-// ─── 订阅主流程 ────────────────────────────────────────────────────
-
 // 解析但不落地：subscribe action 用它分流本地/远程（null = 本地路径）
 export function peekRemote(spec) {
   const parsed = parseSource(spec);
   return parsed.type === 'local' ? null : parsed;
 }
 
-// 远程源元数据（store.remoteSources）：sourceDir → { spec, url, type, ref, subpath, skills, fetchedAt }
-export async function remoteMetaMap() {
-  const s = await loadStore();
-  return s.remoteSources || {};
-}
-
-// 拉取到 staging：不动最终目录、不注册——sync 的 --dry-run 靠它对比后弃置。
+// ─── 远程落地原语 ──────────────────────────────────────────────────
+// 拉取到 staging：不动最终目录——远程 Hub 的「导入」与「更新」都靠它，
+// 拉完只取需要的 skill，不把整仓留下。
 export async function materializeRemote(parsed) {
   const id = remoteSourceId(parsed);
   const baseDir = remoteSkillsDir();
@@ -262,61 +252,4 @@ export async function materializeRemote(parsed) {
     sourceDir = await downloadSource(parsed.url, staging);
   }
   return { id, staging, sourceDir };
-}
-
-// staging → 最终目录的原子换入 + 注册 + 元数据落盘。
-// skills 快照（{ [skill名]: 目录指纹 }）此刻记下——它是下次 sync 的对比基准。
-export async function commitRemote(parsed, staging, sourceDir, skillsSnapshot) {
-  const id = remoteSourceId(parsed);
-  const finalDir = join(remoteSkillsDir(), id);
-  await fsp.rm(finalDir, { recursive: true, force: true });
-  // sourceDir 可能是 staging 里的子路径：换入的是**整份 staging**，
-  // 注册路径按同一段相对位移映射到 finalDir
-  const rel = sourceDir.slice(staging.length).replace(/^[\\/]/, '');
-  await fsp.rename(staging, finalDir);
-  const registered = rel ? join(finalDir, rel) : finalDir;
-
-  await addCandidate('hub', registered);
-  const fetchedAt = new Date().toISOString();
-  const meta = {
-    spec: parsed.spec || parsed.url,
-    type: parsed.type,
-    url: parsed.url,
-    ...(parsed.ref ? { ref: parsed.ref } : {}),
-    ...(parsed.subpath ? { subpath: parsed.subpath } : {}),
-    id,
-    fetchedAt,
-    ...(skillsSnapshot ? { skills: skillsSnapshot } : {}),
-  };
-  await mutateStore((s) => {
-    s.remoteSources = s.remoteSources || {};
-    // 旧落位（如 id 推导调整后变了）清掉登记，避免累积孤儿元数据
-    for (const [k, v] of Object.entries(s.remoteSources)) {
-      if (v && v.id === id && k !== registered) delete s.remoteSources[k];
-    }
-    s.remoteSources[registered] = meta;
-    return meta;
-  });
-  return { registered, meta };
-}
-
-export async function subscribeRemote(spec) {
-  const parsed = parseSource(spec);
-  if (parsed.type === 'local') {
-    throw badInput('本地路径请直接 skill hub subscribe <path>（远程订阅收 owner/repo、git URL、归档 URL）');
-  }
-  parsed.spec = spec;
-  const { id, staging, sourceDir } = await materializeRemote(parsed);
-  const snapshot = await snapshotSkills(sourceDir);
-  const { registered } = await commitRemote(parsed, staging, sourceDir, snapshot);
-  return {
-    spec,
-    remote: true,
-    id,
-    dir: registered,
-    url: parsed.url,
-    ref: parsed.ref || '',
-    count: Object.keys(snapshot).length,
-    fetchedAt: new Date().toISOString(),
-  };
 }

@@ -83,63 +83,55 @@ try {
   check('setting get', settings.skillHubPath === hub, String(settings.skillHubPath));
   check('skill hub sources', (cliJson(['skill', 'hub', 'sources']).sources || []).some((s) => s.path === hub && s.current));
 
-  // ---- 2b. 远程订阅源（file:// 本地 git 夹具，不碰外网） ----
-  // 订阅远程规格 → clone 落 ~/.nx-rh/remote-skills → 注册为普通订阅源。
-  // 后续 list/migrate 走的全是本地流程，smoke 只需钉住「进来」这一段。
+  // ---- 2b. 远程 Hub（file:// 本地 git 夹具，不碰外网） ----
+  // 远程规格 → 导入唯一的远程 Hub；Hub 作为订阅源可 migrate；
+  // 逐 skill 版本指纹 → 更新时变了才换。
   const remoteFixture = join(tmp, 'remote-repo');
   mkdirSync(join(remoteFixture, 'skills', 'remote-demo'), { recursive: true });
   writeFileSync(
     join(remoteFixture, 'skills', 'remote-demo', 'SKILL.md'),
     '---\nname: remote-demo\ndescription: from remote fixture\n---\n\n# Remote\n'
   );
-  for (const args of [
-    ['init', '--quiet'],
-    ['add', '.'],
-    ['commit', '--quiet', '-m', 'init'],
-  ]) {
+  for (const args of [['init', '--quiet'], ['add', '.'], ['commit', '--quiet', '-m', 'init']]) {
     const g = spawnSync('git', ['-c', 'user.email=t@t', '-c', 'user.name=t', ...args], { cwd: remoteFixture, encoding: 'utf8' });
     if (g.status !== 0) throw new Error('git fixture 失败: ' + g.stderr);
   }
   const remoteUrl = 'file:///' + remoteFixture.replace(/\\/g, '/');
-  check('skill hub subscribe 远程源（file://）', cli(['skill', 'hub', 'subscribe', remoteUrl]).status === 0);
-  const remoteSources = cliJson(['skill', 'hub', 'sources']).sources || [];
-  const remoteHit = remoteSources.find((s) => s.remote && s.remote.spec === remoteUrl);
-  check('远程源进清单并带元数据', !!remoteHit && remoteHit.count === 1, JSON.stringify(remoteHit && remoteHit.remote));
-  const remotePool = cliJson(['skill', 'hub', 'list']);
-  check('远程源的 skill 进本地池', (remotePool.skills || []).some((s) => s.name === 'remote-demo'));
-  // 把主源切回本地 hub，别影响后面的迁移用例（subscribe 远程源会把它设为主源）
-  check('主源切回本地 hub', cli(['skill', 'hub', 'main', hub]).status === 0);
-  // 退订远程源恢复原状（磁盘副本留在临时 home 里随目录一起清理），
-  // 不然后面「skills.length === 1」的池断言会数进 remote-demo。
-  // ---- 2c. 远程源 sync（上游提 v2：remote-demo 改 + 新增 remote-second） ----
+  check('远程规格导入远程 Hub', cli(['skill', 'hub', 'remote', 'import', remoteUrl]).status === 0);
+  const hubList = cliJson(['skill', 'hub', 'remote', 'list']);
+  check(
+    'Hub 清单含 skill 与版本指纹',
+    (hubList.skills || []).some((s) => s.name === 'remote-demo' && s.hash),
+    JSON.stringify(hubList.skills)
+  );
+  const hubSources = cliJson(['skill', 'hub', 'sources']).sources || [];
+  const hubHit = hubSources.find((s) => s.remote);
+  check('Hub 作为一个订阅源进清单', !!hubHit && hubHit.count >= 1, JSON.stringify(hubHit));
+  check('Hub 的 skill 进本地池', (cliJson(['skill', 'hub', 'list']).skills || []).some((s) => s.name === 'remote-demo'));
+  check('Hub 排在本地源之后', (() => {
+    const kinds = hubSources.map((s) => (s.remote ? 'remote' : 'local'));
+    const i = kinds.indexOf('remote');
+    return i >= 0 && kinds.slice(i).every((k) => k === 'remote');
+  })(), JSON.stringify(hubSources.map((s) => [s.path, !!s.remote])));
+
+  // ---- 2c. 远程 Hub 更新（上游改内容 → 指纹变 → 换新） ----
   writeFileSync(
     join(remoteFixture, 'skills', 'remote-demo', 'SKILL.md'),
     '---\nname: remote-demo\ndescription: v2 updated\n---\n\n# Remote v2\n'
-  );
-  mkdirSync(join(remoteFixture, 'skills', 'remote-second'), { recursive: true });
-  writeFileSync(
-    join(remoteFixture, 'skills', 'remote-second', 'SKILL.md'),
-    '---\nname: remote-second\ndescription: added in v2\n---\n\n# Second\n'
   );
   for (const args of [['add', '.'], ['commit', '--quiet', '-m', 'v2']]) {
     const g = spawnSync('git', ['-c', 'user.email=t@t', '-c', 'user.name=t', ...args], { cwd: remoteFixture, encoding: 'utf8' });
     if (g.status !== 0) throw new Error('git fixture v2 失败: ' + g.stderr);
   }
-  // 退订放在 sync 用例之后做，避免下一段又得重新订阅
-  const synced = cliJson(['skill', 'hub', 'sync', remoteUrl]);
+  const upd = cliJson(['skill', 'hub', 'remote', 'update']);
   check(
-    'skill hub sync 报告变更',
-    synced.status === 'ok' && synced.results.length === 1 &&
-      synced.results[0].changed.includes('remote-demo') && synced.results[0].added.includes('remote-second'),
-    JSON.stringify(synced.results)
+    'Hub 更新报告变更',
+    upd.status === 'ok' && (upd.results || []).some((r) => r.name === 'remote-demo' && r.status === 'updated'),
+    JSON.stringify(upd.results)
   );
-  check('sync 后 skill 池含新 skill', (cliJson(['skill', 'hub', 'list']).skills || []).some((s) => s.name === 'remote-second'));
-  // sync 的换入会再设一次主源（同 subscribe 语义），退订前切回本地 hub，
-  // 否则退订远程源会把主源清空，后面 submit 用例会「未设置 Skill Hub 订阅源」。
-  check('sync 后主源切回本地 hub', cli(['skill', 'hub', 'main', hub]).status === 0);
-  check('skill hub unsubscribe 远程源', cli(['skill', 'hub', 'unsubscribe', remoteHit.path]).status === 0);
-  check('退订后远程源不在清单', !(cliJson(['skill', 'hub', 'sources']).sources || []).some((s) => s.remote));
-
+  check('更新后内容换新', (cliJson(['skill', 'hub', 'remote', 'list']).skills || []).some((s) => s.name === 'remote-demo' && s.description === 'v2 updated'));
+  // 清掉 Hub 里的这份，别影响后面依赖「只有一个 skill」的断言
+  check('Hub 内移除该 skill', cli(['skill', 'hub', 'remote', 'remove', 'remote-demo']).status === 0);
 
   // ⚠️ 仓库登记 CRUD 的用例**整段移除**：仓库模块已于 2026-10-23 迁到 nx-kv
   // （`nx-kv repo ...` / `nx-kv board ...`），nx-rh 侧不再有 repo/board 命令。

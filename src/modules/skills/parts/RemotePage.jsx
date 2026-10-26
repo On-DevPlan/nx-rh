@@ -1,158 +1,143 @@
-// ② 级子页：远程订阅源管理（#remote）。与其他子页同构——
-//   面包屑 + sub-head + section-label/entry-grid 卡片 + 显式按钮触发的搜索。
-//   数据全走既有 action：源卡片用 /api/skills（sources 自带 remote 元数据），
-//   同步 POST /api/skills/sync（--dry-run 先预演再确认，与 purge 同款高危流），
-//   搜索 GET /api/skills/search，订阅 POST /api/skills/sources（自动识别远程规格）。
+// ② 级子页：远程 Hub（#/skills/remote）——唯一一个装着外部 skill 的容器。
+//
+// 页面三块，与其他子页同款组件：
+//   ① Hub 内容：实体 / 软链 / 手写定义，带版本指纹与更新时间；逐个更新、移除、加软链
+//   ② 发现：搜 skills.sh，结果逐条「导入」——导入前先预览（确认是否导入）
+//   ③ 添加定义：手写一个 skill 放进 Hub
+//
+// 数据全部走既有 action（svc/remote-hub.js）：每个 Web 操作都有 CLI 等价。
 import { useCallback, useEffect, useState } from 'react';
 import { api } from '../../../web/frontend/api/client.js';
 import { useStore } from '../../../web/frontend/store.jsx';
-import { useToast, useGuard, useDialog, Modal, Copyable } from '../../../web/frontend/components/ui.jsx';
+import { useToast, useGuard, useDialog } from '../../../web/frontend/components/ui.jsx';
 import { CliHints } from '../../../web/frontend/components/CliHints.jsx';
-import { useSkillsData, Crumbs } from './shared.jsx';
-import { goHub } from './routes.js';
+import { Crumbs } from './shared.jsx';
 
-// 「X 前」相对时间（与注册表页一致的人读形态；fetchedAt 是 ISO 串）
-function ago(iso) {
+const ago = (iso) => {
   if (!iso) return '—';
   const s = Math.max(0, (Date.now() - new Date(iso).getTime()) / 1000);
   if (s < 60) return '刚刚';
   if (s < 3600) return `${Math.floor(s / 60)} 分钟前`;
   if (s < 86400) return `${Math.floor(s / 3600)} 小时前`;
   return `${Math.floor(s / 86400)} 天前`;
-}
+};
 
-// 同步结果（单源或全部）→ 弹窗行清单；文案对齐 CLI renderSync
-function SyncReportBody({ report, onClose }) {
-  const rows = report?.results || [];
+// Hub 内容的行：名字 + 形态 + 版本 + 来源 + 更新时间 + 操作
+function HubRow({ s, busy, onUpdate, onRemove, onLink }) {
+  const kind = s.linkType ? '软链' : s.manual ? '手写定义' : '导入';
   return (
-    <>
-      {report?.dryRun ? <div className="dlg-msg">预演（未改动磁盘）:</div> : null}
-      <div className="list">
-        {rows.map((r) => (
-          <div key={r.source} className="row">
-            <div className="name mono">{r.spec || r.source}</div>
-            <div className="desc">
-              {r.error
-                ? <span className="tag bad">失败</span>
-                : r.clean
-                  ? <span className="tag">无变化</span>
-                  : [
-                      r.added?.length ? <span key="a" className="tag">+{r.added.length} 新增</span> : null,
-                      r.removed?.length ? <span key="r" className="tag">-{r.removed.length} 移除</span> : null,
-                      r.changed?.length ? <span key="c" className="tag">~{r.changed.length} 变更</span> : null,
-                    ]}
-              {r.error ? <span> {r.error}</span> : null}
-              {!r.error && (r.added?.length || r.removed?.length || r.changed?.length)
-                ? <span> {r.added?.join(', ')}{r.removed?.join(', ')}{r.changed?.join(', ')}</span> : null}
-            </div>
-          </div>
-        ))}
-        {!rows.length ? <div className="muted">（没有远程订阅源）</div> : null}
+    <div className="row">
+      <div className="name">
+        {s.name}
+        <span className="tag" style={{ marginLeft: 6 }}>{kind}</span>
       </div>
-      <div className="dlg-acts"><button className="btn" onClick={onClose}>知道了</button></div>
-    </>
+      <div className="desc mono" title={s.spec || s.dir}>
+        {s.linkType ? s.dir : s.manual ? '（无上游）' : `${s.spec}${s.ref ? '@' + s.ref : ''}`}
+        {`  ·  v${String(s.hash).slice(0, 8)}  ·  ${ago(s.updatedAt)}`}
+      </div>
+      <div className="acts">
+        {s.manual ? null : (
+          <button className="btn small ghost" disabled={busy} onClick={() => onUpdate(s)}>
+            {busy ? '更新中…' : '更新'}
+          </button>
+        )}
+        <button className="btn small ghost" onClick={() => onLink(s)}>加软链…</button>
+        <button className="btn small danger" onClick={() => onRemove(s)}>移除</button>
+      </div>
+    </div>
   );
 }
 
 export function RemotePage({ tick }) {
-  const { data, reload } = useSkillsData({}, tick);
   const { refreshBoot } = useStore();
   const toast = useToast();
   const guard = useGuard();
   const { dialog, node: dlgNode } = useDialog();
 
-  const [busyId, setBusyId] = useState('');          // 逐源操作门闩（键 = 源路径）
-  const [busyAll, setBusyAll] = useState(false);
-  const [syncReport, setSyncReport] = useState(null); // { dryRun, results } | { results, source? }
-  const [pendingSync, setPendingSync] = useState(null); // dry-run 通过后待确认的源（'' = 全部）
+  const [hub, setHub] = useState(null);            // { dir, skills[] }
+  const [err, setErr] = useState('');
+  const [busy, setBusy] = useState('');            // 正在更新的 skill 名
   const [q, setQ] = useState('');
   const [owner, setOwner] = useState('');
   const [searching, setSearching] = useState(false);
-  const [results, setResults] = useState(null);       // null = 还没搜过
-  const [subscribing, setSubscribing] = useState(''); // 正在订阅的 source
+  const [results, setResults] = useState(null);
+  const [importing, setImporting] = useState('');  // 正在导入的 source
 
-  const sources = (data?.sources || []).filter((s) => s.remote);
+  const load = useCallback(async () => {
+    const d = await api('/api/skills/remote').catch(() => null);
+    setHub(d);
+    if (!d) setErr('读取失败');
+  }, []);
 
-  const doReload = useCallback(async () => { await reload(); await refreshBoot(); }, [reload, refreshBoot]);
+  useEffect(() => { let alive = true; load().then(() => { if (!alive) return; }); return () => { alive = false; }; }, [load, tick]);
 
-  // ---- 同步：先 dry-run 预演 → 确认后真跑（与 purge 同款高危流） ----
-  const runSync = (source, dryRun) => guard(async () => {
-    const r = await api('/api/skills/sync', {
-      method: 'POST',
-      body: { ...(source ? { source } : {}), 'dry-run': dryRun },
-      timeoutMs: 300000,
-    });
-    if (dryRun) {
-      const anyChange = (r.results || []).some((x) => !x.error && !x.clean);
-      setSyncReport({ dryRun: true, results: r.results });
-      if (anyChange) {
-        const ok = await dialog({ title: '确认同步', message: '预演发现有变化，确认拉新并换入？', okText: '同步' });
-        if (ok) setPendingSync(source || '');
-      }
-      return;
-    }
-    setSyncReport({ results: r.results });
-    await doReload();
+  const refresh = async () => { await load(); await refreshBoot(); };
+
+  // ---- 更新：按来源重拉，指纹变了才换 ----
+  const updateOne = (s) => guard(async () => {
+    if (busy) return;
+    setBusy(s.name);
+    try {
+      const res = await api('/api/skills/remote/update', { method: 'POST', body: { name: [s.name] }, timeoutMs: 300000 });
+      const one = (res.results || []).find((x) => x.name === s.name);
+      if (one?.status === 'updated') toast(`${s.name} 已更新到 ${String(one.hash).slice(0, 8)}`);
+      else if (one?.status === 'unchanged') toast(`${s.name} 无变化`);
+      else if (one?.status === 'removed') toast(`${s.name} 上游已删除（Hub 里还留着）`, 'warn');
+      else if (one?.status === 'error') toast(`${s.name} 更新失败: ${one.error}`, 'error');
+      else toast(`${s.name} 未更新`);
+      await refresh();
+    } finally { setBusy(''); }
   });
 
-  const syncOne = (s) => guard(async () => {
-    if (busyId || busyAll) return;
-    setBusyId(s.path);
-    try { await runSync(s.remote.spec, true); } finally { setBusyId(''); }
+  const updateAll = () => guard(async () => {
+    if (busy) return;
+    setBusy('*');
+    try {
+      const res = await api('/api/skills/remote/update', { method: 'POST', body: {}, timeoutMs: 300000 });
+      const changed = (res.results || []).filter((x) => x.status === 'updated').length;
+      toast(`已检查 ${(res.results || []).length} 个，${changed} 个有更新`);
+      await refresh();
+    } finally { setBusy(''); }
   });
 
-  const syncAll = () => guard(async () => {
-    if (busyAll || busyId) return;
-    setBusyAll(true);
-    try { await runSync('', true); } finally { setBusyAll(false); }
-  });
-
-  // pendingSync 由确认弹窗设置（'' = 全部）；effect 里真跑，避开在 dialog 回调里套 guard
-  useEffect(() => {
-    if (pendingSync === null) return;
-    const src = pendingSync;
-    setPendingSync(null);
-    guard(async () => {
-      setBusyAll(true);
-      try {
-        const r = await api('/api/skills/sync', { method: 'POST', body: { ...(src ? { source: src } : {}) }, timeoutMs: 300000 });
-        setSyncReport({ results: r.results });
-        await doReload();
-      } finally { setBusyAll(false); }
-    });
-  }, [pendingSync]);
-
-  const unsubscribe = (s) => guard(async () => {
+  const removeOne = (s) => guard(async () => {
     const ok = await dialog({
-      title: '取消订阅远程源',
-      message: `不再订阅：${s.remote.spec}\n${s.path}\n\n磁盘副本保留（~/.nx-rh/remote-skills/），重新订阅会原地刷新。`,
+      title: '从远程 Hub 移除',
+      message: `${s.name}\n${s.dir}\n\n只动 Hub 里的这一份；平台目录里的副本请另行 purge。`,
       danger: true,
-      okText: '退订',
+      okText: '移除',
     });
     if (!ok) return;
-    await api('/api/skills/sources', { method: 'DELETE', body: { path: s.path } });
-    toast(`已退订 ${s.remote.spec}`);
-    await doReload();
+    await api('/api/skills/remote/remove', { method: 'POST', body: { name: [s.name] } });
+    toast(`已移除 ${s.name}`);
+    await refresh();
   });
 
-  // ---- 订阅：输入框收目录或远程规格（action 自动识别）；克隆慢，超时放宽 ----
-  const subscribe = (presetSpec) => guard(async () => {
-    const spec = presetSpec || await dialog({
-      title: '订阅远程源',
+  // ---- 软链：把 Hub 里的 skill 链到别处，或把别处的 skill 链进 Hub ----
+  const linkOne = (s) => guard(async () => {
+    const target = await dialog({
+      title: '加软链',
       input: true,
-      placeholder: 'owner/repo · git URL · 归档 URL',
-      message: '支持 GitHub 简写 / tree 子路径 / #ref / 任意 git / 归档与单 SKILL.md URL。\n订阅后将成为主源。',
+      placeholder: '目标目录（含 SKILL.md 的目录）',
+      message: `把「${s.name}」链到别处的目录；也可填别处 skill 的目录，Hub 里会多一个指向它的链接。`,
     });
-    if (!spec) return;
-    setSubscribing(spec);
-    try {
-      const r = await api('/api/skills/sources', { method: 'POST', body: { path: spec }, timeoutMs: 120000 });
-      toast(`已订阅 ${spec}（${r.count ?? '?'} 个 skill）`);
-      await doReload();
-    } finally { setSubscribing(''); }
+    if (!target) return;
+    await api('/api/skills/remote/link', { method: 'POST', body: { name: s.name, target }, timeoutMs: 30000 });
+    toast(`已加软链: ${s.name}`);
+    await refresh();
   });
 
-  // ---- 搜索：显式按钮/回车触发（网络请求不做输入即搜） ----
+  // ---- 添加定义：手写一个 skill ----
+  const addDefinition = () => guard(async () => {
+    const name = await dialog({ title: '添加定义', input: true, placeholder: 'skill 名（目录名）' });
+    if (!name) return;
+    const description = await dialog({ title: '这个 skill 做什么？', input: true, placeholder: 'description' });
+    await api('/api/skills/remote', { method: 'POST', body: { name, description: description || '' } });
+    toast(`已添加定义: ${name}`);
+    await refresh();
+  });
+
+  // ---- 搜索 → 确认 → 导入 ----
   const doSearch = () => guard(async () => {
     if (searching) return;
     if (!q.trim()) { toast('先输入关键词'); return; }
@@ -165,61 +150,54 @@ export function RemotePage({ tick }) {
     } finally { setSearching(false); }
   });
 
+  // 导入前先确认（"确认是否导入"）：展示将要导入的来源与名字，确认后才拉
+  const confirmImport = (r) => guard(async () => {
+    const ok = await dialog({
+      title: '导入到远程 Hub',
+      message: `来源: ${r.source}\nskill: ${r.name}\n\n拉取后进 ~/.nx-rh/remote-hub/，之后可 migrate 到各平台。`,
+      okText: '导入',
+    });
+    if (!ok) return;
+    setImporting(r.source);
+    try {
+      const res = await api('/api/skills/remote/import', { method: 'POST', body: { spec: r.source }, timeoutMs: 300000 });
+      toast(`已导入 ${res.count} 个: ${(res.imported || []).join(', ')}`);
+      await refresh();
+    } finally { setImporting(''); }
+  });
+
+  const skills = hub?.skills || [];
+
   return (
     <>
-      <Crumbs trail={[{ label: '远程源' }]} />
+      <Crumbs trail={[{ label: '远程 Hub' }]} />
       <div className="sub-head">
         <div>
-          <div style={{ fontSize: 15, fontWeight: 700 }}>远程源</div>
-          <div className="sub-meta">订阅外部 skill 仓库 · 上游更新靠同步拉新（本地流程不变）</div>
+          <div style={{ fontSize: 15, fontWeight: 700 }}>远程 Hub</div>
+          <div className="sub-meta mono">{hub?.dir || '~/.nx-rh/remote-hub/'} · 外部 skill 都在这里，版本可比可更</div>
         </div>
         <div className="acts">
-          <button className="btn ghost" onClick={syncAll} disabled={busyAll || busyId || !sources.length}>
-            {busyAll ? '同步中…' : '全部同步'}
+          <button className="btn ghost" onClick={updateAll} disabled={!!busy || !skills.length}>
+            {busy === '*' ? '更新中…' : '全部更新'}
           </button>
-          <button className="btn" onClick={() => subscribe('')}>{subscribing ? '订阅中…' : '＋ 订阅远程源…'}</button>
+          <button className="btn ghost" onClick={addDefinition}>＋ 添加定义</button>
         </div>
       </div>
 
-      <div className="section-label">远程订阅源
-        <span className="hint">{sources.length} 个 · 落位 ~/.nx-rh/remote-skills/ · 点卡片看该源的 skill</span>
+      <div className="section-label">Hub 内容
+        <span className="hint">{skills.length} 个 · 实体/软链都可迁移到平台；导入的才有上游可更新</span>
       </div>
-      <div className="entry-grid">
-        {sources.map((s) => {
-          const snapCount = s.remote.skills ? Object.keys(s.remote.skills).length : null;
-          const drifted = snapCount !== null && snapCount !== s.count;
-          return (
-            <div key={s.path} className="entry-card" onClick={() => goHub(s.path)}>
-              <div className="ec-top">
-                <span className="ec-name" title={s.remote.spec}>{s.remote.spec}</span>
-                {s.current ? <span className="tag strong">主源</span> : null}
-                {s.remote.ref ? <span className="tag">@{s.remote.ref}</span> : null}
-                {drifted ? <span className="tag bad" title="实时扫描与上次拉取快照不一致（本地动过）">本地有改动</span> : null}
-              </div>
-              <Copyable className="ec-path" text={s.path} title={s.path}>{s.path}</Copyable>
-              <div className="ec-stats">
-                <span><b>{s.count}</b> 个 skill</span>
-                <span title={s.remote.fetchedAt}>拉取于 {ago(s.remote.fetchedAt)}</span>
-              </div>
-              <div
-                style={{ display: 'flex', gap: 5, marginTop: 8, paddingTop: 8, borderTop: '1px solid var(--line,#e5e5ee)' }}
-                onClick={(e) => e.stopPropagation()}
-              >
-                <button className="btn small ghost" onClick={() => syncOne(s)} disabled={busyId === s.path || busyAll}>
-                  {busyId === s.path ? '同步中…' : '同步'}
-                </button>
-                <button className="btn small ghost" onClick={() => unsubscribe(s)}>退订…</button>
-              </div>
-            </div>
-          );
-        })}
-        <div className="entry-card add-tile" onClick={() => subscribe('')}>＋ 订阅远程源</div>
-        {!sources.length && data ? <div className="muted">（还没有远程订阅源——用下面的搜索找一个，或直接输入规格订阅）</div> : null}
-        {!data ? <div className="muted">读取中…</div> : null}
+      <div className="list">
+        {skills.map((s) => (
+          <HubRow key={s.name} s={s} busy={busy === s.name} onUpdate={updateOne} onRemove={removeOne} onLink={linkOne} />
+        ))}
+        {hub && !skills.length ? <div className="muted">（Hub 还是空的——用下面的搜索导入，或「＋ 添加定义」）</div> : null}
+        {!hub && !err ? <div className="muted">读取中…</div> : null}
+        {err ? <div className="dlg-msg">{err}</div> : null}
       </div>
 
       <div className="section-label">发现
-        <span className="hint">搜 skills.sh 注册表 · 结果一键订阅</span>
+        <span className="hint">搜 skills.sh · 确认后导入到 Hub</span>
       </div>
       <div className="toolbar">
         <input
@@ -241,18 +219,17 @@ export function RemotePage({ tick }) {
             <div className="desc mono" title={r.source}>{r.source}</div>
             <div className="acts">
               <span className="muted">{r.installs} 次安装</span>
-              <button className="btn small" onClick={() => subscribe(r.source)} disabled={subscribing === r.source}>
-                {subscribing === r.source ? '订阅中…' : '订阅'}
+              <button className="btn small" onClick={() => confirmImport(r)} disabled={importing === r.source}>
+                {importing === r.source ? '导入中…' : '导入'}
               </button>
             </div>
           </div>
         ))}
         {results && !results.length ? <div className="muted">（没有匹配的结果）</div> : null}
-        {results === null ? <div className="muted">（输入关键词搜 skills.sh，或直接在上方订阅 owner/repo）</div> : null}
+        {results === null ? <div className="muted">（输入关键词搜 skills.sh，或用 CLI：nx-rh skill hub remote import owner/repo）</div> : null}
       </div>
 
       <CliHints module="skills" />
-      {syncReport ? <Modal title={syncReport.dryRun ? '同步预演' : '同步结果'} onClose={() => setSyncReport(null)}><SyncReportBody report={syncReport} onClose={() => setSyncReport(null)} /></Modal> : null}
       {dlgNode}
     </>
   );

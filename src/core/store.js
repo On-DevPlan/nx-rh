@@ -34,6 +34,10 @@ const EMPTY = () => ({
   // 键是注册进 skillHubSources 的那个路径；值只记「这个源从哪来、何时拉的」，
   // 内容真相始终在磁盘（remote-skills/<id>/）。R2 的 sync 按它对比变更。
   remoteSources: {},
+  // 远程 Hub：唯一一个装着外部 skill 的容器（落位 ~/.nx-rh/remote-hub/）。
+  // skills: { [skill名]: { spec, url, ref, skillPath, hash, importedAt, updatedAt } }
+  // —— hash 就是这个 skill 的「版本」，updatedAt 是「何时更新的」。
+  remoteHub: { dir: '', skills: {} },
 });
 
 let cache = null;
@@ -116,6 +120,10 @@ function normalize(data) {
   base.recents = Array.isArray(data.recents) ? data.recents : [];
   base.remoteSources =
     data.remoteSources && typeof data.remoteSources === 'object' ? data.remoteSources : {};
+  base.remoteHub =
+    data.remoteHub && typeof data.remoteHub === 'object'
+      ? { dir: String(data.remoteHub.dir || ''), skills: data.remoteHub.skills && typeof data.remoteHub.skills === 'object' ? data.remoteHub.skills : {} }
+      : { dir: '', skills: {} };
   return base;
 }
 

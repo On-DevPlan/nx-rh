@@ -22,8 +22,9 @@ import {
   renderPurge,
   renderDedupe,
   renderDedupeAll,
-  renderSync,
   renderSearch,
+  renderRemoteHub,
+  renderRemoteUpdate,
 } from './renders.js';
 
 // `--to`：user（用户级 ~/）· global（= user，口头语）· project（项目级，缺省）· all（两者）
@@ -77,22 +78,23 @@ export default {
       render: renderSources,
     },
     {
-      // path 给本地目录或远程规格均可：owner/repo、git URL、归档 URL 自动识别，
-      // 远程源先拉到 ~/.nx-rh/remote-skills/ 再注册为普通订阅源（不装到平台目录）。
+      // 本地目录 = 订阅一个源；远程规格 = 导入远程 Hub（唯一容器，逐 skill 记版本）
       id: 'skill.hub.add',
       cli: ['skill', 'hub', 'subscribe'],
       http: ['POST', '/api/skills/sources'],
-      summary: '订阅一个 skill 目录或远程源（owner/repo、git URL、归档 URL 自动识别；并设为主源）',
+      summary: '订阅一个 skill 目录（本地路径），或把远程规格导入远程 Hub（owner/repo、git URL、归档 URL）',
       args: ['path'],
       run: async (ctx) => {
-        if (service.peekRemote(ctx.path)) return service.subscribeRemote(ctx.path);
+        if (service.peekRemote(ctx.path)) {
+          const r = await service.importToHub(ctx.path);
+          return { path: ctx.path, imported: true, ...r };
+        }
         const d = await service.addSource(ctx.path);
         return { path: ctx.path, ...d };
       },
       render: (d) => {
-        if (d.remote) {
-          const ref = d.ref ? `@${d.ref}` : '';
-          return `已订阅远程源: ${d.spec}${ref}\n  落位: ${d.dir}  (${d.count} 个 skill)\n  后续照常: skill hub list / migrate；上游更新用 skill hub sync 拉新`;
+        if (d.imported) {
+          return `已导入远程 Hub: ${d.count} 个 skill（${d.imported.join(', ')}）\n  落位: ${d.dir}\n  清单与更新: nx-rh skill hub remote list / update`;
         }
         return `已订阅: ${d.path}`;
       },
@@ -277,17 +279,67 @@ export default {
       render: renderSearch,
     },
 
+    // ---- 远程 Hub（唯一装着外部 skill 的容器） ----
     {
-      // 版本追踪与更新（远程源专用）：重新拉取 → 目录指纹对比 → 换入并刷新快照。
-      // 本地源没有上游，传本地源路径会 INVALID_INPUT。
-      id: 'skill.hub.sync',
-      cli: [['skill', 'hub', 'sync'], ['skill', 'sync']],
-      http: ['POST', '/api/skills/sync'],
-      summary: '重新拉取远程订阅源，按目录指纹报告新增/移除/变更（[source]=路径/规格/id，缺省全部；--dry-run 只看清单）',
-      args: [{ name: 'source', required: false }],
-      flags: { 'dry-run': { type: 'boolean', hint: '拉到 staging 对比后弃置，不落盘' } },
-      run: (ctx) => service.syncSource(ctx.source, { dryRun: ctx['dry-run'] === true }),
-      render: renderSync,
+      id: 'skill.hub.remote.list',
+      cli: [['skill', 'hub', 'remote', 'list'], ['skill', 'remote', 'list']],
+      http: ['GET', '/api/skills/remote'],
+      summary: '远程 Hub 内容：skill 及其来源 / 版本指纹 / 导入与更新时间',
+      run: () => service.hubContents(),
+      render: renderRemoteHub,
+    },
+    {
+      id: 'skill.hub.remote.import',
+      cli: [['skill', 'hub', 'remote', 'import'], ['skill', 'remote', 'import']],
+      http: ['POST', '/api/skills/remote/import'],
+      summary: '从远程规格导入到远程 Hub（owner/repo、git URL、归档 URL；--name 只导一个）',
+      args: ['spec'],
+      flags: { name: { type: 'string', hint: '只导入这一个 skill' } },
+      run: (ctx) => service.importToHub(ctx.spec, { name: ctx.name }),
+      render: (d) => `已导入 ${d.count} 个到远程 Hub: ${d.imported.join(', ')}\n  落位: ${d.dir}`,
+    },
+    {
+      id: 'skill.hub.remote.add',
+      cli: [['skill', 'hub', 'remote', 'add'], ['skill', 'remote', 'add']],
+      http: ['POST', '/api/skills/remote'],
+      summary: '在远程 Hub 里添加一个手写定义（--description / --content）',
+      args: ['name'],
+      flags: { description: { type: 'string' }, content: { type: 'string' } },
+      run: (ctx) => service.addHubDefinition(ctx.name, { description: ctx.description, content: ctx.content }),
+      render: (d) => `已在远程 Hub 添加定义: ${d.name}\n  落位: ${d.dir}`,
+    },
+    {
+      id: 'skill.hub.remote.link',
+      cli: [['skill', 'hub', 'remote', 'link'], ['skill', 'remote', 'link']],
+      http: ['POST', '/api/skills/remote/link'],
+      summary: '在远程 Hub 里放一个软链（<name> <目标目录>：链到别处已有的 skill，同一份源码多处可用）',
+      args: ['name', 'target'],
+      run: (ctx) => service.linkIntoHub(ctx.name, ctx.target),
+      render: (d) => `已加软链: ${d.name} → ${d.target}  (${d.linkType})`,
+    },
+    {
+      id: 'skill.hub.remote.update',
+      cli: [['skill', 'hub', 'remote', 'update'], ['skill', 'remote', 'update']],
+      http: ['POST', '/api/skills/remote/update'],
+      summary: '按来源重拉更新远程 Hub（版本指纹变了才换；<name...> 只更新指定）',
+      args: [{ name: 'name', rest: true, required: false }],
+      run: (ctx) => {
+        const names = Array.isArray(ctx.name) ? ctx.name : ctx.name ? [ctx.name] : [];
+        return service.updateHub(names);
+      },
+      render: renderRemoteUpdate,
+    },
+    {
+      id: 'skill.hub.remote.remove',
+      cli: [['skill', 'hub', 'remote', 'remove'], ['skill', 'remote', 'remove']],
+      http: ['POST', '/api/skills/remote/remove'],
+      summary: '从远程 Hub 移除 skill（<name...> 批量；平台侧副本另行 purge）',
+      args: [{ name: 'name', rest: true }],
+      run: (ctx) => {
+        const names = Array.isArray(ctx.name) ? ctx.name : ctx.name ? [ctx.name] : [];
+        return service.removeFromHub(names);
+      },
+      render: (d) => `已从远程 Hub 移除: ${d.removed.join(', ') || '（无）'}`,
     },
 
     {
