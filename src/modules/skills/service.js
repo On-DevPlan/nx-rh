@@ -21,3 +21,4 @@ export * from './svc/transfer.js';
 export * from './svc/remote.js';
 export * from './svc/search.js';
 export * from './svc/remote-repo.js';
+export * from './svc/refresh.js';

@@ -33,6 +33,9 @@ const EMPTY = () => ({
   // 远程订阅仓库元数据：{ dir, skills: { [skill名]: { spec, url, ref, hash, importedAt, updatedAt } } }。
   // hash 就是这个 skill 的「版本」，importedAt/updatedAt 是「何时导入/更新」。
   remoteRepo: { dir: '', skills: {} },
+  // 订阅源快照（skill hub refresh 的对比基准）：sourcePath → { skills: {名: 指纹}, scannedAt }。
+  // 本地源在用户 git pull 之后跑 refresh 看上游改了什么；不越「不管 git」的边界。
+  sourceSnapshots: {},
 });
 
 let cache = null;
@@ -150,6 +153,8 @@ function normalize(data) {
             skills: typeof data.remoteHub.skills === 'object' ? data.remoteHub.skills : {},
           }
         : { dir: '', skills: {} };
+  base.sourceSnapshots =
+    data.sourceSnapshots && typeof data.sourceSnapshots === 'object' ? data.sourceSnapshots : {};
   return base;
 }
 

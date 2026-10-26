@@ -271,7 +271,7 @@ export function RemotePage({ tick }) {
         {results === null ? <div className="muted">（输入关键词搜 skills.sh，或用 CLI：nx-rh skill hub remote import owner/repo）</div> : null}
       </div>
 
-      <CliHints module="skills" />
+      <CliHints module="skills" only={['skill.hub.remote.', 'skill.hub.search', 'skill.hub.refresh']} />
       {dlgNode}
     </>
   );

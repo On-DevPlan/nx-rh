@@ -13,7 +13,7 @@
 // 导入与更新的共同骨架是 remote.js 的 materializeRemote（拉取到 staging）——
 // 与普通订阅同一条落地路径，只是落地终点从「源目录」变成「远程订阅仓库里的某个 skill」。
 import fsp from 'node:fs/promises';
-import { join, dirname } from 'node:path';
+import { basename, join, dirname } from 'node:path';
 import { remoteRepoDir, assertSafeName } from '../../../core/paths.js';
 import { badInput, conflict, notFound } from '../../../core/errors.js';
 import { loadStore, mutateStore } from '../../../core/store.js';
@@ -148,7 +148,9 @@ export async function importToRemote(spec, { name, dryRun } = {}) {
         spec,
         url: parsed.url,
         ref: parsed.ref || '',
-        skillPath: safeName,
+        // 上游**原目录名**：上游只是挪目录（frontmatter name 没变）时，
+        // update 靠它重定位，不至于误报 removed。
+        skillPath: basename(sk.dir),
       });
     }
     await mutateStore((s) => {
@@ -237,7 +239,7 @@ export async function linkFromRemote(name, target) {
 }
 
 // 更新：按来源重拉，逐 skill 比对指纹——变了才换（未变不动），上游没了报「已移除」
-export async function updateRemote(names) {
+export async function updateRemote(names, { prune } = {}) {
   const st = await remoteRepoState();
   const entries = Object.entries(st.skills || {});
   const wanted = Array.isArray(names) && names.length ? names : null;
@@ -265,10 +267,24 @@ export async function updateRemote(names) {
       staging = m.staging;
       const root = await resolveSkillsRoot(m.sourceDir);
       const upstream = new Map((await scanSkillsRoot(root, { realOnly: true })).map((s) => [s.name, s]));
+      const upstreamByPath = new Map(
+        (await scanSkillsRoot(root, { realOnly: true })).map((s) => [basename(s.dir), s])
+      );
       for (const [name, meta] of items) {
-        const up = upstream.get(name);
+        // 重定位（对齐 vercel-labs/skills src/skill-relocation.ts 的思路）：
+        // 上游按 frontmatter name 找不到时，先按**原目录名**（台账 skillPath）
+        // 找一次——上游改了 name、目录还是那个目录时，照常更新而不是误报 removed。
+        const byName = upstream.get(name);
+        const up = byName || upstreamByPath.get(meta.skillPath || '');
+        const relocated = !byName && !!up;
         if (!up) {
-          results.push({ name, status: 'removed', reason: '上游已没有这个 skill' });
+          results.push({ name, status: 'removed', reason: '上游已没有这个 skill（frontmatter name 与原目录都对不上）' });
+          if (prune) {
+            const target = join(st.dir || remoteRepoDir(), name);
+            await fsp.rm(target, { recursive: true, force: true });
+            await mutateStore((s) => { delete s.remoteRepo.skills[name]; });
+            results[results.length - 1].pruned = true;
+          }
           continue;
         }
         const hash = await skillDirHash(up.dir);
@@ -282,9 +298,9 @@ export async function updateRemote(names) {
         await fsp.rm(target, { recursive: true, force: true });
         await fsp.cp(up.dir, target, { recursive: true });
         await mutateStore((s) => {
-          s.remoteRepo.skills[name] = { ...meta, hash, updatedAt: now() };
+          s.remoteRepo.skills[name] = { ...meta, hash, updatedAt: now(), skillPath: basename(up.dir) };
         });
-        results.push({ name, status: 'updated', hash, from: meta.hash });
+        results.push({ name, status: 'updated', hash, from: meta.hash, ...(relocated ? { relocated: true } : {}) });
       }
     } catch (err) {
       results.push({ name: spec, status: 'error', error: String((err && err.message) || err) });

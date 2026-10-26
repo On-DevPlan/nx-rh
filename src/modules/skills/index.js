@@ -24,6 +24,7 @@ import {
   renderDedupe,
   renderDedupeAll,
   renderSearch,
+  renderRefresh,
 } from './renders.js';
 
 // `--to`：user（用户级 ~/）· global（= user，口头语）· project（项目级，缺省）· all（两者）
@@ -143,6 +144,17 @@ export default {
         lines.push('处理：取消订阅多余来源（skill hub remove）；真冲突保留一份实文件后再迁移。');
         return lines.join('\n');
       },
+    },
+    {
+      // 订阅源更新检查（git pull 之后跑这条看上游改了什么；pull 本身仍归用户）。
+      // 远程订阅仓库顺带把台账指纹与磁盘对齐。
+      id: 'skill.hub.refresh',
+      cli: [['skill', 'hub', 'refresh'], ['skill', 'refresh']],
+      http: ['POST', '/api/skills/refresh'],
+      summary: '扫描订阅源并与上次快照对比，报告 +新增/-移除/~变更（[source]=路径，缺省全部；首次只建基准）',
+      args: [{ name: 'source', required: false }],
+      run: (ctx) => service.refreshSources(ctx.source),
+      render: renderRefresh,
     },
 
     // ---- 列表 / 详情 / 上下文 ----

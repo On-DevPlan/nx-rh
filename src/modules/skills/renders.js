@@ -315,11 +315,11 @@ export function renderSearch(d) {
   return lines.join('\n');
 }
 
-// 远程订阅 清单：skill 名 + 版本指纹（8 位）+ 来源/形态 + 更新时间
+// 远程订阅清单：skill 名 + 版本指纹（8 位）+ 来源/形态 + 更新时间
 export function renderRemoteHub(d) {
   if (!d.skills.length) {
     return [
-      `远程订阅 还是空的: ${d.dir}`,
+      `远程订阅还是空的: ${d.dir}`,
       '导入: nx-rh skill hub remote import <owner/repo|git URL>',
       '手写定义: nx-rh skill hub remote add <name>',
       '软链: nx-rh skill hub remote link <name> <目标目录>',
@@ -345,5 +345,32 @@ export function renderRemoteUpdate(d) {
     else lines.push(`  ! ${r.name}  失败: ${r.error}`);
   }
   if (!d.results.length) lines.push('  （没有可更新的 skill）');
+  return lines.join('\n');
+}
+
+// skill hub refresh：每源一节，+ 新增 / - 移除 / ~ 变更；远程订阅仓库只报对齐数。
+export function renderRefresh(d) {
+  if (d.note) return d.note;
+  const lines = ['订阅源更新检查:'];
+  for (const r of d.results) {
+    if (r.error) {
+      lines.push(`  ! ${r.source}  ${r.error}`);
+      continue;
+    }
+    if (r.remote) {
+      lines.push(`  ${r.clean ? '=' : '~'} ${r.source}  ${r.clean ? '（无变化）' : `台账已对齐 ${r.aligned} 个`}`);
+      continue;
+    }
+    if (r.firstTime) {
+      lines.push(`  + ${r.source}  首次记录基准（${Object.keys(r.added || {}).length || 0} 处起记）`.replace('  处起记）', ' 个 skill）'));
+      continue;
+    }
+    const mark = r.clean ? '（无变化）' : '';
+    lines.push(`  ${r.clean ? '=' : '~'} ${r.source}  ${mark}`);
+    if (r.added?.length) lines.push(`    + 新增: ${r.added.join(', ')}`);
+    if (r.removed?.length) lines.push(`    - 移除: ${r.removed.join(', ')}`);
+    if (r.changed?.length) lines.push(`    ~ 变更: ${r.changed.join(', ')}`);
+  }
+  if (!d.results.length) lines.push('  （没有可检查的订阅源）');
   return lines.join('\n');
 }

@@ -1,14 +1,19 @@
 // CLI 等价提示：列出当前模块的全部同构命令。
 // 为给列表页降噪，默认折叠成一行；需要核对命令时再展开。
 // 命令来自 bootstrap 下发的命令表，与 CLI 实际注册的命令同源。
+// `only`（action id 前缀数组）：页面只需要展示自己相关的命令子集时用——
+// 比如远程订阅页不必列出 subscribe/purge/dedupe 这些与它无关的命令。
 import { Fragment, useState } from 'react';
 import { useStore } from '../store.jsx';
 import { Copyable } from './ui.jsx';
 
-export function CliHints({ module: moduleId }) {
+export function CliHints({ module: moduleId, only }) {
   const { boot } = useStore();
   const [open, setOpen] = useState(false);
-  const cmds = (boot?.commands || []).filter((c) => c.module === moduleId);
+  const prefixes = Array.isArray(only) ? only : null;
+  const cmds = (boot?.commands || []).filter(
+    (c) => c.module === moduleId && (!prefixes || prefixes.some((p) => String(c.id || '').startsWith(p)))
+  );
   if (!cmds.length) return null;
 
   return (
