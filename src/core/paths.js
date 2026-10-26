@@ -12,6 +12,13 @@ export const STORE_PATH = join(APP_DIR, 'store.json');
 // 混在配置目录里会让「这是配置还是备份」变得分不清。
 export const ENV_SNAPSHOT_DIR = join(APP_DIR, 'env_snapshots');
 export const DEFAULT_PORT = 7800;
+// 远程订阅源的落地目录：clone / 下载的内容物化在这里，再注册为普通订阅源。
+// 与 store.json 同处 ~/.nx-rh/；测试与多实例用 NX_RH_REMOTE_DIR 覆盖（对齐 storePathFromEnv）。
+export const REMOTE_SKILLS_DIR = join(APP_DIR, 'remote-skills');
+
+export function remoteSkillsDir() {
+  return process.env.NX_RH_REMOTE_DIR || REMOTE_SKILLS_DIR;
+}
 
 export function envSnapshotDir() {
   return ENV_SNAPSHOT_DIR;

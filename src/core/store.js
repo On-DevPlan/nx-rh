@@ -30,6 +30,10 @@ const EMPTY = () => ({
   // 「最近项目」：全局跨作用域的一份列表（最多 20 条，最近在前）。
   // 与按 cwd 隔离的桶并存——切项目的入口数据源就是它。
   recents: [],
+  // 远程订阅源元数据：sourceDir → { spec, type, url, ref?, subpath?, id, fetchedAt }。
+  // 键是注册进 skillHubSources 的那个路径；值只记「这个源从哪来、何时拉的」，
+  // 内容真相始终在磁盘（remote-skills/<id>/）。R2 的 sync 按它对比变更。
+  remoteSources: {},
 });
 
 let cache = null;
@@ -110,6 +114,8 @@ function normalize(data) {
   base.worktreeState =
     data.worktreeState && typeof data.worktreeState === 'object' ? data.worktreeState : {};
   base.recents = Array.isArray(data.recents) ? data.recents : [];
+  base.remoteSources =
+    data.remoteSources && typeof data.remoteSources === 'object' ? data.remoteSources : {};
   return base;
 }
 

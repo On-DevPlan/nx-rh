@@ -62,8 +62,13 @@ export function renderSkillList(d, ctx) {
 }
 
 export function renderSources(d) {
-  if (!d.sources.length) return '（暂无订阅源，用 nx-rh skill hub subscribe <path> 添加）';
-  return d.sources.map((s) => `${s.current ? '*' : ' '} ${s.path}  (${s.count} 个)${s.exists ? '' : '  [目录不存在]'}`).join('\n');
+  if (!d.sources.length) return '（暂无订阅源，用 nx-rh skill hub subscribe <path|owner/repo> 添加）';
+  return d.sources
+    .map((s) => {
+      const remote = s.remote ? `  ← 远程 ${s.remote.spec}${s.remote.ref ? '@' + s.remote.ref : ''}` : '';
+      return `${s.current ? '*' : ' '} ${s.path}  (${s.count} 个)${s.exists ? '' : '  [目录不存在]'}${remote}`;
+    })
+    .join('\n');
 }
 
 // 当前项目目录里的 skill：目录清单 + 每 skill 一行（· 前缀 = 不在订阅源）

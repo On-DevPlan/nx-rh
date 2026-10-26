@@ -75,16 +75,25 @@ export default {
       render: renderSources,
     },
     {
+      // path 给本地目录或远程规格均可：owner/repo、git URL、归档 URL 自动识别，
+      // 远程源先拉到 ~/.nx-rh/remote-skills/ 再注册为普通订阅源（不装到平台目录）。
       id: 'skill.hub.add',
       cli: ['skill', 'hub', 'subscribe'],
       http: ['POST', '/api/skills/sources'],
-      summary: '订阅一个 skill 目录（并设为主源）',
+      summary: '订阅一个 skill 目录或远程源（owner/repo、git URL、归档 URL 自动识别；并设为主源）',
       args: ['path'],
       run: async (ctx) => {
+        if (service.peekRemote(ctx.path)) return service.subscribeRemote(ctx.path);
         const d = await service.addSource(ctx.path);
         return { path: ctx.path, ...d };
       },
-      render: (d) => `已订阅: ${d.path}`,
+      render: (d) => {
+        if (d.remote) {
+          const ref = d.ref ? `@${d.ref}` : '';
+          return `已订阅远程源: ${d.spec}${ref}\n  落位: ${d.dir}  (${d.count} 个 skill)\n  后续照常: skill hub list / migrate —— sync 更新留待 skill hub sync`;
+        }
+        return `已订阅: ${d.path}`;
+      },
     },
     {
       id: 'skill.hub.remove',

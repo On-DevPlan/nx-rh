@@ -4,6 +4,7 @@ import { resolve, join } from 'node:path';
 import fsp from 'node:fs/promises';
 import { exists, pathExists } from '../../../core/fstree.js';
 import { badInput, notFound } from '../../../core/errors.js';
+import { loadStore, mutateStore } from '../../../core/store.js';
 import {
   getSettings,
   hubPath,
@@ -13,10 +14,12 @@ import {
 } from '../../settings/service.js';
 import { resolveSkillsRoot, scanSkillsRoot, readSkill } from './scan.js';
 
-// 订阅源清单，附带解析后的 skills 根、是否存在、skill 数、是否当前主源
+// 订阅源清单，附带解析后的 skills 根、是否存在、skill 数、是否当前主源。
+// remote 字段：远程订阅源的元数据（spec/url/ref/fetchedAt），本地源为 null。
 export async function listSources() {
   const s = await getSettings();
   const current = s.skillHubPath ? resolve(s.skillHubPath) : '';
+  const remoteMeta = (await loadStore()).remoteSources || {};
   const out = [];
   for (const p of s.skillHubSources) {
     const abs = resolve(p);
@@ -28,6 +31,7 @@ export async function listSources() {
       exists: await pathExists(abs),
       count: skills.length,
       current: abs.toLowerCase() === current.toLowerCase(),
+      remote: remoteMeta[abs] || null,
     });
   }
   return { current, sources: out };
@@ -43,6 +47,13 @@ export async function addSource(path) {
 
 export async function removeSource(path) {
   await removeCandidate('hub', path);
+  // 远程源的元数据跟着登记走：取消订阅就清掉（磁盘上的 remote-skills/<id>/ 不动，
+  // 重新订阅同源会原地刷新）。留着会成为孤儿键，listSources 永远对不上。
+  await mutateStore((s) => {
+    if (s.remoteSources && s.remoteSources[resolve(String(path))]) {
+      delete s.remoteSources[resolve(String(path))];
+    }
+  });
   return listSources();
 }
 

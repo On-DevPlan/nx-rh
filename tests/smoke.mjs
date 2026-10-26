@@ -83,6 +83,38 @@ try {
   check('setting get', settings.skillHubPath === hub, String(settings.skillHubPath));
   check('skill hub sources', (cliJson(['skill', 'hub', 'sources']).sources || []).some((s) => s.path === hub && s.current));
 
+  // ---- 2b. 远程订阅源（file:// 本地 git 夹具，不碰外网） ----
+  // 订阅远程规格 → clone 落 ~/.nx-rh/remote-skills → 注册为普通订阅源。
+  // 后续 list/migrate 走的全是本地流程，smoke 只需钉住「进来」这一段。
+  const remoteFixture = join(tmp, 'remote-repo');
+  mkdirSync(join(remoteFixture, 'skills', 'remote-demo'), { recursive: true });
+  writeFileSync(
+    join(remoteFixture, 'skills', 'remote-demo', 'SKILL.md'),
+    '---\nname: remote-demo\ndescription: from remote fixture\n---\n\n# Remote\n'
+  );
+  for (const args of [
+    ['init', '--quiet'],
+    ['add', '.'],
+    ['commit', '--quiet', '-m', 'init'],
+  ]) {
+    const g = spawnSync('git', ['-c', 'user.email=t@t', '-c', 'user.name=t', ...args], { cwd: remoteFixture, encoding: 'utf8' });
+    if (g.status !== 0) throw new Error('git fixture 失败: ' + g.stderr);
+  }
+  const remoteUrl = 'file:///' + remoteFixture.replace(/\\/g, '/');
+  check('skill hub subscribe 远程源（file://）', cli(['skill', 'hub', 'subscribe', remoteUrl]).status === 0);
+  const remoteSources = cliJson(['skill', 'hub', 'sources']).sources || [];
+  const remoteHit = remoteSources.find((s) => s.remote && s.remote.spec === remoteUrl);
+  check('远程源进清单并带元数据', !!remoteHit && remoteHit.count === 1, JSON.stringify(remoteHit && remoteHit.remote));
+  const remotePool = cliJson(['skill', 'hub', 'list']);
+  check('远程源的 skill 进本地池', (remotePool.skills || []).some((s) => s.name === 'remote-demo'));
+  // 把主源切回本地 hub，别影响后面的迁移用例（subscribe 远程源会把它设为主源）
+  check('主源切回本地 hub', cli(['skill', 'hub', 'main', hub]).status === 0);
+  // 退订远程源恢复原状（磁盘副本留在临时 home 里随目录一起清理），
+  // 不然后面「skills.length === 1」的池断言会数进 remote-demo。
+  check('skill hub unsubscribe 远程源', remoteHit && cli(['skill', 'hub', 'unsubscribe', remoteHit.path]).status === 0);
+  check('退订后远程源不在清单', !(cliJson(['skill', 'hub', 'sources']).sources || []).some((s) => s.remote));
+
+
   // ⚠️ 仓库登记 CRUD 的用例**整段移除**：仓库模块已于 2026-10-23 迁到 nx-kv
   // （`nx-kv repo ...` / `nx-kv board ...`），nx-rh 侧不再有 repo/board 命令。
   // 留着这些用例，CI 的 smoke 必挂（命令不存在 → 报「未知命令」），发布链就断了。
