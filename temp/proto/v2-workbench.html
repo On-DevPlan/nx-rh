@@ -60,6 +60,9 @@ footer { color: var(--mid); font-size: 11px; padding: 14px 20px 26px; text-align
 .btn.small { height: 24px; padding: 0 9px; font-size: 11px; border-radius: 6px; }
 .btn:disabled { background: var(--soft); color: var(--faint); box-shadow: var(--shadow-relief-inset); cursor: not-allowed; }
 .btn.danger { background: #b3261e; color: #fff; }
+/* 行级破坏性操作：安静化（整页只留一个主按钮色块），删除闸门在弹窗里 */
+.btn.quiet-danger { background: var(--paper); color: #b3261e; border: 1px solid var(--soft-2); box-shadow: none; }
+.btn.quiet-danger:hover:not(:disabled) { background: var(--soft); box-shadow: none; }
 
 input, select { font: inherit; font-size: var(--fs-core); color: var(--ink); background: var(--paper); border: var(--border); border-radius: var(--radius-flat); height: var(--row-h); padding: 0 10px; transition: border-color .12s, box-shadow .12s; }
 input::placeholder { color: var(--faint); }
@@ -291,10 +294,9 @@ td.cell-name .sub-desc { color: var(--mid); font-size: 11px; margin-top: 1px; }
       <div class="page-desc">外部 skill 的唯一入口。固定容器 <span class="mono">~/.nx-rh/远程订阅</span>，与本地订阅源同级同权：搜索导入、同步更新、版本指纹与软链都在这一页。</div>
     </div>
     <div class="acts">
-      <button class="btn ghost" title="skill hub refresh：重扫容器并比对台账" onclick="toast('已刷新快照：容器 6 个 skill，台账一致')">刷新快照</button>
-      <button class="btn ghost" onclick="toast('已全部更新：1 个换新（happy-coder f2c90b41），5 个无变更；上游已删除可在同步中心用 --prune 清理')">全部更新</button>
       <button class="btn ghost" onclick="toast('打开手写定义弹窗（remote add）')">＋ 手写定义</button>
-      <button class="btn" onclick="segTo('t-find','sg-find');document.getElementById('q-search').focus()">搜索导入</button>
+      <!-- 规则：整页只允许一个主按钮色块——页头这一枚随当前区段切换行为 -->
+      <button class="btn" id="pg-primary" onclick="toast('已全部更新：1 个换新（happy-coder f2c90b41），5 个无变更；上游已删除可在同步中心用 --prune 清理')">全部更新</button>
     </div>
   </div>
 
@@ -327,9 +329,9 @@ td.cell-name .sub-desc { color: var(--mid); font-size: 11px; margin-top: 1px; }
   <div class="rtab active" id="t-ledger">
     <div class="toolbar" id="bulkbar" style="display:none">
       <span class="tag strong" id="bulk-n">已选 1</span>
-      <button class="btn small" onclick="openModal('m-batch-result')">更新勾选</button>
-      <button class="btn small" onclick="openModal('m-migrate')">迁移勾选 → 项目…</button>
-      <button class="btn small danger" onclick="openModal('m-remove-batch')">移除勾选…</button>
+      <button class="btn small ghost" onclick="openModal('m-batch-result')">更新勾选</button>
+      <button class="btn small ghost" onclick="openModal('m-migrate')">迁移勾选 → 项目…</button>
+      <button class="btn small quiet-danger" onclick="openModal('m-remove-batch')">移除勾选…</button>
       <button class="btn small ghost" onclick="clearSel()">清空勾选</button>
     </div>
     <div class="toolbar">
@@ -358,7 +360,7 @@ td.cell-name .sub-desc { color: var(--mid); font-size: 11px; margin-top: 1px; }
               <button class="btn small ghost" onclick="openModal('m-history')">版本</button>
               <button class="btn small ghost" disabled>更新</button>
               <button class="btn small ghost" onclick="toast('打开链出弹窗（remote link-out）')">链出…</button>
-              <button class="btn small danger" onclick="openModal('m-remove')">移除</button>
+              <button class="btn small quiet-danger" onclick="openModal('m-remove')">移除</button>
             </td>
           </tr>
           <tr data-q="skill-creator vercel-labs">
@@ -371,7 +373,7 @@ td.cell-name .sub-desc { color: var(--mid); font-size: 11px; margin-top: 1px; }
               <button class="btn small ghost" onclick="openModal('m-history')">版本</button>
               <button class="btn small ghost" disabled>更新</button>
               <button class="btn small ghost" onclick="toast('打开链出弹窗（remote link-out）')">链出…</button>
-              <button class="btn small danger" onclick="openModal('m-remove')">移除</button>
+              <button class="btn small quiet-danger" onclick="openModal('m-remove')">移除</button>
             </td>
           </tr>
         </tbody>
@@ -398,7 +400,7 @@ td.cell-name .sub-desc { color: var(--mid); font-size: 11px; margin-top: 1px; }
               <button class="btn small ghost" onclick="openModal('m-history')">版本</button>
               <button class="btn small ghost" onclick="openModal('m-update')">预览变更</button>
               <button class="btn small ghost" onclick="toast('打开链出弹窗（remote link-out）')">链出…</button>
-              <button class="btn small danger" onclick="openModal('m-remove')">移除</button>
+              <button class="btn small quiet-danger" onclick="openModal('m-remove')">移除</button>
             </td>
           </tr>
         </tbody>
@@ -421,7 +423,7 @@ td.cell-name .sub-desc { color: var(--mid); font-size: 11px; margin-top: 1px; }
             <td><span class="muted">未安装</span></td>
             <td class="ops">
               <button class="btn small ghost" onclick="toast('打开编辑手写定义弹窗')">编辑</button>
-              <button class="btn small danger" onclick="openModal('m-remove')">移除</button>
+              <button class="btn small quiet-danger" onclick="openModal('m-remove')">移除</button>
             </td>
           </tr>
           <tr data-q="k8s-troubleshoot 本地链">
@@ -432,7 +434,7 @@ td.cell-name .sub-desc { color: var(--mid); font-size: 11px; margin-top: 1px; }
             <td><span class="muted">未安装</span></td>
             <td class="ops">
               <button class="btn small ghost" onclick="toast('已复制实体路径 D:/pkgs/k8s-skills')">复制路径</button>
-              <button class="btn small danger" onclick="openModal('m-remove')">移除</button>
+              <button class="btn small quiet-danger" onclick="openModal('m-remove')">移除</button>
             </td>
           </tr>
           <tr data-q="doc-extractor softaworks">
@@ -444,7 +446,7 @@ td.cell-name .sub-desc { color: var(--mid); font-size: 11px; margin-top: 1px; }
             <td class="ops">
               <button class="btn small ghost" onclick="openModal('m-history')">版本</button>
               <button class="btn small ghost" disabled>更新</button>
-              <button class="btn small danger" onclick="openModal('m-remove')">移除</button>
+              <button class="btn small quiet-danger" onclick="openModal('m-remove')">移除</button>
             </td>
           </tr>
         </tbody>
@@ -464,7 +466,7 @@ td.cell-name .sub-desc { color: var(--mid); font-size: 11px; margin-top: 1px; }
       </div>
       <div class="toolbar bulk">
         <span class="tag strong">已选 1</span>
-        <button class="btn small" onclick="openModal('m-batch-result')">应用所选更新</button>
+        <button class="btn small ghost" onclick="openModal('m-batch-result')">应用所选更新</button>
         <label style="display:inline-flex;align-items:center;gap:6px"><input type="checkbox"> 同时清理上游已删除的条目（--prune）</label>
       </div>
       <table>
@@ -483,7 +485,7 @@ td.cell-name .sub-desc { color: var(--mid); font-size: 11px; margin-top: 1px; }
               </div>
             </td>
             <td class="ops">
-              <button class="btn small" onclick="toast('已应用：happy-coder 7d21e083 → f2c90b41')">应用</button>
+              <button class="btn small ghost" onclick="toast('已应用：happy-coder 7d21e083 → f2c90b41')">应用</button>
             </td>
           </tr>
           <tr>
@@ -511,7 +513,7 @@ td.cell-name .sub-desc { color: var(--mid); font-size: 11px; margin-top: 1px; }
           <input class="search" id="q-search" placeholder="搜索 skills.sh 注册表（关键词）…" spellCheck="false" value="code review">
           <input placeholder="owner（可选，如 vercel-labs）" style="width:200px" spellCheck="false">
           <select><option>条数 10</option><option>条数 20</option></select>
-          <button class="btn" onclick="toast('已搜索：vercel-labs 下 3 个结果')">搜索</button>
+          <button class="btn ghost" onclick="toast('已搜索：vercel-labs 下 3 个结果')">搜索</button>
         </div>
       </div>
       <table>
@@ -521,13 +523,13 @@ td.cell-name .sub-desc { color: var(--mid); font-size: 11px; margin-top: 1px; }
             <td class="cell-name"><div class="nm">code-reviewer</div></td>
             <td class="mono">vercel-labs/skills</td>
             <td class="muted">1.2k</td>
-            <td class="ops"><button class="btn small" onclick="openModal('m-import')">预览并导入…</button></td>
+            <td class="ops"><button class="btn small ghost" onclick="openModal('m-import')">预览并导入…</button></td>
           </tr>
           <tr>
             <td class="cell-name"><div class="nm">react-patterns</div></td>
             <td class="mono">vercel-labs/skills</td>
             <td class="muted">860</td>
-            <td class="ops"><button class="btn small" onclick="openModal('m-import')">预览并导入…</button></td>
+            <td class="ops"><button class="btn small ghost" onclick="openModal('m-import')">预览并导入…</button></td>
           </tr>
           <tr>
             <td class="cell-name"><div class="nm">commit-message</div></td>
@@ -670,7 +672,7 @@ td.cell-name .sub-desc { color: var(--mid); font-size: 11px; margin-top: 1px; }
           <tr><td class="mono">5e0d33c4</td><td class="muted">2026-08-02 18:55</td><td class="ops"><button class="btn small ghost" onclick="toast('按旧指纹 ref 重新导入（增量提案）')">回滚到此版</button></td></tr>
         </tbody>
       </table>
-      <div class="dlg-acts"><button class="btn ghost" onclick="closeModal('m-history')">关闭</button></div>
+      <div class="dlg-acts"><button class="btn" onclick="closeModal('m-history')">关闭</button></div>
     </div>
   </div>
 </div>
@@ -725,7 +727,10 @@ td.cell-name .sub-desc { color: var(--mid); font-size: 11px; margin-top: 1px; }
         <dt>更新时间</dt><dd class="mono">2026-10-26 21:40</dd>
       </dl>
       <div class="dlg-note">点击式复制（copyable）与 skill 详情页同款。等价命令：<span class="mono">nx-rh skill hub remote list --json</span></div>
-      <div class="dlg-acts"><button class="btn ghost" onclick="closeModal('m-source')">关闭</button></div>
+      <div class="dlg-acts">
+        <button class="btn ghost" onclick="closeModal('m-source')">关闭</button>
+        <button class="btn" onclick="closeModal('m-source');openModal('m-migrate')">迁移到平台…</button>
+      </div>
     </div>
   </div>
 </div>
@@ -802,7 +807,18 @@ function segTo(tabId, segId) {
   document.getElementById(tabId).classList.add('active');
   document.querySelectorAll('.seg .sg').forEach(function (s) { s.classList.remove('on'); });
   document.getElementById(segId).classList.add('on');
+  // 页头主按钮随区段切换：整页始终只有一枚实心主按钮
+  var p = SEG_PRIMARY[tabId];
+  var b = document.getElementById('pg-primary');
+  if (p && b) { b.textContent = p.label; b.setAttribute('onclick', p.act); }
 }
+/* 各区段的主动作（页头那一枚实心按钮的文案与行为） */
+var SEG_PRIMARY = {
+  't-ledger': { label: '全部更新', act: "toast('已全部更新：1 个换新（happy-coder f2c90b41），5 个无变更；上游已删除可在同步中心用 --prune 清理')" },
+  't-sync':  { label: '应用所选更新', act: "openModal('m-batch-result')" },
+  't-find':  { label: '搜索', act: "document.getElementById('q-search').focus();toast('已搜索：vercel-labs 下 3 个结果')" },
+  't-adv':   { label: '刷新快照', act: "toast('已刷新快照：容器 6 个 skill，台账一致')" },
+};
 function toast(msg) {
   var stack = document.getElementById('toasts');
   var t = document.createElement('div');

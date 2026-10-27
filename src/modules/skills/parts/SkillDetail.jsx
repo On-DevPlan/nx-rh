@@ -251,7 +251,7 @@ export function SkillDetail({ name, tick }) {
                 </button>
               </>
             : <>
-                <button className={'btn small'} onClick={() => toggleCell(c)}>迁移</button>
+                <button className={'btn small ghost'} onClick={() => toggleCell(c)}>迁移</button>
                 <button className="btn small ghost" title="以实体副本安装（独立一份，不随订阅源变化）" onClick={() => migrateCellCopy(c)}>实体</button>
               </>}
         </span>
@@ -318,11 +318,11 @@ export function SkillDetail({ name, tick }) {
             : null
           : <>
               <button className="btn" onClick={() => migrateScope('project')}>迁移 → 项目</button>
-              <button className="btn" onClick={() => migrateScope('user')}>迁移 → 用户</button>
+              <button className="btn ghost" onClick={() => migrateScope('user')}>迁移 → 用户</button>
               <button className="btn ghost" onClick={openEdit}>编辑</button>
               <button className="btn ghost" title="只从订阅源下架，保留各平台安装位置" onClick={doRemove}>从订阅源删除</button>
             </>}
-        <button className="btn danger" title="所有安装位置 + 订阅源实文件一并删除" onClick={doPurge}>彻底删除…</button>
+        <button className="btn danger-quiet" title="所有安装位置 + 订阅源实文件一并删除" onClick={doPurge}>彻底删除…</button>
       </div>
 
       {/* 文件预览放最后且默认折叠：页面主体先给安装状态与操作，长正文不把操作区顶下去 */}

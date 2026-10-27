@@ -155,7 +155,7 @@ export function HubCheckDialog({ onClose }) {
           <button className="btn ghost" onClick={() => setResolve(null)}>返回</button>
           <span style={{ flex: 1 }} />
           <button
-            className="btn danger" disabled={busy}
+            className="btn danger-quiet" disabled={busy}
             title="删除其余来源的实文件——彻底的唯一实文件，其余来源里这个 skill 不复存在"
             onClick={() => runDedupe('delete')}
           >
@@ -182,7 +182,7 @@ export function HubCheckDialog({ onClose }) {
       {e.current ? <span className="tag strong">主源</span> : null}
       <span className="acts">
         <button
-          className="btn small" title="以这份为唯一实文件（勋章）：其余删除或转为指向这份的软链接"
+          className="btn small ghost" title="以这份为唯一实文件（勋章）：其余删除或转为指向这份的软链接"
           onClick={() => setResolve({ name, winner: e, others: entries.filter((x) => x !== e) })}
         >
           以此为准…
@@ -210,7 +210,7 @@ export function HubCheckDialog({ onClose }) {
             </label>
             {selCount ? (
               <button
-                className="btn small" disabled={busy}
+                className="btn small ghost" disabled={busy}
                 title="勾选的组都以主源那份实文件为准，其余转软链接——一次性处理勾选的冲突，各来源目录里仍可见"
                 onClick={runDedupeAll}
               >

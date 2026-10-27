@@ -62,8 +62,8 @@ export function HubPage({ hubPath, tick }) {
             <span className="tag strong" title={checked.join('、')}>已选 {checked.length}</span>
             <button className="btn ghost" onClick={() => patchUi({ selSkills: [] })}>清空勾选</button>
             <button className="btn" onClick={() => setMigrateTo('project')}>迁移勾选 → 项目…</button>
-            <button className="btn" onClick={() => setMigrateTo('user')}>迁移勾选 → 用户…</button>
-            <button className="btn danger" title="连各平台安装位置与订阅源实文件一起删，不可恢复（先预演再确认）"
+            <button className="btn ghost" onClick={() => setMigrateTo('user')}>迁移勾选 → 用户…</button>
+            <button className="btn danger-quiet" title="连各平台安装位置与订阅源实文件一起删，不可恢复（先预演再确认）"
               onClick={() => setPurgeOpen(true)}>彻底删除…</button>
           </> : null}
         </div>

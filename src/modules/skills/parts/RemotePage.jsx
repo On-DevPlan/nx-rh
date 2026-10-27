@@ -195,7 +195,7 @@ export function RemotePage({ tick }) {
           {hub?.dir ? (
             <button className="btn ghost" onClick={() => goHub(hub.dir)}>看内容…</button>
           ) : null}
-          <button className="btn ghost" onClick={updateAll} disabled={!!busy || !skills.length}>
+          <button className="btn" onClick={updateAll} disabled={!!busy || !skills.length}>
             {busy === '*' ? '更新中…' : '全部更新'}
           </button>
           <button className="btn ghost" onClick={addDefinition}>＋ 添加定义</button>
@@ -252,7 +252,7 @@ export function RemotePage({ tick }) {
           onChange={(e) => setOwner(e.target.value)}
           onKeyDown={(e) => { if (e.key === 'Enter') doSearch(); }}
         />
-        <button className="btn" onClick={doSearch} disabled={searching}>{searching ? '搜索中…' : '搜索'}</button>
+        <button className="btn ghost" onClick={doSearch} disabled={searching}>{searching ? '搜索中…' : '搜索'}</button>
       </div>
       <div className="list" style={{ marginTop: 8 }}>
         {(results || []).map((r) => (
@@ -261,7 +261,7 @@ export function RemotePage({ tick }) {
             <div className="desc mono" title={r.source}>{r.source}</div>
             <div className="acts">
               <span className="muted">{r.installs} 次安装</span>
-              <button className="btn small" onClick={() => confirmImport(r)} disabled={importing === r.source}>
+              <button className="btn small ghost" onClick={() => confirmImport(r)} disabled={importing === r.source}>
                 {importing === r.source ? '导入中…' : '导入'}
               </button>
             </div>

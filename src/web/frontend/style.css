@@ -142,7 +142,8 @@ nav { display: inline-flex; gap: 2px; padding: 3px; background: var(--soft); bor
 .tab:hover { color: var(--ink); }
 .tab.active { background: var(--paper); color: var(--ink); font-weight: 600; box-shadow: var(--shadow-relief); }
 
-main { padding: 14px 20px 28px; max-width: 1240px; margin: 0 auto; }
+/* 面板最大化：内容铺满视口宽度（审核意见：尽可能最大化展示，不留居中留白） */
+main { padding: 14px 24px 28px; max-width: none; }
 .panel { display: none; }
 .panel.active { display: block; }
 
@@ -354,6 +355,9 @@ input:focus, select:focus {
   cursor: not-allowed;
 }
 .btn.danger { background: #b3261e; color: #fff; }
+/* 行级破坏性操作：安静化——整页只留一枚实心主按钮，删除闸门在弹窗里 */
+.btn.danger-quiet { background: var(--paper); color: #b3261e; border: 1px solid var(--soft-2); box-shadow: none; }
+.btn.danger-quiet:hover:not(:disabled) { background: var(--soft); box-shadow: none; }
 
 /* ---------- 弹窗内表单网格 ---------- */
 .form-grid { display: flex; flex-direction: column; gap: 13px; }
@@ -531,12 +535,13 @@ input:focus, select:focus {
   transition: background 0.12s, color 0.12s;
 }
 .pill:hover { background: var(--soft-2); color: var(--ink); }
-.pill.on { background: var(--ink); color: var(--paper); font-weight: 600; }
+/* 选中态 = 描边（实心色块不用；实心仅留给每页唯一的主按钮） */
+.pill.on { background: var(--paper); color: var(--ink); border: 1.5px solid var(--ink); font-weight: 600; padding: 3.5px 7.5px; }
 .pill.on.lnk {
   background: var(--paper);
   color: var(--ink);
   border: 1.5px dashed var(--ink);
-  padding: 4px 7.5px;
+  padding: 3.5px 7.5px;
 }
 
 .tag {
@@ -548,7 +553,8 @@ input:focus, select:focus {
   white-space: nowrap;
   flex-shrink: 0;
 }
-.tag.strong { background: var(--ink); color: var(--paper); }
+/* 强调 tag = 描边，不用黑色色块（审核意见） */
+.tag.strong { background: var(--paper); color: var(--ink); border: 1px solid var(--ink); font-weight: 600; }
 
 /* ---------- 表格 ---------- */
 table { width: 100%; border-collapse: collapse; }

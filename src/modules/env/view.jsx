@@ -66,7 +66,7 @@ function VarQuadrant({ scope, values, shadowMap, writable, busy, onEdit, onDelet
         }) : <div className="row muted">（{SCOPE_LABEL[scope]}没有变量）</div>}
       </div>
       <div className="row-inline" style={{ padding: 8 }}>
-        <button className="btn small" disabled={busy || (scope === 'system' && !writable)} onClick={onAdd}>＋ 新增变量</button>
+        <button className="btn small ghost" disabled={busy || (scope === 'system' && !writable)} onClick={onAdd}>＋ 新增变量</button>
       </div>
     </>
   );
@@ -98,7 +98,7 @@ function PathQuadrant({ scope, entries, writable, busy, onRemove, onAdd, onAddTe
           onChange={(e) => onAddText(e.target.value)}
           onKeyDown={(e) => { if (e.key === 'Enter' && canWrite) onAdd(); }}
         />
-        <button className="btn small" disabled={busy || !canWrite} onClick={onAdd}>追加</button>
+        <button className="btn small ghost" disabled={busy || !canWrite} onClick={onAdd}>追加</button>
       </div>
     </>
   );

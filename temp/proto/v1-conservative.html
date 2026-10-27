@@ -100,6 +100,9 @@ footer { color: var(--mid); font-size: 11px; padding: 14px 20px 26px; text-align
 .btn.small { height: 24px; padding: 0 9px; font-size: 11px; border-radius: 6px; }
 .btn:disabled { background: var(--soft); color: var(--faint); box-shadow: var(--shadow-relief-inset); cursor: not-allowed; }
 .btn.danger { background: #b3261e; color: #fff; }
+/* 行级破坏性操作：安静化（整页只留一个主按钮色块），删除闸门在弹窗里 */
+.btn.quiet-danger { background: var(--paper); color: #b3261e; border: 1px solid var(--soft-2); box-shadow: none; }
+.btn.quiet-danger:hover:not(:disabled) { background: var(--soft); box-shadow: none; }
 
 /* ─── 输入 ─── */
 input, select {
@@ -385,7 +388,7 @@ td.cell-name .sub-desc { color: var(--mid); font-size: 11px; margin-top: 1px; }
             <button class="btn small ghost" onclick="toast('已更新 web-access：指纹无变更')">更新</button>
             <button class="btn small ghost" onclick="toast('打开加软链弹窗（remote link：把容器里的 skill 链到别处用）')">加软链…</button>
             <button class="btn small ghost" onclick="openModal('m-source')">详情</button>
-            <button class="btn small danger" onclick="openModal('m-remove')">移除</button>
+            <button class="btn small quiet-danger" onclick="openModal('m-remove')">移除</button>
           </td>
         </tr>
         <tr data-name="happy-coder nicepkg" data-st="ok">
@@ -398,7 +401,7 @@ td.cell-name .sub-desc { color: var(--mid); font-size: 11px; margin-top: 1px; }
             <button class="btn small ghost" onclick="toast('已更新 happy-coder：7d21e083 换新为 f2c90b41')">更新</button>
             <button class="btn small ghost" onclick="toast('打开加软链弹窗（remote link）')">加软链…</button>
             <button class="btn small ghost" onclick="openModal('m-source')">详情</button>
-            <button class="btn small danger" onclick="openModal('m-remove')">移除</button>
+            <button class="btn small quiet-danger" onclick="openModal('m-remove')">移除</button>
           </td>
         </tr>
         <tr data-name="skill-creator vercel-labs" data-st="ok">
@@ -411,7 +414,7 @@ td.cell-name .sub-desc { color: var(--mid); font-size: 11px; margin-top: 1px; }
             <button class="btn small ghost" onclick="toast('已更新 skill-creator：指纹无变更')">更新</button>
             <button class="btn small ghost" onclick="toast('打开加软链弹窗（remote link）')">加软链…</button>
             <button class="btn small ghost" onclick="openModal('m-source')">详情</button>
-            <button class="btn small danger" onclick="openModal('m-remove')">移除</button>
+            <button class="btn small quiet-danger" onclick="openModal('m-remove')">移除</button>
           </td>
         </tr>
         <tr data-name="doc-extractor softaworks" data-st="ok">
@@ -424,7 +427,7 @@ td.cell-name .sub-desc { color: var(--mid); font-size: 11px; margin-top: 1px; }
             <button class="btn small ghost" onclick="toast('已更新 doc-extractor：指纹无变更')">更新</button>
             <button class="btn small ghost" onclick="toast('打开加软链弹窗（remote link）')">加软链…</button>
             <button class="btn small ghost" onclick="openModal('m-source')">详情</button>
-            <button class="btn small danger" onclick="openModal('m-remove')">移除</button>
+            <button class="btn small quiet-danger" onclick="openModal('m-remove')">移除</button>
           </td>
         </tr>
         <tr data-name="pr-review 手写" data-st="hand">
@@ -435,7 +438,7 @@ td.cell-name .sub-desc { color: var(--mid); font-size: 11px; margin-top: 1px; }
           <td><span class="muted">3 天前</span></td>
           <td class="ops">
             <button class="btn small ghost" onclick="toast('打开编辑手写定义弹窗')">编辑</button>
-            <button class="btn small danger" onclick="openModal('m-remove')">移除</button>
+            <button class="btn small quiet-danger" onclick="openModal('m-remove')">移除</button>
           </td>
         </tr>
         <tr data-name="k8s-troubleshoot 本地链" data-st="link">
@@ -446,7 +449,7 @@ td.cell-name .sub-desc { color: var(--mid); font-size: 11px; margin-top: 1px; }
           <td><span class="muted">12 天前</span></td>
           <td class="ops">
             <button class="btn small ghost" onclick="toast('已复制实体路径 D:/pkgs/k8s-skills')">复制路径</button>
-            <button class="btn small danger" onclick="openModal('m-remove')">移除</button>
+            <button class="btn small quiet-danger" onclick="openModal('m-remove')">移除</button>
           </td>
         </tr>
       </tbody>
@@ -465,7 +468,7 @@ td.cell-name .sub-desc { color: var(--mid); font-size: 11px; margin-top: 1px; }
       <div class="toolbar" style="margin-bottom:8px">
         <input class="search" id="q-search" placeholder="搜索 skills.sh 注册表（关键词）…" spellCheck="false" value="code review">
         <input placeholder="owner（可选，如 vercel-labs）" style="width:200px" spellCheck="false">
-        <button class="btn" onclick="toast('已搜索：vercel-labs 下 3 个结果')">搜索</button>
+        <button class="btn ghost" onclick="toast('已搜索：vercel-labs 下 3 个结果')">搜索</button>
       </div>
     </div>
     <table>
@@ -479,7 +482,7 @@ td.cell-name .sub-desc { color: var(--mid); font-size: 11px; margin-top: 1px; }
           <td class="muted">1.2k</td>
           <td class="ops">
             <button class="btn small ghost" onclick="openModal('m-import')">预览</button>
-            <button class="btn small" onclick="openModal('m-import')">导入…</button>
+            <button class="btn small ghost" onclick="openModal('m-import')">导入…</button>
           </td>
         </tr>
         <tr>
@@ -488,7 +491,7 @@ td.cell-name .sub-desc { color: var(--mid); font-size: 11px; margin-top: 1px; }
           <td class="muted">860</td>
           <td class="ops">
             <button class="btn small ghost" onclick="openModal('m-import')">预览</button>
-            <button class="btn small" onclick="openModal('m-import')">导入…</button>
+            <button class="btn small ghost" onclick="openModal('m-import')">导入…</button>
           </td>
         </tr>
         <tr>
@@ -585,7 +588,7 @@ td.cell-name .sub-desc { color: var(--mid); font-size: 11px; margin-top: 1px; }
       <div class="dlg-note">等价命令：<span class="mono">nx-rh skill hub remote list --json</span> / <span class="mono">skill hub cat web-access</span></div>
       <div class="dlg-acts">
         <button class="btn ghost" onclick="closeModal('m-source')">关闭</button>
-        <button class="btn ghost" onclick="closeModal('m-source');openModal('m-migrate')">迁移到平台…</button>
+        <button class="btn" onclick="closeModal('m-source');openModal('m-migrate')">迁移到平台…</button>
       </div>
     </div>
   </div>

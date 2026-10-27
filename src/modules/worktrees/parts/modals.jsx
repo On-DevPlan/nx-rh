@@ -133,7 +133,7 @@ export function ResultModal({ payload, onClose }) {
     <Modal title={payload.title} onClose={onClose}>
       <pre>{payload.text}</pre>
       {payload.copy ? (
-        <div className="form-acts"><Copyable className="btn small" text={payload.text}>复制</Copyable></div>
+        <div className="form-acts"><Copyable className="btn" text={payload.text}>复制</Copyable></div>
       ) : null}
     </Modal>
   );

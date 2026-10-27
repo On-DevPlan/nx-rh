@@ -388,7 +388,7 @@ export function SkillSettingsDialog({ onClose }) {
         {candidateRows(s.skillHubSources, 'hub')}
         <div className="row-inline" style={{ padding: 8 }}>
           <input aria-label="skill 目录绝对路径" placeholder="skill 目录绝对路径" spellCheck="false" value={hubInput} onChange={(e) => setHubInput(e.target.value)} />
-          <button className="btn small" onClick={addSource}>订阅</button>
+          <button className="btn small ghost" onClick={addSource}>订阅</button>
         </div>
       </div>
 
@@ -397,7 +397,7 @@ export function SkillSettingsDialog({ onClose }) {
         {candidateRows(s.skillProjectCandidates, 'project')}
         <div className="row-inline" style={{ padding: 8 }}>
           <input aria-label="项目根目录" placeholder="项目根目录" spellCheck="false" value={projectInput} onChange={(e) => setProjectInput(e.target.value)} />
-          <button className="btn small" onClick={addProject}>添加</button>
+          <button className="btn small ghost" onClick={addProject}>添加</button>
         </div>
       </div>
 
