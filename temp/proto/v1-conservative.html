@@ -1,0 +1,659 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>原型 v1 保守版 · 远程订阅 UI — nx-rh</title>
+<style>
+/* ═══ 设计令牌：与 src/web/frontend/style.css 同源 ═══ */
+:root {
+  --ink: #14161a;
+  --paper: #fff;
+  --soft: #f5f6f7;
+  --soft-2: #e7e9ec;
+  --mid: #6b7178;
+  --faint: #9aa0a7;
+  --row-h: 28px;
+  --btn-h: 32px;
+  --fs-core: 12px;
+  --radius-flat: 4px;
+  --radius-btn: 8px;
+  --radius-pill: 999px;
+  --border: 1px solid var(--soft-2);
+  --shadow-relief: -1px -1px 2px rgba(255,255,255,.85), 2px 2px 6px rgba(20,22,26,.07);
+  --shadow-relief-press: inset 1px 1px 2px rgba(20,22,26,.10), inset -1px -1px 2px rgba(255,255,255,.7);
+  --shadow-relief-inset: inset 1px 1px 2px rgba(20,22,26,.06), inset -1px -1px 2px rgba(255,255,255,.9);
+  --shadow-pop: 0 8px 28px rgba(20,22,26,.14), 0 2px 8px rgba(20,22,26,.08);
+}
+* { box-sizing: border-box; }
+body {
+  margin: 0;
+  font-family: system-ui, "Segoe UI", "Microsoft YaHei", sans-serif;
+  font-size: var(--fs-core);
+  line-height: 1.5;
+  color: var(--ink);
+  background: var(--paper);
+  -webkit-font-smoothing: antialiased;
+  padding-bottom: 60px;
+}
+
+/* ─── 顶栏 ─── */
+header {
+  display: flex; align-items: center; gap: 20px;
+  height: 48px; padding: 0 20px;
+  background: var(--paper); border-bottom: var(--border);
+  position: sticky; top: 0; z-index: 5;
+}
+.brand { font-weight: 800; letter-spacing: .4px; font-size: 13px; display: inline-flex; align-items: center; gap: 7px; }
+.brand .logo { width: 20px; height: 20px; border-radius: 5px; background: var(--ink); color: var(--paper); display: inline-flex; align-items: center; justify-content: center; font-size: 11px; font-weight: 800; }
+.brand .sub { margin-left: 8px; font-weight: 400; color: var(--mid); }
+header .meta { margin-left: auto; color: var(--mid); font-size: 12px; font-family: ui-monospace, Consolas, monospace; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 34vw; }
+header .recents { color: var(--mid); font-size: 12px; cursor: pointer; user-select: none; white-space: nowrap; }
+header .recents:hover { color: var(--ink); }
+
+nav { display: inline-flex; gap: 2px; padding: 3px; background: var(--soft); border-radius: var(--radius-pill); }
+.tab {
+  font: inherit; border: 0; background: transparent; color: var(--mid);
+  height: var(--btn-h); padding: 0 16px; border-radius: var(--radius-pill);
+  cursor: pointer; transition: background .12s, color .12s;
+}
+.tab:hover { color: var(--ink); }
+.tab.active { background: var(--paper); color: var(--ink); font-weight: 600; box-shadow: var(--shadow-relief); }
+
+main { padding: 14px 20px 28px; max-width: 1240px; margin: 0 auto; }
+.panel { display: none; }
+.panel.active { display: block; }
+footer { color: var(--mid); font-size: 11px; padding: 14px 20px 26px; text-align: center; border-top: var(--border); }
+
+/* ─── 页头 / 小节 ─── */
+.page-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 14px; margin: 4px 0 14px; }
+.page-head h2 { font-size: 16px; font-weight: 700; margin: 0; letter-spacing: .2px; }
+.page-head .page-desc { color: var(--mid); font-size: 12px; margin-top: 3px; max-width: 760px; }
+.page-head .acts { display: flex; gap: 8px; flex-shrink: 0; align-items: center; }
+
+.section-label { display: flex; align-items: baseline; gap: 8px; margin: 18px 0 8px; font-size: 12px; font-weight: 700; }
+.section-label:first-child { margin-top: 4px; }
+.section-label .hint { font-weight: 400; color: var(--mid); font-size: 11px; }
+
+.crumbs { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; font-size: 11px; color: var(--mid); margin: 0 0 10px; }
+.crumbs a { color: var(--mid); text-decoration: none; cursor: pointer; }
+.crumbs a:hover { color: var(--ink); text-decoration: underline; }
+.crumbs .cur { color: var(--ink); font-weight: 600; }
+.crumbs .sep { color: var(--faint); }
+
+.sub-head { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; margin-bottom: 10px; }
+.sub-head .sub-meta { font-size: 11px; color: var(--mid); font-family: ui-monospace, Consolas, monospace; }
+.sub-head .acts { margin-left: auto; display: flex; gap: 8px; flex-wrap: wrap; }
+
+/* ─── 按钮 ─── */
+.btn {
+  font: inherit; font-size: var(--fs-core); cursor: pointer;
+  height: var(--btn-h); padding: 0 14px; border: 0; border-radius: var(--radius-btn);
+  background: var(--ink); color: var(--paper); box-shadow: var(--shadow-relief);
+  transition: box-shadow .12s, transform .08s, background .12s;
+  display: inline-flex; align-items: center; justify-content: center; gap: 4px; white-space: nowrap;
+}
+.btn:hover:not(:disabled) { box-shadow: var(--shadow-relief), 0 0 0 3px rgba(20,22,26,.06); }
+.btn:active:not(:disabled) { box-shadow: var(--shadow-relief-press); transform: translateY(1px); }
+.btn.ghost { background: var(--soft); color: var(--ink); }
+.btn.ghost:hover:not(:disabled) { background: var(--soft-2); }
+.btn.small { height: 24px; padding: 0 9px; font-size: 11px; border-radius: 6px; }
+.btn:disabled { background: var(--soft); color: var(--faint); box-shadow: var(--shadow-relief-inset); cursor: not-allowed; }
+.btn.danger { background: #b3261e; color: #fff; }
+
+/* ─── 输入 ─── */
+input, select {
+  font: inherit; font-size: var(--fs-core); color: var(--ink);
+  background: var(--paper); border: var(--border); border-radius: var(--radius-flat);
+  height: var(--row-h); padding: 0 10px;
+  transition: border-color .12s, box-shadow .12s;
+}
+input::placeholder { color: var(--faint); }
+input:focus, select:focus { outline: none; border-color: var(--mid); box-shadow: var(--shadow-relief-inset); }
+
+/* ─── 工具栏 ─── */
+.toolbar { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-bottom: 10px; }
+.toolbar label { color: var(--mid); }
+.grow { flex: 1 1 220px; max-width: 340px; min-width: 160px; }
+.toolbar .search { flex: 1 1 240px; max-width: 460px; }
+
+/* ─── tag / pill ─── */
+.tag { font-size: 11px; padding: 2px 8px; border-radius: var(--radius-pill); background: var(--soft); color: var(--mid); white-space: nowrap; flex-shrink: 0; }
+.tag.strong { background: var(--ink); color: var(--paper); }
+.tag.upd { background: var(--ink); color: var(--paper); font-weight: 700; }
+.pill {
+  font: inherit; font-size: 11px; line-height: 1; cursor: pointer;
+  padding: 5px 9px; border: 0; border-radius: var(--radius-pill);
+  background: var(--soft); color: var(--mid);
+  transition: background .12s, color .12s;
+}
+.pill:hover { background: var(--soft-2); color: var(--ink); }
+.pill.on { background: var(--ink); color: var(--paper); font-weight: 600; }
+.pill.on.lnk { background: var(--paper); color: var(--ink); border: 1.5px dashed var(--ink); padding: 4px 7.5px; }
+.plats { display: flex; gap: 4px; flex-wrap: wrap; }
+
+/* ─── 入口卡片（总览） ─── */
+.entry-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(228px, 1fr)); gap: 10px; }
+.entry-card {
+  position: relative; display: flex; flex-direction: column; gap: 6px;
+  padding: 12px; border: var(--border); border-radius: var(--radius-btn);
+  background: var(--paper); cursor: pointer; text-align: left;
+  transition: border-color .12s, box-shadow .12s;
+}
+.entry-card:hover { border-color: var(--mid); box-shadow: var(--shadow-pop); }
+.entry-card .ec-top { display: flex; align-items: center; gap: 8px; }
+.entry-card .ec-name { font-size: 13px; font-weight: 700; }
+.entry-card .ec-path { font-family: ui-monospace, Consolas, monospace; font-size: 10.5px; color: var(--mid); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.entry-card .ec-stats { display: flex; flex-wrap: wrap; gap: 4px 10px; font-size: 11px; color: var(--mid); margin-top: 2px; }
+.entry-card .ec-stats b { color: var(--ink); font-weight: 700; }
+.entry-card.add-tile { align-items: center; justify-content: center; border-style: dashed; color: var(--mid); min-height: 92px; }
+.entry-card.add-tile:hover { border-color: var(--ink); color: var(--ink); }
+.entry-card.remote-last { border-color: var(--mid); }
+.entry-card.remote-last .ec-foot {
+  display: flex; gap: 5px; margin-top: 8px; padding-top: 8px;
+  border-top: 1px solid var(--soft-2);
+}
+.entry-card .ec-refs { font-size: 11px; color: var(--mid); margin-top: 2px; }
+
+/* ─── 卡片 / 表格 ─── */
+.card { background: var(--paper); border: var(--border); border-radius: var(--radius-btn); padding: 0; margin-bottom: 14px; overflow: hidden; }
+.colhead { display: flex; align-items: center; gap: 8px; min-height: var(--row-h); padding: 4px 12px; border-bottom: var(--border); background: var(--soft); }
+.colhead h3 { font-size: 13px; margin: 0; font-weight: 700; display: inline-flex; align-items: center; gap: 8px; }
+.colhead .muted { display: inline-flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+.colhead .spacer { margin-left: auto; }
+
+table { width: 100%; border-collapse: collapse; }
+th, td { text-align: left; padding: 0 12px; height: var(--row-h); font-size: var(--fs-core); vertical-align: middle; }
+th { color: var(--mid); font-weight: 600; border-bottom: var(--border); background: var(--soft); }
+tbody tr { border-bottom: var(--border); }
+tbody tr:last-child { border-bottom: 0; }
+tbody tr:hover { background: var(--soft); }
+tbody tr.is-upd td { background: var(--soft); }
+tbody tr.is-upd:hover td { background: var(--soft-2); }
+.mono, td.path { font-family: ui-monospace, Consolas, monospace; word-break: break-word; }
+td.ops { white-space: nowrap; }
+td.ops .btn { margin: 0 4px 0 0; }
+.muted { color: var(--mid); }
+.bad { font-weight: 700; color: #b3261e; }
+td.cell-name { min-width: 170px; }
+td.cell-name .nm { font-weight: 600; }
+td.cell-name .sub-desc { color: var(--mid); font-size: 11px; margin-top: 1px; }
+.fg { font-family: ui-monospace, Consolas, monospace; font-size: 11px; color: var(--mid); }
+
+/* diff 行内高亮 */
+.d-add { color: #1a7f37; background: rgba(46,160,67,.08); }
+.d-del { color: #b3261e; background: rgba(179,38,30,.08); text-decoration: line-through; }
+
+/* ─── 弹窗 / toast ─── */
+.modal { position: fixed; inset: 0; background: rgba(20,22,26,.32); display: none; align-items: flex-start; justify-content: center; padding: 48px 16px; z-index: 40; overflow: auto; }
+.modal.open { display: flex; }
+.modal-box { background: var(--paper); border-radius: var(--radius-btn); box-shadow: var(--shadow-pop); width: min(560px, 96vw); max-height: 86vh; display: flex; flex-direction: column; overflow: hidden; }
+.modal-title { min-height: var(--btn-h); padding: 6px 14px; display: flex; justify-content: space-between; align-items: center; gap: 10px; font-weight: 700; border-bottom: var(--border); background: var(--soft); }
+.modal-title .x { cursor: pointer; color: var(--mid); font-weight: 400; }
+.modal-title .x:hover { color: var(--ink); }
+.modal-body { min-height: 0; padding: 16px; overflow: auto; }
+.kv { display: grid; grid-template-columns: 96px 1fr; gap: 0 12px; margin: 0 0 10px; }
+.kv dt { color: var(--mid); padding: 3px 0; border-bottom: var(--border); }
+.kv dd { margin: 0; padding: 3px 0; border-bottom: var(--border); }
+.dlg-acts { display: flex; justify-content: flex-end; gap: 8px; margin-top: 14px; flex-wrap: wrap; }
+.dlg-note { font-size: 11px; color: var(--mid); margin-top: 10px; }
+
+.toast-stack { position: fixed; left: 50%; bottom: 28px; transform: translateX(-50%); display: flex; flex-direction: column; align-items: center; gap: 8px; z-index: 60; pointer-events: none; }
+.toast { background: var(--ink); color: var(--paper); font-size: var(--fs-core); min-height: var(--btn-h); padding: 7px 16px; border-radius: var(--radius-btn); box-shadow: var(--shadow-pop); display: inline-flex; align-items: center; max-width: 72vw; white-space: pre-wrap; word-break: break-all; }
+
+/* ─── 原型专用：悬浮切换条（非生产 UI） ─── */
+.proto-fab {
+  position: fixed; right: 16px; bottom: 16px; z-index: 70;
+  display: flex; align-items: center; gap: 6px;
+  background: var(--paper); border: 1px dashed var(--mid); border-radius: var(--radius-btn);
+  padding: 6px 8px; box-shadow: var(--shadow-pop); font-size: 11px; color: var(--mid);
+}
+.proto-fab .pb { font: inherit; font-size: 11px; cursor: pointer; border: 0; background: var(--soft); color: var(--ink); border-radius: 5px; padding: 3px 9px; }
+.proto-fab .pb:hover { background: var(--soft-2); }
+.proto-fab .pb.on { background: var(--ink); color: var(--paper); }
+
+@media (max-width: 720px) {
+  header { flex-wrap: wrap; height: auto; padding: 8px 12px; gap: 10px 14px; }
+  header .meta { max-width: 100%; }
+  main { padding: 12px 16px 24px; }
+  .page-head { flex-direction: column; }
+  .entry-grid { grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 8px; }
+}
+</style>
+</head>
+<body>
+
+<header>
+  <div class="brand"><span class="logo">nx</span>nx-rh <span class="sub">npx-repo-hub</span></div>
+  <nav>
+    <button class="tab active">Skill</button>
+    <button class="tab">设置</button>
+    <button class="tab">环境变量</button>
+    <button class="tab">工作树</button>
+  </nav>
+  <div class="meta">D:\DevProjects\my\github\nx-rh</div>
+  <div class="recents">最近目录 ▾</div>
+</header>
+
+<main>
+
+<!-- ═══════════ 画面 A：Skill 总览（订阅源列表，远程 Hub 卡固定最后） ═══════════ -->
+<div class="panel active" id="p-overview">
+  <div class="page-head">
+    <div class="title-block">
+      <h2>Skill</h2>
+      <div class="page-desc">订阅源是唯一可信源。从平台入口查看散落在各 Agent 目录里的 skill，把不在订阅源的收敛回来；也可以从订阅源把 skill 迁移到各平台。外部 skill 统一装进「远程订阅」容器。</div>
+    </div>
+    <div class="acts">
+      <button class="btn ghost" onclick="toast('已开始检查订阅源健康：目录缺失 / 空源 / 嵌套 / 跨源冲突')">检查订阅源…</button>
+      <button class="btn ghost" onclick="toast('打开 Skill 设置')">Skill 设置</button>
+      <button class="btn" onclick="toast('打开新建 skill 弹窗')">＋ 新建</button>
+    </div>
+  </div>
+
+  <div class="section-label">订阅源
+    <span class="hint">3 个 · 本地源在前，远程订阅固定最后 · 点进去看 / 迁移该源的 skill</span>
+  </div>
+  <div class="entry-grid">
+    <div class="entry-card" onclick="toast('进入订阅源子页：D:/a_other/md/sl/skills')">
+      <div class="ec-top"><span class="ec-name">sl-skills</span><span class="tag strong">主源</span></div>
+      <div class="ec-path" title="D:/a_other/md/sl/skills">D:/a_other/md/sl/skills</div>
+      <div class="ec-stats"><span><b>12</b> 个 skill</span></div>
+    </div>
+
+    <div class="entry-card" onclick="toast('进入订阅源子页：D:/a_other/md/wb-skills')">
+      <div class="ec-top"><span class="ec-name">wb-skills</span></div>
+      <div class="ec-path" title="D:/a_other/md/wb-skills">D:/a_other/md/wb-skills</div>
+      <div class="ec-stats"><span><b>4</b> 个 skill</span></div>
+    </div>
+
+    <div class="entry-card add-tile" onclick="toast('订阅本地目录（外部 skill 走远程订阅页）')">＋ 订阅新目录</div>
+
+    <!-- 远程订阅 Hub 卡：固定显示在订阅源列表最后一个（add-tile 之后） -->
+    <div class="entry-card remote-last" onclick="switchScreen('p-remote','b-remote')">
+      <div class="ec-top"><span class="ec-name">远程订阅</span><span class="tag">外部 skill</span></div>
+      <div class="ec-path" title="~/.nx-rh/远程订阅">~/.nx-rh/远程订阅</div>
+      <div class="ec-stats">
+        <span><b>6</b> 个 skill</span>
+        <span><b>3</b> 个来源</span>
+        <span style="color:var(--ink)"><b>1</b> 待更新</span>
+      </div>
+      <div class="ec-foot" onclick="event.stopPropagation()">
+        <button class="btn small ghost" onclick="switchScreen('p-remote','b-remote')">管理…</button>
+        <button class="btn small ghost" onclick="toast('检查更新完成：1 个 skill 有新版本（happy-coder）')">检查更新</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="section-label">当前项目
+    <span class="hint">项目目录里实际存在的 skill（cwd 作用域）</span>
+  </div>
+  <div class="entry-grid">
+    <div class="entry-card" onclick="toast('进入当前项目子页')">
+      <div class="ec-top"><span class="ec-name">nx-rh</span></div>
+      <div class="ec-path mono" title="D:/DevProjects/my/github/nx-rh">D:/DevProjects/my/github/nx-rh</div>
+      <div class="ec-stats">
+        <span>有 <b>3</b> skill</span>
+        <span style="color:var(--ink)" title="只在项目目录里，订阅源里没有——点进去可收进 Hub">，其中 <b>1</b> 独立未入 Hub</span>
+      </div>
+    </div>
+  </div>
+
+  <div class="section-label">平台
+    <span class="hint">17 个 Agent 平台 · 统计该平台目录里的 skill（用户级 + 当前项目级，同名只计一次）</span>
+  </div>
+  <div class="entry-grid">
+    <div class="entry-card" onclick="toast('进入平台子页：claude-code')">
+      <div class="ec-top"><span class="ec-name">Claude Code</span><span class="tag strong">默认</span></div>
+      <div class="ec-path mono">claude-code</div>
+      <div class="ec-stats"><span>有 <b>15</b> skill</span></div>
+    </div>
+    <div class="entry-card" onclick="toast('进入平台子页：workbuddy')">
+      <div class="ec-top"><span class="ec-name">WorkBuddy</span><span class="tag">已启用</span></div>
+      <div class="ec-path mono">workbuddy</div>
+      <div class="ec-stats"><span>有 <b>8</b> skill</span></div>
+    </div>
+    <div class="entry-card off" onclick="toast('进入平台子页：cursor（未启用）')">
+      <div class="ec-top"><span class="ec-name">Cursor</span><span class="tag">未启用</span></div>
+      <div class="ec-path mono">cursor</div>
+      <div class="ec-stats"><span>有 <b>0</b> skill</span></div>
+    </div>
+  </div>
+</div>
+
+<!-- ═══════════ 画面 B：远程订阅管理页（独立页，与其他页同构） ═══════════ -->
+<div class="panel" id="p-remote">
+  <div class="crumbs">
+    <a onclick="switchScreen('p-overview','b-overview')">Skill</a>
+    <span class="sep">/</span>
+    <span class="cur">远程订阅</span>
+  </div>
+
+  <div class="page-head">
+    <div class="title-block">
+      <h2>远程订阅</h2>
+      <div class="page-desc">外部 skill 的唯一入口。固定容器 <span class="mono">~/.nx-rh/远程订阅</span>，与本地订阅源同级同权；导入、同步更新、版本指纹与软链都在这一页管理。</div>
+    </div>
+    <div class="acts">
+      <button class="btn ghost" onclick="toast('已检查全部来源：1 个 skill 有新版本')">检查更新</button>
+      <button class="btn ghost" onclick="toast('打开手写定义弹窗（remote add）')">＋ 手写定义</button>
+      <button class="btn" onclick="document.getElementById('q-search').focus()">搜索导入</button>
+    </div>
+  </div>
+
+  <div class="sub-head">
+    <div class="sub-meta">~/.nx-rh/远程订阅</div>
+    <span class="tag">外部 skill</span>
+    <div class="acts">
+      <span class="tag strong">6 个 skill</span>
+      <span class="tag">3 个来源</span>
+      <span class="tag upd">1 待更新</span>
+      <span class="tag">上次同步 2026-10-26 21:40</span>
+    </div>
+  </div>
+
+  <!-- 区块一：版本台账 -->
+  <div class="toolbar">
+    <input class="search" id="q-ledger" placeholder="过滤名称 / 来源…" spellCheck="false" oninput="filterLedger()">
+    <span class="tag" style="cursor:pointer" data-f="all" onclick="pickFilter(this)">全部</span>
+    <span class="tag" style="cursor:pointer" data-f="upd" onclick="pickFilter(this)">待更新</span>
+    <span class="tag" style="cursor:pointer" data-f="link" onclick="pickFilter(this)">链接</span>
+    <span class="tag" style="cursor:pointer" data-f="hand" onclick="pickFilter(this)">手写</span>
+  </div>
+
+  <div class="card">
+    <div class="colhead">
+      <h3>版本台账</h3>
+      <span class="muted">指纹即版本 · 指纹变了才算有更新</span>
+      <span class="spacer"></span>
+      <span class="muted">6 个 skill · 3 个来源 · 上次同步 2026-10-26 21:40</span>
+    </div>
+    <table>
+      <thead><tr>
+        <th>skill</th><th>来源</th><th>指纹</th><th>状态</th><th>安装</th><th class="ops">操作</th>
+      </tr></thead>
+      <tbody id="ledger">
+        <tr data-name="web-access vercel-labs" data-st="ok">
+          <td class="cell-name"><div class="nm">web-access</div><div class="sub-desc">浏览器自动化与网页访问的标准流程</div></td>
+          <td class="mono">vercel-labs/skills</td>
+          <td><span class="fg">a3f9c12e</span></td>
+          <td><span class="tag">最新</span></td>
+          <td><div class="plats"><span class="pill on">claude</span></div></td>
+          <td class="ops">
+            <button class="btn small ghost" onclick="openModal('m-diff')">预览变更</button>
+            <button class="btn small ghost" disabled>更新</button>
+            <button class="btn small ghost" onclick="openModal('m-remove')">移除</button>
+          </td>
+        </tr>
+        <tr data-name="happy-coder nicepkg" data-st="upd">
+          <td class="cell-name"><div class="nm">happy-coder</div><div class="sub-desc">happy 移动端 Claude 的会话守护与守护进程管理</div></td>
+          <td class="mono">nicepkg/happy-coder</td>
+          <td><span class="fg">7d21e083</span> <span class="muted">→</span> <span class="fg">f2c90b41</span></td>
+          <td><span class="tag upd">待更新</span></td>
+          <td><div class="plats"><span class="pill on">claude</span></div></td>
+          <td class="ops">
+            <button class="btn small ghost" onclick="openModal('m-update')">预览变更</button>
+            <button class="btn small ghost" onclick="openModal('m-update')">更新</button>
+            <button class="btn small ghost" onclick="openModal('m-remove')">移除</button>
+          </td>
+        </tr>
+        <tr data-name="skill-creator vercel-labs" data-st="ok">
+          <td class="cell-name"><div class="nm">skill-creator</div><div class="sub-desc">创建结构合规的 agent skill</div></td>
+          <td class="mono">vercel-labs/skills</td>
+          <td><span class="fg">b8e4d90f</span></td>
+          <td><span class="tag">最新</span></td>
+          <td><div class="plats"><span class="pill on">claude</span><span class="pill on">universal</span></div></td>
+          <td class="ops">
+            <button class="btn small ghost" onclick="openModal('m-diff')">预览变更</button>
+            <button class="btn small ghost" disabled>更新</button>
+            <button class="btn small ghost" onclick="openModal('m-remove')">移除</button>
+          </td>
+        </tr>
+        <tr data-name="doc-extractor softaworks" data-st="ok">
+          <td class="cell-name"><div class="nm">doc-extractor</div><div class="sub-desc">从网页提取干净正文，去广告去导航</div></td>
+          <td class="mono">softaworks/agent-docs</td>
+          <td><span class="fg">f0a3b771</span></td>
+          <td><span class="tag">最新</span></td>
+          <td><span class="muted">未安装</span></td>
+          <td class="ops">
+            <button class="btn small ghost" onclick="openModal('m-diff')">预览变更</button>
+            <button class="btn small ghost" disabled>更新</button>
+            <button class="btn small ghost" onclick="openModal('m-remove')">移除</button>
+          </td>
+        </tr>
+        <tr data-name="pr-review 手写" data-st="hand">
+          <td class="cell-name"><div class="nm">pr-review</div><div class="sub-desc">本机手写的 PR 审查流程（无上游来源）</div></td>
+          <td class="muted">手写定义</td>
+          <td><span class="fg">8c2f4410</span></td>
+          <td><span class="tag">手写</span></td>
+          <td><span class="muted">未安装</span></td>
+          <td class="ops">
+            <button class="btn small ghost" onclick="toast('打开编辑手写定义弹窗')">编辑</button>
+            <button class="btn small ghost" onclick="openModal('m-remove')">移除</button>
+          </td>
+        </tr>
+        <tr data-name="k8s-troubleshoot 本地链" data-st="link">
+          <td class="cell-name"><div class="nm">k8s-troubleshoot</div><div class="sub-desc">Kubernetes 排障手册（实体在别处，软链进容器）</div></td>
+          <td class="mono" title="D:/pkgs/k8s-skills">← D:/pkgs/k8s-skills</td>
+          <td><span class="fg">55d1c2aa</span></td>
+          <td><span class="tag">链接进来</span></td>
+          <td><span class="muted">未安装</span></td>
+          <td class="ops">
+            <button class="btn small ghost" onclick="toast('已在文件管理器打开 D:/pkgs/k8s-skills')">定位</button>
+            <button class="btn small ghost" onclick="openModal('m-remove')">移除</button>
+          </td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+  <!-- 区块二：搜索导入 -->
+  <div class="card">
+    <div class="colhead">
+      <h3>搜索导入</h3>
+      <span class="muted">搜 skills.sh 注册表 · 先预览再导入，导入前不落盘</span>
+      <span class="spacer"></span>
+      <button class="btn small ghost" onclick="toast('已刷新搜索结果')">刷新</button>
+    </div>
+    <div style="padding:10px 12px 0">
+      <div class="toolbar" style="margin-bottom:8px">
+        <input class="search" id="q-search" placeholder="搜索 skills.sh 注册表（关键词）…" spellCheck="false" value="code review">
+        <select>
+          <option>全部组织</option>
+          <option selected>vercel-labs</option>
+          <option>anthropics</option>
+        </select>
+        <button class="btn" onclick="toast('已搜索：vercel-labs 下 3 个结果')">搜索</button>
+      </div>
+    </div>
+    <table>
+      <thead><tr>
+        <th>skill</th><th class="mono">owner/repo</th><th>描述</th><th class="ops">操作</th>
+      </tr></thead>
+      <tbody>
+        <tr>
+          <td class="cell-name"><div class="nm">code-reviewer</div></td>
+          <td class="mono">vercel-labs/skills</td>
+          <td class="muted">按仓库约定审查代码变更，输出分级意见</td>
+          <td class="ops">
+            <button class="btn small ghost" onclick="openModal('m-import')">先预览</button>
+            <button class="btn small" onclick="openModal('m-import')">导入</button>
+          </td>
+        </tr>
+        <tr>
+          <td class="cell-name"><div class="nm">react-patterns</div></td>
+          <td class="mono">vercel-labs/skills</td>
+          <td class="muted">React 组件模式与反模式清单</td>
+          <td class="ops">
+            <button class="btn small ghost" onclick="openModal('m-import')">先预览</button>
+            <button class="btn small" onclick="openModal('m-import')">导入</button>
+          </td>
+        </tr>
+        <tr>
+          <td class="cell-name"><div class="nm">commit-message</div></td>
+          <td class="mono">vercel-labs/skills</td>
+          <td class="muted">Conventional Commits 规范生成提交说明</td>
+          <td class="ops">
+            <span class="tag">已导入</span>
+            <button class="btn small ghost" disabled>导入</button>
+          </td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+  <!-- 区块三：定义与软链 -->
+  <div class="card">
+    <div class="colhead">
+      <h3>定义与软链</h3>
+      <span class="muted">手写条目与双向软链 · 链接不复制内容</span>
+    </div>
+    <div class="row"><span class="name" style="width:150px">手写定义</span><span class="desc">remote add —— 在远程订阅里直接新建一个 SKILL.md 条目（无上游，不参与 remote update）</span>
+      <span class="acts"><button class="btn small ghost" onclick="toast('打开手写定义弹窗')">＋ 新建</button></span></div>
+    <div class="row"><span class="name" style="width:150px">软链进来</span><span class="desc">remote link —— 把本机别处目录的 skill 链进远程订阅（实体留在原地）</span>
+      <span class="acts"><button class="btn small ghost" onclick="toast('打开软链进来弹窗（选目录）')">link 进来</button></span></div>
+    <div class="row"><span class="name" style="width:150px">软链出去</span><span class="desc">remote link-out —— 把远程订阅里的 skill 链到别的目录去用</span>
+      <span class="acts"><button class="btn small ghost" onclick="toast('打开软链出去弹窗')">link 出去</button></span></div>
+    <table style="border-top:var(--border)">
+      <thead><tr><th>现存软链</th><th>方向</th><th class="mono">对端</th><th class="ops">操作</th></tr></thead>
+      <tbody>
+        <tr>
+          <td><span class="nm" style="font-weight:600">k8s-troubleshoot</span></td>
+          <td><span class="tag">进来</span></td>
+          <td class="mono">D:/pkgs/k8s-skills</td>
+          <td class="ops"><button class="btn small ghost" onclick="toast('已断开软链并从台账移除')">断开</button></td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+</div>
+
+</main>
+
+<footer>nx-rh 原型 v1 保守版 · 仅审核用，不代表最终实现 · 数据为演示样例</footer>
+
+<!-- ═══════════ 弹窗 ═══════════ -->
+<div class="modal" id="m-import">
+  <div class="modal-box">
+    <div class="modal-title"><span>导入预演 · code-reviewer</span><span class="x" onclick="closeModal('m-import')">关闭</span></div>
+    <div class="modal-body">
+      <dl class="kv">
+        <dt>规格</dt><dd class="mono">vercel-labs/skills</dd>
+        <dt>写入位置</dt><dd class="mono">~/.nx-rh/远程订阅/code-reviewer</dd>
+        <dt>指纹</dt><dd class="mono">下载归档后计算（导入时登记）</dd>
+        <dt>平台安装</dt><dd>不自动装——导入后到台账里对单个 skill 迁移</dd>
+      </dl>
+      <div class="dlg-note">等价命令：<span class="mono">nx-rh skill hub remote import vercel-labs/skills --name code-reviewer --dry-run</span>。先预览不落盘，点「导入」才真正写入容器。</div>
+      <div class="dlg-acts">
+        <button class="btn ghost" onclick="closeModal('m-import')">取消</button>
+        <button class="btn" onclick="closeModal('m-import');toast('已导入 code-reviewer（1 个 skill，指纹已登记）')">导入</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="modal" id="m-update">
+  <div class="modal-box">
+    <div class="modal-title"><span>更新预演 · happy-coder</span><span class="x" onclick="closeModal('m-update')">关闭</span></div>
+    <div class="modal-body">
+      <dl class="kv">
+        <dt>来源</dt><dd class="mono">nicepkg/happy-coder</dd>
+        <dt>本地指纹</dt><dd class="mono">7d21e083</dd>
+        <dt>远程指纹</dt><dd class="mono">f2c90b41</dd>
+      </dl>
+      <div style="border:var(--border);border-radius:var(--radius-flat);padding:8px 10px;font-family:ui-monospace,Consolas,monospace;font-size:11px;line-height:1.6">
+        <div class="muted">SKILL.md · ±32 行</div>
+        <div><span class="d-del">- 用 daemon 常驻监听会话目录</span></div>
+        <div><span class="d-add">+ daemon 改为按需拉起，空闲 10 分钟自动退出</span></div>
+        <div><span class="d-add">+ 新增 references/daemon.md（生命周期与故障恢复）</span></div>
+      </div>
+      <div class="dlg-note">等价命令：<span class="mono">nx-rh skill hub remote update happy-coder</span>。指纹变了才替换本地副本。</div>
+      <div class="dlg-acts">
+        <button class="btn ghost" onclick="closeModal('m-update')">取消</button>
+        <button class="btn" onclick="closeModal('m-update');toast('已更新 happy-coder：7d21e083 → f2c90b41')">应用更新</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="modal" id="m-diff">
+  <div class="modal-box">
+    <div class="modal-title"><span>查看 · web-access</span><span class="x" onclick="closeModal('m-diff')">关闭</span></div>
+    <div class="modal-body">
+      <dl class="kv">
+        <dt>来源</dt><dd class="mono">vercel-labs/skills</dd>
+        <dt>指纹</dt><dd class="mono">a3f9c12e（与上游一致）</dd>
+        <dt>安装</dt><dd><div class="plats"><span class="pill on">claude</span></div></dd>
+      </dl>
+      <div class="dlg-note">无待应用变更。等价命令：<span class="mono">nx-rh skill hub remote list --json</span> / <span class="mono">skill hub cat web-access</span></div>
+      <div class="dlg-acts">
+        <button class="btn ghost" onclick="closeModal('m-diff')">关闭</button>
+        <button class="btn ghost" onclick="closeModal('m-diff');toast('迁移动作与其他 skill 详情页同一款弹窗（平台复选 + 形态）')">迁移到平台…</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="modal" id="m-remove">
+  <div class="modal-box">
+    <div class="modal-title"><span>移除 · happy-coder</span><span class="x" onclick="closeModal('m-remove')">关闭</span></div>
+    <div class="modal-body">
+      <div class="dlg-note" style="margin-top:0">从远程订阅移除该条目（含台账记录）。平台侧已安装的副本不受影响；如需一并清理，请另用 <span class="mono">skill purge</span>。</div>
+      <div class="dlg-acts">
+        <button class="btn ghost" onclick="closeModal('m-remove')">取消</button>
+        <button class="btn danger" onclick="closeModal('m-remove');toast('已从远程订阅移除 happy-coder')">移除</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="toast-stack" id="toasts"></div>
+
+<div class="proto-fab">
+  原型 v1 保守版 · 画面
+  <button class="pb on" id="b-overview" onclick="switchScreen('p-overview','b-overview')">订阅源总览</button>
+  <button class="pb" id="b-remote" onclick="switchScreen('p-remote','b-remote')">远程管理页</button>
+</div>
+
+<script>
+function switchScreen(panelId, btnId) {
+  document.querySelectorAll('.panel').forEach(function (p) { p.classList.remove('active'); });
+  document.getElementById(panelId).classList.add('active');
+  document.querySelectorAll('.proto-fab .pb').forEach(function (b) { b.classList.remove('on'); });
+  document.getElementById(btnId).classList.add('on');
+  window.scrollTo(0, 0);
+}
+function toast(msg) {
+  var stack = document.getElementById('toasts');
+  var t = document.createElement('div');
+  t.className = 'toast';
+  t.textContent = msg;
+  stack.appendChild(t);
+  setTimeout(function () { t.remove(); }, 2600);
+}
+function openModal(id) { document.getElementById(id).classList.add('open'); }
+function closeModal(id) { document.getElementById(id).classList.remove('open'); }
+document.querySelectorAll('.modal').forEach(function (m) {
+  m.addEventListener('click', function (e) { if (e.target === m) m.classList.remove('open'); });
+});
+
+/* 台账过滤：状态 pill（单选）× 名称/来源关键词 */
+var curFilter = 'all';
+function pickFilter(el) {
+  curFilter = el.getAttribute('data-f');
+  document.querySelectorAll('.toolbar .tag[data-f]').forEach(function (t) {
+    t.classList.toggle('strong', t === el);
+  });
+  filterLedger();
+}
+function filterLedger() {
+  var q = (document.getElementById('q-ledger').value || '').toLowerCase();
+  document.querySelectorAll('#ledger tr').forEach(function (tr) {
+    var okQ = !q || (tr.getAttribute('data-name') || '').indexOf(q) >= 0;
+    var okF = curFilter === 'all' || tr.getAttribute('data-st') === curFilter;
+    tr.style.display = okQ && okF ? '' : 'none';
+  });
+}
+</script>
+</body>
+</html>
