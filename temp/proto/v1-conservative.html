@@ -120,7 +120,7 @@ input:focus, select:focus { outline: none; border-color: var(--mid); box-shadow:
 /* ─── tag / pill ─── */
 .tag { font-size: 11px; padding: 2px 8px; border-radius: var(--radius-pill); background: var(--soft); color: var(--mid); white-space: nowrap; flex-shrink: 0; }
 .tag.strong { background: var(--ink); color: var(--paper); }
-.tag.upd { background: var(--ink); color: var(--paper); font-weight: 700; }
+.tag.bad { background: var(--soft); color: #b3261e; font-weight: 700; }
 .pill {
   font: inherit; font-size: 11px; line-height: 1; cursor: pointer;
   padding: 5px 9px; border: 0; border-radius: var(--radius-pill);
@@ -131,6 +131,14 @@ input:focus, select:focus { outline: none; border-color: var(--mid); box-shadow:
 .pill.on { background: var(--ink); color: var(--paper); font-weight: 600; }
 .pill.on.lnk { background: var(--paper); color: var(--ink); border: 1.5px dashed var(--ink); padding: 4px 7.5px; }
 .plats { display: flex; gap: 4px; flex-wrap: wrap; }
+
+/* ─── 行（定义与软链卡用，对齐 style.css .row） ─── */
+.row { display: flex; align-items: center; gap: 10px; min-height: var(--row-h); padding: 3px 12px; border-bottom: var(--border); font-size: var(--fs-core); transition: background .12s; }
+.row:last-child { border-bottom: 0; }
+.row:hover { background: var(--soft); }
+.row .name { font-weight: 600; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; flex-shrink: 0; }
+.row .desc { color: var(--mid); flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.row .acts { margin-left: auto; display: flex; align-items: center; gap: 6px; flex-shrink: 0; }
 
 /* ─── 入口卡片（总览） ─── */
 .entry-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(228px, 1fr)); gap: 10px; }
@@ -148,12 +156,9 @@ input:focus, select:focus { outline: none; border-color: var(--mid); box-shadow:
 .entry-card .ec-stats b { color: var(--ink); font-weight: 700; }
 .entry-card.add-tile { align-items: center; justify-content: center; border-style: dashed; color: var(--mid); min-height: 92px; }
 .entry-card.add-tile:hover { border-color: var(--ink); color: var(--ink); }
+/* 远程卡：sources 组内垫底 + 底部操作条（对齐现状次序，add-tile 仍全网格最后） */
 .entry-card.remote-last { border-color: var(--mid); }
-.entry-card.remote-last .ec-foot {
-  display: flex; gap: 5px; margin-top: 8px; padding-top: 8px;
-  border-top: 1px solid var(--soft-2);
-}
-.entry-card .ec-refs { font-size: 11px; color: var(--mid); margin-top: 2px; }
+.entry-card.remote-last .ec-foot { display: flex; gap: 5px; margin-top: 8px; padding-top: 8px; border-top: 1px solid var(--soft-2); }
 
 /* ─── 卡片 / 表格 ─── */
 .card { background: var(--paper); border: var(--border); border-radius: var(--radius-btn); padding: 0; margin-bottom: 14px; overflow: hidden; }
@@ -168,8 +173,6 @@ th { color: var(--mid); font-weight: 600; border-bottom: var(--border); backgrou
 tbody tr { border-bottom: var(--border); }
 tbody tr:last-child { border-bottom: 0; }
 tbody tr:hover { background: var(--soft); }
-tbody tr.is-upd td { background: var(--soft); }
-tbody tr.is-upd:hover td { background: var(--soft-2); }
 .mono, td.path { font-family: ui-monospace, Consolas, monospace; word-break: break-word; }
 td.ops { white-space: nowrap; }
 td.ops .btn { margin: 0 4px 0 0; }
@@ -178,16 +181,22 @@ td.ops .btn { margin: 0 4px 0 0; }
 td.cell-name { min-width: 170px; }
 td.cell-name .nm { font-weight: 600; }
 td.cell-name .sub-desc { color: var(--mid); font-size: 11px; margin-top: 1px; }
-.fg { font-family: ui-monospace, Consolas, monospace; font-size: 11px; color: var(--mid); }
 
-/* diff 行内高亮 */
-.d-add { color: #1a7f37; background: rgba(46,160,67,.08); }
-.d-del { color: #b3261e; background: rgba(179,38,30,.08); text-decoration: line-through; }
+/* diff 行内高亮（仅样式备查，本版不画 diff） */
+
+/* ─── 状态机样例区 ─── */
+.states-wrap { margin: 4px 0 14px; }
+.states-wrap > summary { cursor: pointer; user-select: none; color: var(--mid); font-size: 12px; font-weight: 700; padding: 4px 0; }
+.states-wrap > summary:hover { color: var(--ink); }
+.states-wrap[open] > summary { margin-bottom: 8px; }
+.state-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(270px, 1fr)); gap: 10px; }
+.state-box { border: 1px dashed var(--soft-2); border-radius: var(--radius-btn); padding: 10px 12px; }
+.state-box .st-t { font-size: 11px; font-weight: 700; color: var(--mid); margin-bottom: 6px; }
 
 /* ─── 弹窗 / toast ─── */
 .modal { position: fixed; inset: 0; background: rgba(20,22,26,.32); display: none; align-items: flex-start; justify-content: center; padding: 48px 16px; z-index: 40; overflow: auto; }
 .modal.open { display: flex; }
-.modal-box { background: var(--paper); border-radius: var(--radius-btn); box-shadow: var(--shadow-pop); width: min(560px, 96vw); max-height: 86vh; display: flex; flex-direction: column; overflow: hidden; }
+.modal-box { background: var(--paper); border-radius: var(--radius-btn); box-shadow: var(--shadow-pop); width: min(720px, 96vw); max-height: 86vh; display: flex; flex-direction: column; overflow: hidden; }
 .modal-title { min-height: var(--btn-h); padding: 6px 14px; display: flex; justify-content: space-between; align-items: center; gap: 10px; font-weight: 700; border-bottom: var(--border); background: var(--soft); }
 .modal-title .x { cursor: pointer; color: var(--mid); font-weight: 400; }
 .modal-title .x:hover { color: var(--ink); }
@@ -201,13 +210,8 @@ td.cell-name .sub-desc { color: var(--mid); font-size: 11px; margin-top: 1px; }
 .toast-stack { position: fixed; left: 50%; bottom: 28px; transform: translateX(-50%); display: flex; flex-direction: column; align-items: center; gap: 8px; z-index: 60; pointer-events: none; }
 .toast { background: var(--ink); color: var(--paper); font-size: var(--fs-core); min-height: var(--btn-h); padding: 7px 16px; border-radius: var(--radius-btn); box-shadow: var(--shadow-pop); display: inline-flex; align-items: center; max-width: 72vw; white-space: pre-wrap; word-break: break-all; }
 
-/* ─── 原型专用：悬浮切换条（非生产 UI） ─── */
-.proto-fab {
-  position: fixed; right: 16px; bottom: 16px; z-index: 70;
-  display: flex; align-items: center; gap: 6px;
-  background: var(--paper); border: 1px dashed var(--mid); border-radius: var(--radius-btn);
-  padding: 6px 8px; box-shadow: var(--shadow-pop); font-size: 11px; color: var(--mid);
-}
+/* ─── 原型专用 ─── */
+.proto-fab { position: fixed; right: 16px; bottom: 16px; z-index: 70; display: flex; align-items: center; gap: 6px; background: var(--paper); border: 1px dashed var(--mid); border-radius: var(--radius-btn); padding: 6px 8px; box-shadow: var(--shadow-pop); font-size: 11px; color: var(--mid); }
 .proto-fab .pb { font: inherit; font-size: 11px; cursor: pointer; border: 0; background: var(--soft); color: var(--ink); border-radius: 5px; padding: 3px 9px; }
 .proto-fab .pb:hover { background: var(--soft-2); }
 .proto-fab .pb.on { background: var(--ink); color: var(--paper); }
@@ -237,7 +241,7 @@ td.cell-name .sub-desc { color: var(--mid); font-size: 11px; margin-top: 1px; }
 
 <main>
 
-<!-- ═══════════ 画面 A：Skill 总览（订阅源列表，远程 Hub 卡固定最后） ═══════════ -->
+<!-- ═══════════ 画面 A：Skill 总览（远程卡 sources 组内垫底；add-tile 全网格最后，对齐现状） ═══════════ -->
 <div class="panel active" id="p-overview">
   <div class="page-head">
     <div class="title-block">
@@ -252,7 +256,7 @@ td.cell-name .sub-desc { color: var(--mid); font-size: 11px; margin-top: 1px; }
   </div>
 
   <div class="section-label">订阅源
-    <span class="hint">3 个 · 本地源在前，远程订阅固定最后 · 点进去看 / 迁移该源的 skill</span>
+    <span class="hint">3 个 · 本地源在前，远程订阅在源里垫底 · 点进去看 / 迁移该源的 skill</span>
   </div>
   <div class="entry-grid">
     <div class="entry-card" onclick="toast('进入订阅源子页：D:/a_other/md/sl/skills')">
@@ -267,22 +271,21 @@ td.cell-name .sub-desc { color: var(--mid); font-size: 11px; margin-top: 1px; }
       <div class="ec-stats"><span><b>4</b> 个 skill</span></div>
     </div>
 
-    <div class="entry-card add-tile" onclick="toast('订阅本地目录（外部 skill 走远程订阅页）')">＋ 订阅新目录</div>
-
-    <!-- 远程订阅 Hub 卡：固定显示在订阅源列表最后一个（add-tile 之后） -->
+    <!-- 远程订阅 Hub 卡：sources 组内固定最后（后端 sources.js 排序保证） -->
     <div class="entry-card remote-last" onclick="switchScreen('p-remote','b-remote')">
       <div class="ec-top"><span class="ec-name">远程订阅</span><span class="tag">外部 skill</span></div>
       <div class="ec-path" title="~/.nx-rh/远程订阅">~/.nx-rh/远程订阅</div>
       <div class="ec-stats">
         <span><b>6</b> 个 skill</span>
         <span><b>3</b> 个来源</span>
-        <span style="color:var(--ink)"><b>1</b> 待更新</span>
       </div>
       <div class="ec-foot" onclick="event.stopPropagation()">
         <button class="btn small ghost" onclick="switchScreen('p-remote','b-remote')">管理…</button>
-        <button class="btn small ghost" onclick="toast('检查更新完成：1 个 skill 有新版本（happy-coder）')">检查更新</button>
+        <button class="btn small ghost" onclick="toast('已检查 6 个：1 个有更新并已换新（happy-coder f2c90b41），5 个无变更')">全部更新</button>
       </div>
     </div>
+
+    <div class="entry-card add-tile" onclick="toast('订阅本地目录（外部 skill 走远程订阅页）')">＋ 订阅新目录</div>
   </div>
 
   <div class="section-label">当前项目
@@ -335,122 +338,124 @@ td.cell-name .sub-desc { color: var(--mid); font-size: 11px; margin-top: 1px; }
       <div class="page-desc">外部 skill 的唯一入口。固定容器 <span class="mono">~/.nx-rh/远程订阅</span>，与本地订阅源同级同权；导入、同步更新、版本指纹与软链都在这一页管理。</div>
     </div>
     <div class="acts">
-      <button class="btn ghost" onclick="toast('已检查全部来源：1 个 skill 有新版本')">检查更新</button>
-      <button class="btn ghost" onclick="toast('打开手写定义弹窗（remote add）')">＋ 手写定义</button>
+      <button class="btn ghost" onclick="toast('已检查 6 个：1 个有更新并已换新，5 个无变更')">全部更新</button>
+      <button class="btn ghost" onclick="toast('打开手写定义弹窗（remote add）')">＋ 添加定义</button>
       <button class="btn" onclick="document.getElementById('q-search').focus()">搜索导入</button>
     </div>
   </div>
 
   <div class="sub-head">
-    <div class="sub-meta">~/.nx-rh/远程订阅</div>
+    <div class="sub-meta" title="C:/Users/joke/.nx-rh/远程订阅">~/.nx-rh/远程订阅</div>
     <span class="tag">外部 skill</span>
     <div class="acts">
       <span class="tag strong">6 个 skill</span>
       <span class="tag">3 个来源</span>
-      <span class="tag upd">1 待更新</span>
-      <span class="tag">上次同步 2026-10-26 21:40</span>
+      <span class="tag">上次更新 2026-10-26 21:40</span>
     </div>
   </div>
 
-  <!-- 区块一：版本台账 -->
+  <!-- 区块一：内容台账（表格为本页新约定；真实页是 skl-grid 卡片网格，见页脚说明） -->
   <div class="toolbar">
     <input class="search" id="q-ledger" placeholder="过滤名称 / 来源…" spellCheck="false" oninput="filterLedger()">
-    <span class="tag" style="cursor:pointer" data-f="all" onclick="pickFilter(this)">全部</span>
-    <span class="tag" style="cursor:pointer" data-f="upd" onclick="pickFilter(this)">待更新</span>
+    <span class="tag strong" style="cursor:pointer" data-f="all" onclick="pickFilter(this)">全部</span>
     <span class="tag" style="cursor:pointer" data-f="link" onclick="pickFilter(this)">链接</span>
     <span class="tag" style="cursor:pointer" data-f="hand" onclick="pickFilter(this)">手写</span>
   </div>
 
   <div class="card">
     <div class="colhead">
-      <h3>版本台账</h3>
-      <span class="muted">指纹即版本 · 指纹变了才算有更新</span>
+      <h3>内容台账</h3>
+      <span class="muted">指纹即版本 · 更新时逐条比对上游，变了才换</span>
       <span class="spacer"></span>
-      <span class="muted">6 个 skill · 3 个来源 · 上次同步 2026-10-26 21:40</span>
+      <span class="muted">6 个 skill · 3 个来源</span>
     </div>
     <table>
       <thead><tr>
-        <th>skill</th><th>来源</th><th>指纹</th><th>状态</th><th>安装</th><th class="ops">操作</th>
+        <th>skill</th><th>形态</th><th>指纹</th><th>安装</th><th>更新于</th><th class="ops">操作</th>
       </tr></thead>
       <tbody id="ledger">
         <tr data-name="web-access vercel-labs" data-st="ok">
           <td class="cell-name"><div class="nm">web-access</div><div class="sub-desc">浏览器自动化与网页访问的标准流程</div></td>
-          <td class="mono">vercel-labs/skills</td>
-          <td><span class="fg">a3f9c12e</span></td>
-          <td><span class="tag">最新</span></td>
-          <td><div class="plats"><span class="pill on">claude</span></div></td>
+          <td><span class="tag">导入</span></td>
+          <td><span class="tag mono" title="vercel-labs/skills @ a3f9c12e…（完整指纹悬停台账 JSON 可见）">↑skills@a3f9c1</span></td>
+          <td><span class="tag strong">已安装 1/1</span></td>
+          <td><span class="muted">2 天前</span></td>
           <td class="ops">
-            <button class="btn small ghost" onclick="openModal('m-diff')">预览变更</button>
-            <button class="btn small ghost" disabled>更新</button>
-            <button class="btn small ghost" onclick="openModal('m-remove')">移除</button>
+            <button class="btn small ghost" onclick="toast('已更新 web-access：指纹无变更')">更新</button>
+            <button class="btn small ghost" onclick="toast('打开加软链弹窗（remote link：把容器里的 skill 链到别处用）')">加软链…</button>
+            <button class="btn small ghost" onclick="openModal('m-source')">详情</button>
+            <button class="btn small danger" onclick="openModal('m-remove')">移除</button>
           </td>
         </tr>
-        <tr data-name="happy-coder nicepkg" data-st="upd">
+        <tr data-name="happy-coder nicepkg" data-st="ok">
           <td class="cell-name"><div class="nm">happy-coder</div><div class="sub-desc">happy 移动端 Claude 的会话守护与守护进程管理</div></td>
-          <td class="mono">nicepkg/happy-coder</td>
-          <td><span class="fg">7d21e083</span> <span class="muted">→</span> <span class="fg">f2c90b41</span></td>
-          <td><span class="tag upd">待更新</span></td>
-          <td><div class="plats"><span class="pill on">claude</span></div></td>
+          <td><span class="tag">导入</span></td>
+          <td><span class="tag mono" title="nicepkg/happy-coder @ 7d21e083…">↑happy-coder@7d21e0</span></td>
+          <td><span class="tag strong">已安装 1/1</span></td>
+          <td><span class="muted">2 天前</span></td>
           <td class="ops">
-            <button class="btn small ghost" onclick="openModal('m-update')">预览变更</button>
-            <button class="btn small ghost" onclick="openModal('m-update')">更新</button>
-            <button class="btn small ghost" onclick="openModal('m-remove')">移除</button>
+            <button class="btn small ghost" onclick="toast('已更新 happy-coder：7d21e083 换新为 f2c90b41')">更新</button>
+            <button class="btn small ghost" onclick="toast('打开加软链弹窗（remote link）')">加软链…</button>
+            <button class="btn small ghost" onclick="openModal('m-source')">详情</button>
+            <button class="btn small danger" onclick="openModal('m-remove')">移除</button>
           </td>
         </tr>
         <tr data-name="skill-creator vercel-labs" data-st="ok">
           <td class="cell-name"><div class="nm">skill-creator</div><div class="sub-desc">创建结构合规的 agent skill</div></td>
-          <td class="mono">vercel-labs/skills</td>
-          <td><span class="fg">b8e4d90f</span></td>
-          <td><span class="tag">最新</span></td>
-          <td><div class="plats"><span class="pill on">claude</span><span class="pill on">universal</span></div></td>
+          <td><span class="tag">导入</span></td>
+          <td><span class="tag mono" title="vercel-labs/skills @ b8e4d90f…">↑skills@b8e4d9</span></td>
+          <td><span class="tag">已安装 2/3</span></td>
+          <td><span class="muted">6 天前</span></td>
           <td class="ops">
-            <button class="btn small ghost" onclick="openModal('m-diff')">预览变更</button>
-            <button class="btn small ghost" disabled>更新</button>
-            <button class="btn small ghost" onclick="openModal('m-remove')">移除</button>
+            <button class="btn small ghost" onclick="toast('已更新 skill-creator：指纹无变更')">更新</button>
+            <button class="btn small ghost" onclick="toast('打开加软链弹窗（remote link）')">加软链…</button>
+            <button class="btn small ghost" onclick="openModal('m-source')">详情</button>
+            <button class="btn small danger" onclick="openModal('m-remove')">移除</button>
           </td>
         </tr>
         <tr data-name="doc-extractor softaworks" data-st="ok">
           <td class="cell-name"><div class="nm">doc-extractor</div><div class="sub-desc">从网页提取干净正文，去广告去导航</div></td>
-          <td class="mono">softaworks/agent-docs</td>
-          <td><span class="fg">f0a3b771</span></td>
-          <td><span class="tag">最新</span></td>
+          <td><span class="tag">导入</span></td>
+          <td><span class="tag mono" title="softaworks/agent-docs @ f0a3b771…">↑agent-docs@f0a3b7</span></td>
           <td><span class="muted">未安装</span></td>
+          <td><span class="muted">9 天前</span></td>
           <td class="ops">
-            <button class="btn small ghost" onclick="openModal('m-diff')">预览变更</button>
-            <button class="btn small ghost" disabled>更新</button>
-            <button class="btn small ghost" onclick="openModal('m-remove')">移除</button>
+            <button class="btn small ghost" onclick="toast('已更新 doc-extractor：指纹无变更')">更新</button>
+            <button class="btn small ghost" onclick="toast('打开加软链弹窗（remote link）')">加软链…</button>
+            <button class="btn small ghost" onclick="openModal('m-source')">详情</button>
+            <button class="btn small danger" onclick="openModal('m-remove')">移除</button>
           </td>
         </tr>
         <tr data-name="pr-review 手写" data-st="hand">
-          <td class="cell-name"><div class="nm">pr-review</div><div class="sub-desc">本机手写的 PR 审查流程（无上游来源）</div></td>
-          <td class="muted">手写定义</td>
-          <td><span class="fg">8c2f4410</span></td>
-          <td><span class="tag">手写</span></td>
+          <td class="cell-name"><div class="nm">pr-review</div><div class="sub-desc">本机手写的 PR 审查流程（无上游来源，不参与更新）</div></td>
+          <td><span class="tag">手写定义</span></td>
+          <td><span class="muted">—</span></td>
           <td><span class="muted">未安装</span></td>
+          <td><span class="muted">3 天前</span></td>
           <td class="ops">
             <button class="btn small ghost" onclick="toast('打开编辑手写定义弹窗')">编辑</button>
-            <button class="btn small ghost" onclick="openModal('m-remove')">移除</button>
+            <button class="btn small danger" onclick="openModal('m-remove')">移除</button>
           </td>
         </tr>
         <tr data-name="k8s-troubleshoot 本地链" data-st="link">
           <td class="cell-name"><div class="nm">k8s-troubleshoot</div><div class="sub-desc">Kubernetes 排障手册（实体在别处，软链进容器）</div></td>
-          <td class="mono" title="D:/pkgs/k8s-skills">← D:/pkgs/k8s-skills</td>
-          <td><span class="fg">55d1c2aa</span></td>
-          <td><span class="tag">链接进来</span></td>
+          <td><span class="tag">软链</span></td>
+          <td><span class="muted">—</span></td>
           <td><span class="muted">未安装</span></td>
+          <td><span class="muted">12 天前</span></td>
           <td class="ops">
-            <button class="btn small ghost" onclick="toast('已在文件管理器打开 D:/pkgs/k8s-skills')">定位</button>
-            <button class="btn small ghost" onclick="openModal('m-remove')">移除</button>
+            <button class="btn small ghost" onclick="toast('已在文件管理器打开实体目录')">定位</button>
+            <button class="btn small danger" onclick="openModal('m-remove')">移除</button>
           </td>
         </tr>
       </tbody>
     </table>
   </div>
 
-  <!-- 区块二：搜索导入 -->
+  <!-- 区块二：发现（搜索导入）——字段对齐注册表真实返回：name / source / installs -->
   <div class="card">
     <div class="colhead">
-      <h3>搜索导入</h3>
+      <h3>发现</h3>
       <span class="muted">搜 skills.sh 注册表 · 先预览再导入，导入前不落盘</span>
       <span class="spacer"></span>
       <button class="btn small ghost" onclick="toast('已刷新搜索结果')">刷新</button>
@@ -458,43 +463,39 @@ td.cell-name .sub-desc { color: var(--mid); font-size: 11px; margin-top: 1px; }
     <div style="padding:10px 12px 0">
       <div class="toolbar" style="margin-bottom:8px">
         <input class="search" id="q-search" placeholder="搜索 skills.sh 注册表（关键词）…" spellCheck="false" value="code review">
-        <select>
-          <option>全部组织</option>
-          <option selected>vercel-labs</option>
-          <option>anthropics</option>
-        </select>
+        <input placeholder="owner（可选，如 vercel-labs）" style="width:200px" spellCheck="false">
         <button class="btn" onclick="toast('已搜索：vercel-labs 下 3 个结果')">搜索</button>
       </div>
     </div>
     <table>
       <thead><tr>
-        <th>skill</th><th class="mono">owner/repo</th><th>描述</th><th class="ops">操作</th>
+        <th>skill</th><th class="mono">source</th><th>安装量</th><th class="ops">操作</th>
       </tr></thead>
       <tbody>
         <tr>
           <td class="cell-name"><div class="nm">code-reviewer</div></td>
           <td class="mono">vercel-labs/skills</td>
-          <td class="muted">按仓库约定审查代码变更，输出分级意见</td>
+          <td class="muted">1.2k</td>
           <td class="ops">
-            <button class="btn small ghost" onclick="openModal('m-import')">先预览</button>
-            <button class="btn small" onclick="openModal('m-import')">导入</button>
+            <button class="btn small ghost" onclick="openModal('m-import')">预览</button>
+            <button class="btn small" onclick="openModal('m-import')">导入…</button>
           </td>
         </tr>
         <tr>
           <td class="cell-name"><div class="nm">react-patterns</div></td>
           <td class="mono">vercel-labs/skills</td>
-          <td class="muted">React 组件模式与反模式清单</td>
+          <td class="muted">860</td>
           <td class="ops">
-            <button class="btn small ghost" onclick="openModal('m-import')">先预览</button>
-            <button class="btn small" onclick="openModal('m-import')">导入</button>
+            <button class="btn small ghost" onclick="openModal('m-import')">预览</button>
+            <button class="btn small" onclick="openModal('m-import')">导入…</button>
           </td>
         </tr>
         <tr>
           <td class="cell-name"><div class="nm">commit-message</div></td>
           <td class="mono">vercel-labs/skills</td>
-          <td class="muted">Conventional Commits 规范生成提交说明</td>
+          <td class="muted">640</td>
           <td class="ops">
-            <span class="tag">已导入</span>
+            <span class="tag" title="按 source+name 与台账匹配判定">已导入</span>
             <button class="btn small ghost" disabled>导入</button>
           </td>
         </tr>
@@ -506,89 +507,109 @@ td.cell-name .sub-desc { color: var(--mid); font-size: 11px; margin-top: 1px; }
   <div class="card">
     <div class="colhead">
       <h3>定义与软链</h3>
-      <span class="muted">手写条目与双向软链 · 链接不复制内容</span>
+      <span class="muted">手写条目与链入软链 · 链接不复制内容</span>
     </div>
-    <div class="row"><span class="name" style="width:150px">手写定义</span><span class="desc">remote add —— 在远程订阅里直接新建一个 SKILL.md 条目（无上游，不参与 remote update）</span>
-      <span class="acts"><button class="btn small ghost" onclick="toast('打开手写定义弹窗')">＋ 新建</button></span></div>
-    <div class="row"><span class="name" style="width:150px">软链进来</span><span class="desc">remote link —— 把本机别处目录的 skill 链进远程订阅（实体留在原地）</span>
-      <span class="acts"><button class="btn small ghost" onclick="toast('打开软链进来弹窗（选目录）')">link 进来</button></span></div>
-    <div class="row"><span class="name" style="width:150px">软链出去</span><span class="desc">remote link-out —— 把远程订阅里的 skill 链到别的目录去用</span>
-      <span class="acts"><button class="btn small ghost" onclick="toast('打开软链出去弹窗')">link 出去</button></span></div>
-    <table style="border-top:var(--border)">
-      <thead><tr><th>现存软链</th><th>方向</th><th class="mono">对端</th><th class="ops">操作</th></tr></thead>
-      <tbody>
-        <tr>
-          <td><span class="nm" style="font-weight:600">k8s-troubleshoot</span></td>
-          <td><span class="tag">进来</span></td>
-          <td class="mono">D:/pkgs/k8s-skills</td>
-          <td class="ops"><button class="btn small ghost" onclick="toast('已断开软链并从台账移除')">断开</button></td>
-        </tr>
-      </tbody>
-    </table>
+    <div class="row"><span class="name" style="width:150px">添加定义</span><span class="desc">remote add —— 在远程订阅里直接新建一个 SKILL.md 条目（无上游，不参与 remote update）</span>
+      <span class="acts"><button class="btn small ghost" onclick="toast('打开添加定义弹窗')">＋ 添加</button></span></div>
+    <div class="row"><span class="name" style="width:150px">加软链</span><span class="desc">remote link —— 把本机别处目录的 skill 软链进远程订阅（实体留在原地）</span>
+      <span class="acts"><button class="btn small ghost" onclick="toast('打开加软链弹窗：选 skill + 目标目录')">加软链…</button></span></div>
   </div>
+
+  <!-- 状态机四态样例（R2 评审新增）：实施时必然要面对的四个状态 -->
+  <details class="states-wrap">
+    <summary>状态机样例（空态 / 加载中 / 失败 / 部分失败）—— 实施必备</summary>
+    <div class="state-grid">
+      <div class="state-box">
+        <div class="st-t">空容器引导</div>
+        <div class="muted">远程订阅还是空的——用下面的「发现」搜索导入，或「添加定义」手写一个。</div>
+      </div>
+      <div class="state-box">
+        <div class="st-t">忙碌态（防重复触发）</div>
+        <div><button class="btn small ghost" disabled>更新中…</button> <span class="muted">行级：该行按钮换文案并禁用；全页同理（busy 期间全部写按钮 disabled，300s 超时窗口）</span></div>
+      </div>
+      <div class="state-box">
+        <div class="st-t">失败 toast（搜索 EXTERNAL）</div>
+        <div class="mono" style="font-size:11px">搜索注册表失败：网络错误 / HTTP 502（guard toast，可重试）</div>
+      </div>
+      <div class="state-box">
+        <div class="st-t">部分失败汇总（批量更新后）</div>
+        <div class="muted">已检查 6 个：4 个无变更，1 个已换新，<span class="bad">1 个失败</span></div>
+        <div style="margin-top:6px"><button class="btn small ghost" onclick="toast('重试失败的 1 个')">重试失败项</button>
+        <button class="btn small ghost" onclick="toast('清理上游已删除的僵尸条目（--prune）')">清理上游已删（--prune）</button></div>
+      </div>
+    </div>
+  </details>
 </div>
 
 </main>
 
-<footer>nx-rh 原型 v1 保守版 · 仅审核用，不代表最终实现 · 数据为演示样例</footer>
+<footer>nx-rh 原型 v1 保守版 · 仅审核用 · 台账用表格是本页新约定（真实页为 skl-grid 卡片网格）；总览卡次序对齐现状：远程卡 sources 组内垫底，add-tile 全网格最后</footer>
 
 <!-- ═══════════ 弹窗 ═══════════ -->
 <div class="modal" id="m-import">
   <div class="modal-box">
-    <div class="modal-title"><span>导入预演 · code-reviewer</span><span class="x" onclick="closeModal('m-import')">关闭</span></div>
+    <div class="modal-title"><span>导入到远程订阅（dry-run · vercel-labs/skills）</span><span class="x" onclick="closeModal('m-import')">关闭</span></div>
     <div class="modal-body">
       <dl class="kv">
         <dt>规格</dt><dd class="mono">vercel-labs/skills</dd>
-        <dt>写入位置</dt><dd class="mono">~/.nx-rh/远程订阅/code-reviewer</dd>
-        <dt>指纹</dt><dd class="mono">下载归档后计算（导入时登记）</dd>
-        <dt>平台安装</dt><dd>不自动装——导入后到台账里对单个 skill 迁移</dd>
+        <dt>写入位置</dt><dd class="mono">~/.nx-rh/远程订阅/&lt;各 skill 名&gt;</dd>
       </dl>
-      <div class="dlg-note">等价命令：<span class="mono">nx-rh skill hub remote import vercel-labs/skills --name code-reviewer --dry-run</span>。先预览不落盘，点「导入」才真正写入容器。</div>
+      <div class="dlg-note" style="margin-top:0">dry-run 已把仓库拉到暂存区并算好指纹。不带 --name 时是<strong>整仓导入</strong>；只导个别请在下表勾选（多选导入为增量提案：现状 Web 全仓导、CLI 可 --name 单导，勾选子集需按名循环调用）。</div>
+      <table style="margin-top:8px">
+        <thead><tr><th style="width:34px"></th><th>skill</th><th>描述</th><th>指纹（dry-run 已算好）</th></tr></thead>
+        <tbody>
+          <tr><td><input type="checkbox" checked></td><td class="mono">code-reviewer</td><td class="muted">按仓库约定审查代码变更</td><td><span class="tag mono">↑skills@9c41aa</span></td></tr>
+          <tr><td><input type="checkbox" checked></td><td class="mono">react-patterns</td><td class="muted">React 组件模式与反模式清单</td><td><span class="tag mono">↑skills@7b02e5</span></td></tr>
+        </tbody>
+      </table>
+      <div class="dlg-note">等价命令：<span class="mono">nx-rh skill hub remote import vercel-labs/skills [--name code-reviewer] [--dry-run]</span></div>
       <div class="dlg-acts">
         <button class="btn ghost" onclick="closeModal('m-import')">取消</button>
-        <button class="btn" onclick="closeModal('m-import');toast('已导入 code-reviewer（1 个 skill，指纹已登记）')">导入</button>
+        <button class="btn" onclick="closeModal('m-import');toast('导入中…（整仓约 2 个 skill，最长 300s）')">导入（2 个）</button>
       </div>
     </div>
   </div>
 </div>
 
-<div class="modal" id="m-update">
+<div class="modal" id="m-source">
   <div class="modal-box">
-    <div class="modal-title"><span>更新预演 · happy-coder</span><span class="x" onclick="closeModal('m-update')">关闭</span></div>
+    <div class="modal-title"><span>详情 · web-access</span><span class="x" onclick="closeModal('m-source')">关闭</span></div>
     <div class="modal-body">
       <dl class="kv">
-        <dt>来源</dt><dd class="mono">nicepkg/happy-coder</dd>
-        <dt>本地指纹</dt><dd class="mono">7d21e083</dd>
-        <dt>远程指纹</dt><dd class="mono">f2c90b41</dd>
+        <dt>spec</dt><dd class="mono copyable" onclick="toast('已复制')">vercel-labs/skills</dd>
+        <dt>指纹</dt><dd class="mono copyable" onclick="toast('已复制')">a3f9c12e…</dd>
+        <dt>形态</dt><dd>导入 · 已安装 1/1</dd>
+        <dt>更新时间</dt><dd class="mono">2026-10-26 21:40</dd>
       </dl>
-      <div style="border:var(--border);border-radius:var(--radius-flat);padding:8px 10px;font-family:ui-monospace,Consolas,monospace;font-size:11px;line-height:1.6">
-        <div class="muted">SKILL.md · ±32 行</div>
-        <div><span class="d-del">- 用 daemon 常驻监听会话目录</span></div>
-        <div><span class="d-add">+ daemon 改为按需拉起，空闲 10 分钟自动退出</span></div>
-        <div><span class="d-add">+ 新增 references/daemon.md（生命周期与故障恢复）</span></div>
-      </div>
-      <div class="dlg-note">等价命令：<span class="mono">nx-rh skill hub remote update happy-coder</span>。指纹变了才替换本地副本。</div>
+      <div class="dlg-note">等价命令：<span class="mono">nx-rh skill hub remote list --json</span> / <span class="mono">skill hub cat web-access</span></div>
       <div class="dlg-acts">
-        <button class="btn ghost" onclick="closeModal('m-update')">取消</button>
-        <button class="btn" onclick="closeModal('m-update');toast('已更新 happy-coder：7d21e083 → f2c90b41')">应用更新</button>
+        <button class="btn ghost" onclick="closeModal('m-source')">关闭</button>
+        <button class="btn ghost" onclick="closeModal('m-source');openModal('m-migrate')">迁移到平台…</button>
       </div>
     </div>
   </div>
 </div>
 
-<div class="modal" id="m-diff">
+<div class="modal" id="m-migrate">
   <div class="modal-box">
-    <div class="modal-title"><span>查看 · web-access</span><span class="x" onclick="closeModal('m-diff')">关闭</span></div>
+    <div class="modal-title"><span>迁移 · web-access</span><span class="x" onclick="closeModal('m-migrate')">关闭</span></div>
     <div class="modal-body">
-      <dl class="kv">
-        <dt>来源</dt><dd class="mono">vercel-labs/skills</dd>
-        <dt>指纹</dt><dd class="mono">a3f9c12e（与上游一致）</dd>
-        <dt>安装</dt><dd><div class="plats"><span class="pill on">claude</span></div></dd>
-      </dl>
-      <div class="dlg-note">无待应用变更。等价命令：<span class="mono">nx-rh skill hub remote list --json</span> / <span class="mono">skill hub cat web-access</span></div>
+      <div class="dlg-note" style="margin-top:0">与订阅源页同一款迁移弹窗（平台复选 + 安装形态），目的仓库直接被订阅源覆盖。</div>
+      <div style="display:flex;flex-direction:column;gap:10px;margin-top:10px">
+        <div class="plats">
+          <span class="pill on">Claude Code（默认）</span>
+          <span class="pill" onclick="this.classList.toggle('on')">Universal (.agents)</span>
+          <span class="pill" onclick="this.classList.toggle('on')">Cursor</span>
+        </div>
+        <div class="plats">
+          <span class="pill on">跟随设置（symlink）</span>
+          <span class="pill" onclick="this.classList.toggle('on')">symlink</span>
+          <span class="pill" onclick="this.classList.toggle('on')">copy</span>
+        </div>
+      </div>
       <div class="dlg-acts">
-        <button class="btn ghost" onclick="closeModal('m-diff')">关闭</button>
-        <button class="btn ghost" onclick="closeModal('m-diff');toast('迁移动作与其他 skill 详情页同一款弹窗（平台复选 + 形态）')">迁移到平台…</button>
+        <button class="btn ghost" onclick="closeModal('m-migrate')">取消</button>
+        <button class="btn" onclick="closeModal('m-migrate');toast('已迁移 web-access 到 claude-code（symlink）')">迁移</button>
       </div>
     </div>
   </div>
@@ -598,7 +619,7 @@ td.cell-name .sub-desc { color: var(--mid); font-size: 11px; margin-top: 1px; }
   <div class="modal-box">
     <div class="modal-title"><span>移除 · happy-coder</span><span class="x" onclick="closeModal('m-remove')">关闭</span></div>
     <div class="modal-body">
-      <div class="dlg-note" style="margin-top:0">从远程订阅移除该条目（含台账记录）。平台侧已安装的副本不受影响；如需一并清理，请另用 <span class="mono">skill purge</span>。</div>
+      <div class="dlg-note" style="margin-top:0">只动远程订阅里的这一份；平台目录里的安装副本不受影响，请到该 skill 详情页另行「彻底删除」（purge）。</div>
       <div class="dlg-acts">
         <button class="btn ghost" onclick="closeModal('m-remove')">取消</button>
         <button class="btn danger" onclick="closeModal('m-remove');toast('已从远程订阅移除 happy-coder')">移除</button>
@@ -637,7 +658,7 @@ document.querySelectorAll('.modal').forEach(function (m) {
   m.addEventListener('click', function (e) { if (e.target === m) m.classList.remove('open'); });
 });
 
-/* 台账过滤：状态 pill（单选）× 名称/来源关键词 */
+/* 台账过滤：形态 pill（单选）× 名称/来源关键词 */
 var curFilter = 'all';
 function pickFilter(el) {
   curFilter = el.getAttribute('data-f');
