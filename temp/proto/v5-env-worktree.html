@@ -1,0 +1,499 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>原型 v5 · 环境变量页 / 工作树页 — nx-rh</title>
+<style>
+:root {
+  --ink: #14161a; --paper: #fff; --soft: #f5f6f7; --soft-2: #e7e9ec;
+  --mid: #6b7178; --faint: #9aa0a7;
+  --row-h: 28px; --btn-h: 32px; --fs-core: 12px;
+  --radius-flat: 4px; --radius-btn: 8px; --radius-pill: 999px;
+  --border: 1px solid var(--soft-2);
+  --shadow-relief: -1px -1px 2px rgba(255,255,255,.85), 2px 2px 6px rgba(20,22,26,.07);
+  --shadow-relief-press: inset 1px 1px 2px rgba(20,22,26,.10), inset -1px -1px 2px rgba(255,255,255,.7);
+  --shadow-relief-inset: inset 1px 1px 2px rgba(20,22,26,.06), inset -1px -1px 2px rgba(255,255,255,.9);
+  --shadow-pop: 0 8px 28px rgba(20,22,26,.14), 0 2px 8px rgba(20,22,26,.08);
+}
+* { box-sizing: border-box; }
+body { margin: 0; font-family: system-ui, "Segoe UI", "Microsoft YaHei", sans-serif; font-size: var(--fs-core); line-height: 1.5; color: var(--ink); background: var(--paper); -webkit-font-smoothing: antialiased; padding-bottom: 60px; }
+header { display: flex; align-items: center; gap: 20px; height: 48px; padding: 0 20px; background: var(--paper); border-bottom: var(--border); position: sticky; top: 0; z-index: 5; }
+.brand { font-weight: 800; letter-spacing: .4px; font-size: 13px; display: inline-flex; align-items: center; gap: 7px; }
+.brand img { width: 20px; height: 20px; border-radius: 5px; display: block; }
+.brand .sub { margin-left: 8px; font-weight: 400; color: var(--mid); }
+header .meta { margin-left: auto; color: var(--mid); font-size: 12px; font-family: ui-monospace, Consolas, monospace; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 34vw; }
+header .recents { color: var(--mid); font-size: 12px; cursor: pointer; user-select: none; white-space: nowrap; }
+header .recents:hover { color: var(--ink); }
+nav { display: inline-flex; gap: 2px; padding: 3px; background: var(--soft); border-radius: var(--radius-pill); }
+.tab { font: inherit; border: 0; background: transparent; color: var(--mid); height: var(--btn-h); padding: 0 16px; border-radius: var(--radius-pill); cursor: pointer; }
+.tab:hover { color: var(--ink); }
+.tab.active { background: var(--paper); color: var(--ink); font-weight: 600; box-shadow: var(--shadow-relief); }
+main { padding: 14px 24px 28px; max-width: none; }
+footer { color: var(--mid); font-size: 11px; padding: 14px 20px 26px; text-align: center; border-top: var(--border); }
+.panel { display: none; }
+.panel.active { display: block; }
+
+.page-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 14px; margin: 4px 0 14px; }
+.page-head h2 { font-size: 16px; font-weight: 700; margin: 0; }
+.page-head .page-desc { color: var(--mid); font-size: 12px; margin-top: 3px; max-width: 760px; }
+.page-head .acts { display: flex; gap: 8px; flex-shrink: 0; align-items: center; }
+.crumbs { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; font-size: 11px; color: var(--mid); margin: 0 0 10px; }
+.crumbs a { color: var(--mid); text-decoration: none; cursor: pointer; }
+.crumbs a:hover { color: var(--ink); text-decoration: underline; }
+.crumbs .cur { color: var(--ink); font-weight: 600; }
+.crumbs .sep { color: var(--faint); }
+
+.btn { font: inherit; font-size: var(--fs-core); cursor: pointer; height: var(--btn-h); padding: 0 14px; border: 0; border-radius: var(--radius-btn); background: var(--ink); color: var(--paper); box-shadow: var(--shadow-relief); transition: box-shadow .12s, transform .08s, background .12s; display: inline-flex; align-items: center; justify-content: center; gap: 4px; white-space: nowrap; }
+.btn:hover:not(:disabled) { box-shadow: var(--shadow-relief), 0 0 0 3px rgba(20,22,26,.06); }
+.btn:active:not(:disabled) { box-shadow: var(--shadow-relief-press); transform: translateY(1px); }
+.btn.ghost { background: var(--soft); color: var(--ink); }
+.btn.ghost:hover:not(:disabled) { background: var(--soft-2); }
+.btn.small { height: 24px; padding: 0 9px; font-size: 11px; border-radius: 6px; }
+.btn:disabled { background: var(--soft); color: var(--faint); box-shadow: var(--shadow-relief-inset); cursor: not-allowed; }
+.btn.danger-quiet { background: var(--paper); color: #b3261e; border: 1px solid var(--soft-2); box-shadow: none; }
+.btn.danger-quiet:hover:not(:disabled) { background: var(--soft); box-shadow: none; }
+
+input, select { font: inherit; font-size: var(--fs-core); color: var(--ink); background: var(--paper); border: var(--border); border-radius: var(--radius-flat); height: var(--row-h); padding: 0 10px; }
+input::placeholder { color: var(--faint); }
+input:focus, select:focus { outline: none; border-color: var(--mid); box-shadow: var(--shadow-relief-inset); }
+input[type="checkbox"] { height: auto; padding: 0; accent-color: var(--ink); }
+
+.toolbar { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-bottom: 10px; }
+.toolbar label { color: var(--mid); }
+.toolbar .search { flex: 1 1 240px; max-width: 460px; }
+.row-inline { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+
+.tag { font-size: 11px; padding: 2px 8px; border-radius: var(--radius-pill); background: var(--soft); color: var(--mid); white-space: nowrap; flex-shrink: 0; }
+.tag.strong { background: var(--paper); color: var(--ink); border: 1px solid var(--ink); font-weight: 600; }
+.tag.bad { background: var(--paper); color: #b3261e; border: 1px solid #e0b6b3; font-weight: 600; }
+.pill { font: inherit; font-size: 11px; line-height: 1; cursor: pointer; padding: 5px 9px; border: 0; border-radius: var(--radius-pill); background: var(--soft); color: var(--mid); }
+.pill.on { background: var(--paper); color: var(--ink); border: 1.5px solid var(--ink); font-weight: 600; padding: 3.5px 7.5px; }
+
+.card { background: var(--paper); border: var(--border); border-radius: var(--radius-btn); padding: 0; margin-bottom: 14px; overflow: hidden; }
+.colhead { display: flex; align-items: center; gap: 8px; min-height: var(--row-h); padding: 4px 12px; border-bottom: var(--border); background: var(--soft); }
+.colhead h3 { font-size: 13px; margin: 0; font-weight: 700; display: inline-flex; align-items: center; gap: 8px; }
+.colhead .muted { display: inline-flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+.colhead .spacer { margin-left: auto; }
+.disclose { display: inline-flex; align-items: center; gap: 6px; background: none; border: 0; padding: 0; font: inherit; font-size: 13px; font-weight: 700; color: inherit; cursor: pointer; }
+.disclose .caret { width: 10px; font-size: 10px; color: var(--mid); line-height: 1; }
+.list { padding: 0; }
+.row { display: flex; align-items: center; gap: 10px; min-height: var(--row-h); padding: 3px 12px; border-bottom: var(--border); font-size: var(--fs-core); }
+.row:last-child { border-bottom: 0; }
+.row:hover { background: var(--soft); }
+.row .name { font-weight: 600; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; flex-shrink: 0; }
+.row .desc { color: var(--mid); flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.row .acts { margin-left: auto; display: flex; align-items: center; gap: 6px; flex-shrink: 0; }
+.row .idx { flex: 0 0 32px; width: 32px; text-align: right; }
+.muted { color: var(--mid); }
+.mono { font-family: ui-monospace, Consolas, monospace; }
+.copyable { cursor: copy; border-bottom: 1px dashed transparent; }
+.copyable:hover { border-bottom-color: var(--mid); }
+.vlegend { padding: 8px 12px; font-size: 11px; color: var(--mid); line-height: 1.7; }
+.d-add { color: #1a7f37; background: rgba(46,160,67,.08); }
+.d-del { color: #b3261e; background: rgba(179,38,30,.08); text-decoration: line-through; }
+
+/* 环境变量四象限 */
+.quad-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; align-items: start; }
+.quad-grid .card { margin-bottom: 0; }
+.quad-foot { padding: 8px 12px; border-top: var(--border); }
+
+/* 表格 */
+table { width: 100%; border-collapse: collapse; }
+th, td { text-align: left; padding: 0 12px; height: var(--row-h); font-size: var(--fs-core); vertical-align: middle; }
+th { color: var(--mid); font-weight: 600; border-bottom: var(--border); background: var(--soft); }
+tbody tr { border-bottom: var(--border); }
+tbody tr:last-child { border-bottom: 0; }
+tbody tr:hover { background: var(--soft); }
+td.ops { white-space: nowrap; }
+td.ops .btn { margin: 0 4px 0 0; }
+td.cell-name { min-width: 170px; }
+td.cell-name .nm { font-weight: 600; }
+td.cell-name .sub-desc { color: var(--mid); font-size: 11px; margin-top: 1px; }
+td.cell-path { min-width: 220px; }
+
+.cli-hint { color: var(--mid); font-size: 11px; padding: 4px 2px 2px; }
+.cli-hint summary { cursor: pointer; user-select: none; color: var(--mid); }
+.cli-hint summary:hover { color: var(--ink); }
+.cli-hint-body { display: flex; flex-wrap: wrap; gap: 6px 8px; align-items: baseline; padding: 8px 2px 2px; }
+.cli-cmd { background: var(--soft); border-radius: 3px; padding: 1px 6px; font-family: ui-monospace, Consolas, monospace; font-size: 11px; color: var(--ink); }
+pre { margin: 0; font-family: ui-monospace, Consolas, monospace; font-size: 12px; white-space: pre-wrap; word-break: break-word; }
+
+.toast-stack { position: fixed; left: 50%; bottom: 28px; transform: translateX(-50%); display: flex; flex-direction: column; align-items: center; gap: 8px; z-index: 60; pointer-events: none; }
+.toast { background: var(--ink); color: var(--paper); font-size: var(--fs-core); min-height: var(--btn-h); padding: 7px 16px; border-radius: var(--radius-btn); box-shadow: var(--shadow-pop); max-width: 72vw; white-space: pre-wrap; }
+
+.proto-fab { position: fixed; right: 16px; bottom: 16px; z-index: 70; display: flex; align-items: center; gap: 6px; background: var(--paper); border: 1px dashed var(--mid); border-radius: var(--radius-btn); padding: 6px 8px; box-shadow: var(--shadow-pop); font-size: 11px; color: var(--mid); }
+.proto-fab .pb { font: inherit; font-size: 11px; cursor: pointer; border: 0; background: var(--soft); color: var(--ink); border-radius: 5px; padding: 3px 9px; }
+.proto-fab .pb.on { background: var(--ink); color: var(--paper); }
+
+@media (max-width: 980px) { .quad-grid { grid-template-columns: 1fr; } }
+</style>
+</head>
+<body>
+
+<header>
+  <div class="brand"><img alt="" src="data:image/png;base64,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">nx-rh <span class="sub">npx-repo-hub</span></div>
+  <nav>
+    <button class="tab" onclick="switchPanel('p-env','b-env')">Skill</button>
+    <button class="tab">设置</button>
+    <button class="tab active" onclick="switchPanel('p-env','b-env')">环境变量</button>
+    <button class="tab" onclick="switchPanel('p-wt','b-wt')">工作树</button>
+  </nav>
+  <div class="meta">D:\DevProjects\my\github\nx-rh</div>
+  <div class="recents">最近目录 ▾</div>
+</header>
+
+<main>
+
+<!-- ══════════ 环境变量页：2×2 四象限看板 ══════════ -->
+<div class="panel active" id="p-env">
+  <div class="page-head">
+    <div class="title-block">
+      <h2>环境变量</h2>
+      <div class="page-desc">四象限看板：用户级 / 系统级变量与 PATH 分开承载。所有写入都会先给你看 diff，确认后才落盘。</div>
+    </div>
+    <div class="acts">
+      <button class="btn" onclick="toast('打开新增变量弹窗（用户级）')">新增变量</button>
+    </div>
+  </div>
+
+  <div class="toolbar">
+    <input class="search grow" placeholder="过滤名称 / 路径…" spellCheck="false">
+    <span class="tag" title="写入的是注册表里的持久化值，新开的终端/应用会读到；已经启动的进程不会自动跟变。">用户级 / 系统级 均可写</span>
+  </div>
+
+  <div class="quad-grid">
+    <!-- 左上：用户环境变量 -->
+    <div class="card">
+      <div class="colhead"><h3>用户环境变量 · HKCU</h3><span class="spacer"></span><span class="tag">12</span></div>
+      <div class="list">
+        <div class="row" title="[string] 完整值">
+          <span class="name"><span class="copyable mono" onclick="toast('已复制: JAVA_HOME')">JAVA_HOME</span></span>
+          <span class="desc mono copyable" onclick="toast('已复制变量值')">C:\Program Files\Java\jdk-21</span>
+          <span class="tag strong" title="用户级覆盖了系统级">覆盖</span>
+          <span class="acts">
+            <button class="btn small ghost" onclick="toast('打开编辑弹窗：变量名 / 值 / scope / expand')">编辑</button>
+            <button class="btn small ghost" onclick="toast('打开删除预演（dry-run diff）')">删除</button>
+          </span>
+        </div>
+        <div class="row" title="[expand] 完整值">
+          <span class="name"><span class="copyable mono" onclick="toast('已复制: PATH')">PATH</span></span>
+          <span class="desc mono copyable" onclick="toast('已复制变量值')">%JAVA_HOME%\bin;C:\tools\git\cmd;D:\a_other\md\sl\skills</span>
+          <span class="tag strong" title="用户级覆盖了系统级">覆盖</span>
+          <span class="acts">
+            <button class="btn small ghost" onclick="toast('打开编辑弹窗')">编辑</button>
+            <button class="btn small ghost" onclick="toast('打开删除预演')">删除</button>
+          </span>
+        </div>
+        <div class="row" title="[string] 完整值">
+          <span class="name"><span class="copyable mono" onclick="toast('已复制: NX_RH_STORE')">NX_RH_STORE</span></span>
+          <span class="desc mono copyable" onclick="toast('已复制变量值')">C:\Users\joke\.nx-rh\store.json</span>
+          <span class="acts">
+            <button class="btn small ghost" onclick="toast('打开编辑弹窗')">编辑</button>
+            <button class="btn small ghost" onclick="toast('打开删除预演')">删除</button>
+          </span>
+        </div>
+        <div class="row">
+          <span class="name"><span class="copyable mono" onclick="toast('已复制: GITHUB_TOKEN')">GITHUB_TOKEN</span></span>
+          <span class="desc mono copyable" onclick="toast('已复制变量值')">ghp_••••••••••••••••••••</span>
+          <span class="tag" title="两个 scope 都有且值相同">相同</span>
+          <span class="acts">
+            <button class="btn small ghost" onclick="toast('打开编辑弹窗')">编辑</button>
+            <button class="btn small ghost" onclick="toast('打开删除预演')">删除</button>
+          </span>
+        </div>
+        <div class="row muted">（还有 8 个变量，过滤框可缩小范围）</div>
+      </div>
+      <div class="row-inline quad-foot">
+        <button class="btn small ghost" onclick="toast('打开新增变量弹窗（用户级）')">＋ 新增变量</button>
+      </div>
+    </div>
+
+    <!-- 右上：用户 PATH -->
+    <div class="card">
+      <div class="colhead"><h3>用户 PATH 列表</h3><span class="spacer"></span><span class="tag">6 条</span></div>
+      <div class="list">
+        <div class="row">
+          <span class="idx mono">01</span>
+          <span class="desc mono copyable" title="C:\Program Files\Java\jdk-21\bin" onclick="toast('已复制目录')">C:\Program Files\Java\jdk-21\bin</span>
+          <span class="acts"><button class="btn small ghost" onclick="toast('打开移除预演')">移除</button></span>
+        </div>
+        <div class="row">
+          <span class="idx mono">02</span>
+          <span class="desc mono copyable" title="C:\tools\git\cmd" onclick="toast('已复制目录')">C:\tools\git\cmd</span>
+          <span class="acts"><button class="btn small ghost" onclick="toast('打开移除预演')">移除</button></span>
+        </div>
+        <div class="row">
+          <span class="idx mono">03</span>
+          <span class="desc mono copyable" title="C:\tools\python" onclick="toast('已复制目录')">C:\tools\python</span>
+          <span class="tag" title="与另一条目重复">重复</span>
+          <span class="acts"><button class="btn small ghost" onclick="toast('打开移除预演')">移除</button></span>
+        </div>
+        <div class="row">
+          <span class="idx mono">04</span>
+          <span class="desc mono copyable" title="C:\Users\joke\bin" onclick="toast('已复制目录')">C:\Users\joke\bin</span>
+          <span class="acts"><button class="btn small ghost" onclick="toast('打开移除预演')">移除</button></span>
+        </div>
+        <div class="row">
+          <span class="idx mono">05</span>
+          <span class="desc mono copyable" title="C:\Users\joke\AppData\Local\Volta\bin" onclick="toast('已复制目录')">C:\Users\joke\AppData\Local\Volta\bin</span>
+          <span class="acts"><button class="btn small ghost" onclick="toast('打开移除预演')">移除</button></span>
+        </div>
+        <div class="row">
+          <span class="idx mono">06</span>
+          <span class="desc mono copyable" title="D:\a_other\md\sl\skills" onclick="toast('已复制目录')">D:\a_other\md\sl\skills</span>
+          <span class="acts"><button class="btn small ghost" onclick="toast('打开移除预演')">移除</button></span>
+        </div>
+      </div>
+      <div class="row-inline quad-foot">
+        <input placeholder="要追加的目录，如 C:\tools\bin" style="flex:1;min-width:180px">
+        <button class="btn small ghost" onclick="toast('打开追加预演（diff 后再写入）')">追加</button>
+      </div>
+    </div>
+
+    <!-- 左下：系统环境变量（只读） -->
+    <div class="card">
+      <div class="colhead"><h3>系统环境变量 · HKLM</h3><span class="spacer"></span><span class="tag bad">34 · 只读</span></div>
+      <div class="list">
+        <div class="row">
+          <span class="name"><span class="copyable mono" onclick="toast('已复制: windir')">windir</span></span>
+          <span class="desc mono copyable" onclick="toast('已复制变量值')">C:\WINDOWS</span>
+          <span class="acts">
+            <button class="btn small ghost" disabled title="需要管理员身份">编辑</button>
+            <button class="btn small ghost" disabled title="需要管理员身份">删除</button>
+          </span>
+        </div>
+        <div class="row">
+          <span class="name"><span class="copyable mono" onclick="toast('已复制: ProgramFiles')">ProgramFiles</span></span>
+          <span class="desc mono copyable" onclick="toast('已复制变量值')">C:\Program Files</span>
+          <span class="acts">
+            <button class="btn small ghost" disabled title="需要管理员身份">编辑</button>
+            <button class="btn small ghost" disabled title="需要管理员身份">删除</button>
+          </span>
+        </div>
+        <div class="row">
+          <span class="name"><span class="copyable mono" onclick="toast('已复制: ComSpec')">ComSpec</span></span>
+          <span class="desc mono copyable" onclick="toast('已复制变量值')">C:\WINDOWS\system32\cmd.exe</span>
+          <span class="acts">
+            <button class="btn small ghost" disabled title="需要管理员身份">编辑</button>
+            <button class="btn small ghost" disabled title="需要管理员身份">删除</button>
+          </span>
+        </div>
+      </div>
+      <div class="row-inline quad-foot">
+        <button class="btn small ghost" disabled title="需要管理员身份">＋ 新增变量</button>
+      </div>
+    </div>
+
+    <!-- 右下：系统 PATH（只读） -->
+    <div class="card">
+      <div class="colhead"><h3>系统 PATH 列表</h3><span class="spacer"></span><span class="tag bad">12 条 · 只读</span></div>
+      <div class="list">
+        <div class="row">
+          <span class="idx mono">01</span>
+          <span class="desc mono copyable" title="C:\Windows\system32" onclick="toast('已复制目录')">C:\Windows\system32</span>
+          <span class="acts"><button class="btn small ghost" disabled title="需要管理员身份">移除</button></span>
+        </div>
+        <div class="row">
+          <span class="idx mono">02</span>
+          <span class="desc mono copyable" title="C:\Windows" onclick="toast('已复制目录')">C:\Windows</span>
+          <span class="acts"><button class="btn small ghost" disabled title="需要管理员身份">移除</button></span>
+        </div>
+        <div class="row">
+          <span class="idx mono">03</span>
+          <span class="desc mono copyable" title="C:\Windows\System32\Wbem" onclick="toast('已复制目录')">C:\Windows\System32\Wbem</span>
+          <span class="acts"><button class="btn small ghost" disabled title="需要管理员身份">移除</button></span>
+        </div>
+      </div>
+      <div class="row-inline quad-foot">
+        <input placeholder="要追加的目录，如 C:\tools\bin" style="flex:1;min-width:180px" disabled>
+        <button class="btn small ghost" disabled title="需要管理员身份">追加</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="vlegend">
+    两个 scope 同名时<b>用户级覆盖</b>系统级；<b>PATH 是例外</b>——新会话 PATH = 系统条目 + 用户条目（拼接）。
+    写入的是注册表持久值：<b>新开的终端才生效</b>，已启动的进程不会跟变。
+  </div>
+
+  <details class="card">
+    <summary class="disclose" style="padding:4px 12px"><span class="caret">▸</span>快照（3）</summary>
+    <div class="vlegend">每次写入前自动生成，保留最近 50 份。恢复前也会自动备份，所以恢复本身可被恢复。</div>
+    <div class="list">
+      <div class="row">
+        <span class="name mono" style="width:220px">snap-2026-10-27-2140</span>
+        <span class="desc">2026/10/27 21:40:12 · 用户 12 / 系统 34 · env set PATH (user)</span>
+        <span class="acts"><button class="btn small ghost" onclick="toast('打开恢复预演（恢复前自动再存一份）')">恢复</button></span>
+      </div>
+      <div class="row">
+        <span class="name mono" style="width:220px">snap-2026-10-26-0930</span>
+        <span class="desc">2026/10/26 09:30:04 · 用户 11 / 系统 34 · 手动快照</span>
+        <span class="acts"><button class="btn small ghost" onclick="toast('打开恢复预演')">恢复</button></span>
+      </div>
+    </div>
+    <div class="row-inline" style="padding:8px 12px;border-top:var(--border)">
+      <button class="btn small ghost" onclick="toast('打开备注输入弹窗')">存一份</button>
+    </div>
+  </details>
+
+  <details class="cli-hint">
+    <summary>等价 CLI 命令（12）</summary>
+    <div class="cli-hint-body">
+      <span class="cli-cmd">nx-rh env list</span>
+      <span class="cli-cmd">nx-rh env get JAVA_HOME</span>
+      <span class="cli-cmd">nx-rh env set PATH --scope user</span>
+      <span class="cli-cmd">nx-rh env path list --scope system</span>
+      <span class="cli-cmd">nx-rh env snapshot list</span>
+    </div>
+  </details>
+</div>
+
+<!-- ══════════ 工作树页 ══════════ -->
+<div class="panel" id="p-wt">
+  <div class="page-head">
+    <div class="title-block">
+      <h2>工作树</h2>
+      <div class="page-desc">用 git worktree 为每件事开一个独立工作目录：分支互不干扰，共享同一个仓库。本模块只做「登记 + 提醒」，不复制文件——用「主项目上下文」查看主项目变更；被 .gitignore 忽略的本地工具/文档登记为扩展文件（只读参考），需要内容时 agent 自行复制。</div>
+    </div>
+    <div class="acts">
+      <button class="btn ghost" onclick="toast('打开主项目上下文弹窗（状态 / log / 扩展 / 建议指令）')">主项目上下文</button>
+      <button class="btn ghost" onclick="toast('打开 Fanout 计划弹窗')">Fanout</button>
+      <button class="btn ghost" onclick="toast('打开工作树配置弹窗')">配置</button>
+      <button class="btn" onclick="toast('打开新建工作树弹窗（描述 / 会话名 / 起点分支）')">新建工作树</button>
+    </div>
+  </div>
+
+  <div class="card">
+    <div style="padding:10px 12px">
+      <div style="font-size:11px;color:var(--mid);margin-bottom:4px">主仓库（点击复制）</div>
+      <div class="mono" style="font-weight:600"><span class="copyable" onclick="toast('已复制主仓库路径')">D:\DevProjects\my\github\nx-rh</span></div>
+      <div style="font-size:11px;color:var(--mid);margin-top:6px;line-height:1.7">
+        分支前缀 <b>feature</b> · 基础分支 <b>main</b><br>
+        工作树根 <span class="mono">D:\DevProjects\my\github\nx-rh\.worktrees</span>
+      </div>
+    </div>
+  </div>
+
+  <table class="card-table">
+    <thead><tr>
+      <th style="width:220px">分支 / 名称</th>
+      <th style="width:170px">状态</th>
+      <th>路径</th>
+      <th class="ops" style="width:260px">操作</th>
+    </tr></thead>
+    <tbody>
+      <tr>
+        <td class="cell-name"><div class="nm">main</div><div class="sub-desc">main · a3f9c12e</div></td>
+        <td><span class="tag strong">主</span> <span class="tag strong">改动</span> <span class="tag">↑2</span></td>
+        <td class="cell-path mono"><span class="copyable" onclick="toast('已复制路径')">D:\DevProjects\my\github\nx-rh</span></td>
+        <td class="ops">
+          <span class="btn small ghost" onclick="toast('已复制: cd \"D:\\DevProjects\\my\\github\\nx-rh\"')">cd</span>
+          <button class="btn small ghost" onclick="toast('已在文件管理器打开')">打开</button>
+        </td>
+      </tr>
+      <tr>
+        <td class="cell-name"><div class="nm">feature/login-captcha</div><div class="sub-desc">login-captcha · 7d21e083</div></td>
+        <td><span class="tag strong">改动</span> <span class="tag">↑2</span> <span class="tag">↓1</span> <span class="tag strong">缺扩展 2</span></td>
+        <td class="cell-path mono"><span class="copyable" onclick="toast('已复制路径')">D:\DevProjects\my\github\nx-rh\.worktrees\login-captcha</span></td>
+        <td class="ops">
+          <span class="btn small ghost" onclick="toast('已复制: cd 命令')">cd</span>
+          <button class="btn small ghost" onclick="toast('已在文件管理器打开')">打开</button>
+          <button class="btn small ghost" onclick="toast('打开 rebase 确认弹窗')">rebase</button>
+          <button class="btn small ghost" onclick="toast('打开移除确认弹窗（分支默认保留）')">删除</button>
+        </td>
+      </tr>
+      <tr>
+        <td class="cell-name"><div class="nm">feature/skill-detail</div><div class="sub-desc">skill-detail · b8e4d90f</div></td>
+        <td><span class="tag">分离</span> <span class="tag">↑1</span></td>
+        <td class="cell-path mono"><span class="copyable" onclick="toast('已复制路径')">D:\DevProjects\my\github\nx-rh\.worktrees\skill-detail</span></td>
+        <td class="ops">
+          <span class="btn small ghost" onclick="toast('已复制: cd 命令')">cd</span>
+          <button class="btn small ghost" onclick="toast('已在文件管理器打开')">打开</button>
+          <button class="btn small ghost" onclick="toast('打开 rebase 确认弹窗')">rebase</button>
+          <button class="btn small ghost" onclick="toast('打开移除确认弹窗')">删除</button>
+        </td>
+      </tr>
+    </tbody>
+  </table>
+
+  <div class="card">
+    <div class="colhead">
+      <h3>扩展文件</h3>
+      <span class="muted">评估目标: 主仓库</span>
+      <span class="spacer"></span>
+      <button class="btn small ghost" onclick="toast('打开发现被忽略文件弹窗（候选 / 可登记 / 已登记）')">发现</button>
+      <button class="btn small ghost" onclick="toast('打开登记扩展文件弹窗（全路径 + 标签）')">登记</button>
+    </div>
+    <table>
+      <thead><tr>
+        <th>路径（相对主仓库）</th>
+        <th style="width:90px">状态</th>
+        <th style="width:170px">标签 / 修改时间</th>
+        <th class="ops" style="width:80px">操作</th>
+      </tr></thead>
+      <tbody>
+        <tr>
+          <td class="cell-name"><div class="nm">.tool/</div></td>
+          <td><span class="tag strong">变更</span></td>
+          <td class="muted" style="font-size:11px">本地工具目录<br>2026-10-24 09:12</td>
+          <td class="ops"><button class="btn small ghost" onclick="toast('打开移除登记确认（磁盘文件不删）')">删除</button></td>
+        </tr>
+        <tr>
+          <td class="cell-name"><div class="nm">.env.local</div> <span class="tag strong">关注</span></td>
+          <td><span class="tag strong">一致</span></td>
+          <td class="muted" style="font-size:11px">本地密钥<br>2026-10-26 18:03</td>
+          <td class="ops"><button class="btn small ghost" onclick="toast('打开移除登记确认')">删除</button></td>
+        </tr>
+        <tr>
+          <td class="cell-name"><div class="nm">notes/plan.md</div> <span class="sub-desc">主仓库外（只读参考）</span></td>
+          <td><span class="tag">差异</span></td>
+          <td class="muted" style="font-size:11px">-<br>2026-10-20 11:40</td>
+          <td class="ops"><button class="btn small ghost" onclick="toast('打开移除登记确认')">删除</button></td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+  <details class="cli-hint">
+    <summary>等价 CLI 命令（9）</summary>
+    <div class="cli-hint-body">
+      <span class="cli-cmd">nx-rh wt list</span>
+      <span class="cli-cmd">nx-rh wt add 给登录页加图形验证码</span>
+      <span class="cli-cmd">nx-rh wt context --log 5</span>
+      <span class="cli-cmd">nx-rh wt ext discover --apply</span>
+    </div>
+  </details>
+</div>
+
+</main>
+
+<footer>nx-rh 原型 v5 · 环境变量页（四象限）/ 工作树页 · 仅审核用 · 每页一枚实心主按钮</footer>
+
+<div class="toast-stack" id="toasts"></div>
+
+<div class="proto-fab">
+  原型 v5 · 画面
+  <button class="pb on" id="b-env" onclick="switchPanel('p-env','b-env')">环境变量页</button>
+  <button class="pb" id="b-wt" onclick="switchPanel('p-wt','b-wt')">工作树页</button>
+</div>
+
+<script>
+function switchPanel(id, bid) {
+  document.querySelectorAll('.panel').forEach(function (p) { p.classList.remove('active'); });
+  document.getElementById(id).classList.add('active');
+  document.querySelectorAll('.proto-fab .pb').forEach(function (b) { b.classList.remove('on'); });
+  document.getElementById(bid).classList.add('on');
+  window.scrollTo(0, 0);
+}
+function toast(msg) {
+  var stack = document.getElementById('toasts');
+  var t = document.createElement('div');
+  t.className = 'toast';
+  t.textContent = msg;
+  stack.appendChild(t);
+  setTimeout(function () { t.remove(); }, 2600);
+}
+</script>
+</body>
+</html>

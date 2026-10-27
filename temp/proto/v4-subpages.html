@@ -1,0 +1,434 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>原型 v4 · Skill 子页细节（平台 / 项目 / 订阅源）— nx-rh</title>
+<style>
+:root {
+  --ink: #14161a; --paper: #fff; --soft: #f5f6f7; --soft-2: #e7e9ec;
+  --mid: #6b7178; --faint: #9aa0a7;
+  --row-h: 28px; --btn-h: 32px; --fs-core: 12px;
+  --radius-flat: 4px; --radius-btn: 8px; --radius-pill: 999px;
+  --border: 1px solid var(--soft-2);
+  --shadow-relief: -1px -1px 2px rgba(255,255,255,.85), 2px 2px 6px rgba(20,22,26,.07);
+  --shadow-relief-press: inset 1px 1px 2px rgba(20,22,26,.10), inset -1px -1px 2px rgba(255,255,255,.7);
+  --shadow-relief-inset: inset 1px 1px 2px rgba(20,22,26,.06), inset -1px -1px 2px rgba(255,255,255,.9);
+  --shadow-pop: 0 8px 28px rgba(20,22,26,.14), 0 2px 8px rgba(20,22,26,.08);
+}
+* { box-sizing: border-box; }
+body { margin: 0; font-family: system-ui, "Segoe UI", "Microsoft YaHei", sans-serif; font-size: var(--fs-core); line-height: 1.5; color: var(--ink); background: var(--paper); -webkit-font-smoothing: antialiased; padding-bottom: 60px; }
+header { display: flex; align-items: center; gap: 20px; height: 48px; padding: 0 20px; background: var(--paper); border-bottom: var(--border); position: sticky; top: 0; z-index: 5; }
+.brand { font-weight: 800; letter-spacing: .4px; font-size: 13px; display: inline-flex; align-items: center; gap: 7px; }
+.brand img { width: 20px; height: 20px; border-radius: 5px; display: block; }
+.brand .sub { margin-left: 8px; font-weight: 400; color: var(--mid); }
+header .meta { margin-left: auto; color: var(--mid); font-size: 12px; font-family: ui-monospace, Consolas, monospace; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 34vw; }
+header .recents { color: var(--mid); font-size: 12px; cursor: pointer; user-select: none; white-space: nowrap; }
+header .recents:hover { color: var(--ink); }
+nav { display: inline-flex; gap: 2px; padding: 3px; background: var(--soft); border-radius: var(--radius-pill); }
+.tab { font: inherit; border: 0; background: transparent; color: var(--mid); height: var(--btn-h); padding: 0 16px; border-radius: var(--radius-pill); cursor: pointer; }
+.tab:hover { color: var(--ink); }
+.tab.active { background: var(--paper); color: var(--ink); font-weight: 600; box-shadow: var(--shadow-relief); }
+main { padding: 14px 24px 28px; max-width: none; }
+footer { color: var(--mid); font-size: 11px; padding: 14px 20px 26px; text-align: center; border-top: var(--border); }
+.panel { display: none; }
+.panel.active { display: block; }
+
+.crumbs { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; font-size: 11px; color: var(--mid); margin: 0 0 10px; }
+.crumbs a { color: var(--mid); text-decoration: none; cursor: pointer; }
+.crumbs a:hover { color: var(--ink); text-decoration: underline; }
+.crumbs .cur { color: var(--ink); font-weight: 600; }
+.crumbs .sep { color: var(--faint); }
+.sub-head { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; margin-bottom: 10px; }
+.sub-head .sub-meta { font-size: 11px; color: var(--mid); }
+.sub-head .acts { margin-left: auto; display: flex; gap: 8px; flex-wrap: wrap; }
+
+.btn { font: inherit; font-size: var(--fs-core); cursor: pointer; height: var(--btn-h); padding: 0 14px; border: 0; border-radius: var(--radius-btn); background: var(--ink); color: var(--paper); box-shadow: var(--shadow-relief); transition: box-shadow .12s, transform .08s, background .12s; display: inline-flex; align-items: center; justify-content: center; gap: 4px; white-space: nowrap; }
+.btn:hover:not(:disabled) { box-shadow: var(--shadow-relief), 0 0 0 3px rgba(20,22,26,.06); }
+.btn:active:not(:disabled) { box-shadow: var(--shadow-relief-press); transform: translateY(1px); }
+.btn.ghost { background: var(--soft); color: var(--ink); }
+.btn.ghost:hover:not(:disabled) { background: var(--soft-2); }
+.btn.small { height: 24px; padding: 0 9px; font-size: 11px; border-radius: 6px; }
+.btn:disabled { background: var(--soft); color: var(--faint); box-shadow: var(--shadow-relief-inset); cursor: not-allowed; }
+.btn.danger-quiet { background: var(--paper); color: #b3261e; border: 1px solid var(--soft-2); box-shadow: none; }
+.btn.danger-quiet:hover:not(:disabled) { background: var(--soft); box-shadow: none; }
+
+input, select { font: inherit; font-size: var(--fs-core); color: var(--ink); background: var(--paper); border: var(--border); border-radius: var(--radius-flat); height: var(--row-h); padding: 0 10px; }
+input::placeholder { color: var(--faint); }
+input:focus, select:focus { outline: none; border-color: var(--mid); box-shadow: var(--shadow-relief-inset); }
+input[type="checkbox"] { height: auto; padding: 0; accent-color: var(--ink); }
+
+.toolbar { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-bottom: 10px; }
+.toolbar label { color: var(--mid); }
+.toolbar .search { flex: 1 1 240px; max-width: 460px; }
+.toolbar .chk-all { display: inline-flex; align-items: center; gap: 6px; white-space: nowrap; cursor: pointer; user-select: none; }
+.toolbar.bulk { background: var(--soft); border-radius: var(--radius-btn); padding: 6px 10px; margin: 2px 0 10px; }
+
+.tag { font-size: 11px; padding: 2px 8px; border-radius: var(--radius-pill); background: var(--soft); color: var(--mid); white-space: nowrap; flex-shrink: 0; }
+.tag.strong { background: var(--paper); color: var(--ink); border: 1px solid var(--ink); font-weight: 600; }
+.tag.bad { background: var(--paper); color: #b3261e; border: 1px solid #e0b6b3; font-weight: 600; }
+
+.section-label { display: flex; align-items: baseline; gap: 8px; margin: 18px 0 8px; font-size: 12px; font-weight: 700; }
+.section-label .hint { font-weight: 400; color: var(--mid); font-size: 11px; }
+.card { background: var(--paper); border: var(--border); border-radius: var(--radius-btn); padding: 0; margin-bottom: 14px; overflow: hidden; }
+.colhead { display: flex; align-items: center; gap: 8px; min-height: var(--row-h); padding: 4px 12px; border-bottom: var(--border); background: var(--soft); }
+.colhead h3 { font-size: 13px; margin: 0; font-weight: 700; }
+.list { padding: 0; }
+.row { display: flex; align-items: center; gap: 10px; min-height: var(--row-h); padding: 3px 12px; border-bottom: var(--border); font-size: var(--fs-core); }
+.row:last-child { border-bottom: 0; }
+.row:hover { background: var(--soft); }
+.row .name { font-weight: 600; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; flex-shrink: 0; width: 132px; }
+.row .desc { color: var(--mid); flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.muted { color: var(--mid); }
+.mono { font-family: ui-monospace, Consolas, monospace; }
+.copyable { cursor: copy; border-bottom: 1px dashed transparent; }
+.copyable:hover { border-bottom-color: var(--mid); }
+
+/* skill 卡片网格 */
+.skl-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(282px, 1fr)); gap: 10px; }
+.skl-card { display: flex; flex-direction: column; border: var(--border); border-radius: var(--radius-btn); background: var(--paper); padding: 11px 12px; cursor: pointer; transition: border-color .12s, box-shadow .12s; }
+.skl-card:hover { border-color: var(--mid); box-shadow: var(--shadow-pop); }
+.skl-card .sc-top { display: flex; align-items: center; gap: 6px; margin-bottom: 4px; }
+.skl-card .sc-name { font-size: 12.5px; font-weight: 700; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.skl-card .sc-desc { font-size: 11px; color: var(--mid); line-height: 1.45; min-height: 32px; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden; }
+.skl-card .sc-foot { display: flex; flex-wrap: wrap; align-items: center; gap: 5px; margin-top: 8px; padding-top: 8px; border-top: 1px solid var(--soft-2); }
+.skl-card .sc-foot .spacer { margin-left: auto; }
+.skl-card .sc-mini { font-size: 10.5px; color: var(--mid); border: 1px solid var(--soft-2); border-radius: var(--radius-flat); padding: 1px 6px; background: var(--soft); cursor: pointer; white-space: nowrap; }
+.skl-card .sc-mini:hover { border-color: var(--mid); color: var(--ink); }
+.skl-card .sc-mini.on { background: var(--paper); color: var(--ink); border-color: var(--ink); }
+
+.toast-stack { position: fixed; left: 50%; bottom: 28px; transform: translateX(-50%); display: flex; flex-direction: column; align-items: center; gap: 8px; z-index: 60; pointer-events: none; }
+.toast { background: var(--ink); color: var(--paper); font-size: var(--fs-core); min-height: var(--btn-h); padding: 7px 16px; border-radius: var(--radius-btn); box-shadow: var(--shadow-pop); max-width: 72vw; white-space: pre-wrap; }
+
+.proto-fab { position: fixed; right: 16px; bottom: 16px; z-index: 70; display: flex; align-items: center; gap: 6px; background: var(--paper); border: 1px dashed var(--mid); border-radius: var(--radius-btn); padding: 6px 8px; box-shadow: var(--shadow-pop); font-size: 11px; color: var(--mid); }
+.proto-fab .pb { font: inherit; font-size: 11px; cursor: pointer; border: 0; background: var(--soft); color: var(--ink); border-radius: 5px; padding: 3px 9px; }
+.proto-fab .pb.on { background: var(--ink); color: var(--paper); }
+
+@media (max-width: 720px) {
+  header { flex-wrap: wrap; height: auto; padding: 8px 12px; }
+  main { padding: 12px 16px 24px; }
+  .skl-grid { grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 8px; }
+}
+</style>
+</head>
+<body>
+
+<header>
+  <div class="brand"><img alt="" src="data:image/png;base64,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">nx-rh <span class="sub">npx-repo-hub</span></div>
+  <nav>
+    <button class="tab active">Skill</button>
+    <button class="tab">设置</button>
+    <button class="tab">环境变量</button>
+    <button class="tab">工作树</button>
+  </nav>
+  <div class="meta">D:\DevProjects\my\github\nx-rh</div>
+  <div class="recents">最近目录 ▾</div>
+</header>
+
+<main>
+
+<!-- ══════════ 子页一：平台子页（PlatformPage） ══════════ -->
+<div class="panel active" id="p-platform">
+  <div class="crumbs">
+    <a onclick="toast('回到 Skill 总览')">Skill</a>
+    <span class="sep">/</span>
+    <span class="cur">Claude Code</span>
+  </div>
+  <div class="sub-head">
+    <div>
+      <div style="font-size: 15px; font-weight: 700">Claude Code</div>
+      <div class="sub-meta">15 个已在订阅源 · 6 个不在订阅源</div>
+    </div>
+    <div class="acts">
+      <button class="btn" onclick="toast('打开收进订阅源弹窗（选目标源）')">收进订阅源…</button>
+      <button class="btn ghost" onclick="toast('已移出启用范围（至少保留一个）')">移出启用范围</button>
+    </div>
+  </div>
+
+  <div class="toolbar">
+    <input class="search grow" placeholder="过滤名称 / 描述…" spellCheck="false">
+  </div>
+
+  <div class="section-label">不在订阅源
+    <span class="hint">这些只在平台目录里；勾选后可收进订阅源</span>
+  </div>
+  <div class="skl-grid">
+    <div class="skl-card" onclick="toast('打开 skill 详情：happy-coder')">
+      <div class="sc-top"><input type="checkbox" checked onclick="event.stopPropagation()"><span class="sc-name">happy-coder</span></div>
+      <div class="sc-desc">happy 移动端 Claude 的会话守护与守护进程管理</div>
+      <div class="sc-foot" onclick="event.stopPropagation()">
+        <span class="tag bad">不在订阅源</span>
+        <span class="spacer"></span>
+        <span class="sc-mini" onclick="toast('打开 skill 详情')">详情</span>
+      </div>
+    </div>
+    <div class="skl-card" onclick="toast('打开 skill 详情：pr-review')">
+      <div class="sc-top"><input type="checkbox" checked onclick="event.stopPropagation()"><span class="sc-name">pr-review</span></div>
+      <div class="sc-desc">本机手写的 PR 审查流程</div>
+      <div class="sc-foot" onclick="event.stopPropagation()">
+        <span class="tag bad">不在订阅源</span>
+        <span class="spacer"></span>
+        <span class="sc-mini" onclick="toast('打开 skill 详情')">详情</span>
+      </div>
+    </div>
+    <div class="skl-card" onclick="toast('打开 skill 详情：k8s-troubleshoot')">
+      <div class="sc-top"><input type="checkbox" onclick="event.stopPropagation()"><span class="sc-name">k8s-troubleshoot</span></div>
+      <div class="sc-desc">Kubernetes 排障手册（实体在别处）</div>
+      <div class="sc-foot" onclick="event.stopPropagation()">
+        <span class="tag bad">不在订阅源</span>
+        <span class="spacer"></span>
+        <span class="sc-mini" onclick="toast('打开 skill 详情')">详情</span>
+      </div>
+    </div>
+    <div class="skl-card" onclick="toast('打开 skill 详情：commit-message')">
+      <div class="sc-top"><input type="checkbox" onclick="event.stopPropagation()"><span class="sc-name">commit-message</span></div>
+      <div class="sc-desc">Conventional Commits 规范生成提交说明</div>
+      <div class="sc-foot" onclick="event.stopPropagation()">
+        <span class="tag bad">不在订阅源</span>
+        <span class="spacer"></span>
+        <span class="sc-mini" onclick="toast('打开 skill 详情')">详情</span>
+      </div>
+    </div>
+  </div>
+
+  <div class="section-label">已在订阅源
+    <span class="hint">链接随订阅源实时变；实体副本是独立一份</span>
+  </div>
+  <div class="skl-grid">
+    <div class="skl-card" onclick="toast('打开 skill 详情：web-access')">
+      <div class="sc-top"><input type="checkbox" onclick="event.stopPropagation()"><span class="sc-name">web-access</span></div>
+      <div class="sc-desc">浏览器自动化与网页访问的标准流程</div>
+      <div class="sc-foot" onclick="event.stopPropagation()">
+        <span class="sc-mini on" title="项目级 · 链接">项目·链接</span>
+        <span class="sc-mini on" title="用户级 · 副本">用户·副本</span>
+        <span class="spacer"></span>
+        <span class="sc-mini" onclick="toast('打开 skill 详情')">详情</span>
+      </div>
+    </div>
+    <div class="skl-card" onclick="toast('打开 skill 详情：skill-creator')">
+      <div class="sc-top"><input type="checkbox" onclick="event.stopPropagation()"><span class="sc-name">skill-creator</span></div>
+      <div class="sc-desc">创建结构合规的 agent skill</div>
+      <div class="sc-foot" onclick="event.stopPropagation()">
+        <span class="sc-mini on" title="项目级 · 链接">项目·链接</span>
+        <span class="spacer"></span>
+        <span class="sc-mini" onclick="toast('打开 skill 详情')">详情</span>
+      </div>
+    </div>
+    <div class="skl-card" onclick="toast('打开 skill 详情：doc-extractor')">
+      <div class="sc-top"><input type="checkbox" onclick="event.stopPropagation()"><span class="sc-name">doc-extractor</span></div>
+      <div class="sc-desc">从网页提取干净正文，去广告去导航</div>
+      <div class="sc-foot" onclick="event.stopPropagation()">
+        <span class="sc-mini on" title="用户级 · 链接">用户·链接</span>
+        <span class="spacer"></span>
+        <span class="sc-mini" onclick="toast('打开 skill 详情')">详情</span>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ══════════ 子页二：当前项目子页（ProjectPage） ══════════ -->
+<div class="panel" id="p-project">
+  <div class="crumbs">
+    <a onclick="toast('回到 Skill 总览')">Skill</a>
+    <span class="sep">/</span>
+    <span class="cur">当前项目</span>
+  </div>
+  <div class="sub-head">
+    <div>
+      <div style="font-size: 15px; font-weight: 700">项目里的 skill</div>
+      <div class="sub-meta mono" title="D:\DevProjects\my\github\nx-rh">D:\DevProjects\my\github\nx-rh</div>
+    </div>
+    <div class="acts">
+      <button class="btn" onclick="toast('打开收进订阅源弹窗（选目标源）')">收进订阅源…</button>
+    </div>
+  </div>
+
+  <div class="toolbar">
+    <input class="search grow" placeholder="过滤名称 / 描述…" spellCheck="false">
+  </div>
+
+  <div class="section-label">项目目录
+    <span class="hint">4 个平台目录 · * 为启用平台</span>
+  </div>
+  <div class="card"><div class="list">
+    <div class="row">
+      <span class="name">* claude</span>
+      <span class="desc mono copyable" onclick="toast('已复制目录')">D:\DevProjects\my\github\nx-rh\.claude\skills</span>
+      <span class="tag">3 个</span>
+    </div>
+    <div class="row">
+      <span class="name">* cursor</span>
+      <span class="desc mono copyable" onclick="toast('已复制目录')">D:\DevProjects\my\github\nx-rh\.cursor\skills</span>
+      <span class="tag">1 个</span>
+    </div>
+    <div class="row">
+      <span class="name">codex</span>
+      <span class="desc mono copyable" onclick="toast('已复制目录')">D:\DevProjects\my\github\nx-rh\.codex\skills</span>
+      <span class="tag">0 个</span>
+      <span class="tag">未启用</span>
+    </div>
+    <div class="row">
+      <span class="name">gemini</span>
+      <span class="desc mono copyable" onclick="toast('已复制目录')">D:\DevProjects\my\github\nx-rh\.gemini\skills</span>
+      <span class="tag">0 个</span>
+      <span class="tag">未启用</span>
+    </div>
+  </div></div>
+
+  <div class="section-label">skill
+    <span class="hint">勾选「不在订阅源」的项可批量收进</span>
+  </div>
+  <div class="skl-grid">
+    <div class="skl-card" onclick="toast('打开 skill 详情')">
+      <div class="sc-top"><input type="checkbox" checked onclick="event.stopPropagation()"><span class="sc-name">happy-coder</span></div>
+      <div class="sc-desc">happy 移动端 Claude 的会话守护与守护进程管理</div>
+      <div class="sc-foot" onclick="event.stopPropagation()">
+        <span class="tag bad">不在订阅源</span>
+        <span class="sc-mini" title="claude·链接">claude·链接</span>
+        <span class="spacer"></span>
+        <span class="sc-mini" onclick="toast('打开 skill 详情')">详情</span>
+      </div>
+    </div>
+    <div class="skl-card" onclick="toast('打开 skill 详情')">
+      <div class="sc-top"><input type="checkbox" checked onclick="event.stopPropagation()"><span class="sc-name">nx-rh-add-platform-adapter</span></div>
+      <div class="sc-desc">为 nx-rh 新增平台适配器的标准步骤</div>
+      <div class="sc-foot" onclick="event.stopPropagation()">
+        <span class="tag bad">不在订阅源</span>
+        <span class="sc-mini" title="claude·链接">claude·链接</span>
+        <span class="spacer"></span>
+        <span class="sc-mini" onclick="toast('打开 skill 详情')">详情</span>
+      </div>
+    </div>
+    <div class="skl-card" onclick="toast('打开 skill 详情')">
+      <div class="sc-top"><input type="checkbox" onclick="event.stopPropagation()"><span class="sc-name">web-access</span></div>
+      <div class="sc-desc">浏览器自动化与网页访问的标准流程</div>
+      <div class="sc-foot" onclick="event.stopPropagation()">
+        <span class="tag">已在订阅源</span>
+        <span class="sc-mini on" title="claude·链接">claude·链接</span>
+        <span class="spacer"></span>
+        <span class="sc-mini" onclick="toast('打开 skill 详情')">详情</span>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ══════════ 子页三：订阅源子页（HubPage） ══════════ -->
+<div class="panel" id="p-hub">
+  <div class="crumbs">
+    <a onclick="toast('回到 Skill 总览')">Skill</a>
+    <span class="sep">/</span>
+    <span class="cur">sl-skills</span>
+  </div>
+  <div class="sub-head">
+    <div>
+      <div style="font-size: 15px; font-weight: 700">sl-skills</div>
+      <div class="sub-meta mono" title="D:\DevProjects\my\github\sl\skills">D:\DevProjects\my\github\sl\skills</div>
+    </div>
+    <div class="acts">
+      <span class="tag strong">主源</span>
+    </div>
+  </div>
+
+  <div class="toolbar">
+    <label class="chk-all"><input type="checkbox" checked> 全选（3）</label>
+    <input class="search grow" placeholder="过滤名称 / 描述…" spellCheck="false">
+  </div>
+
+  <div class="toolbar bulk">
+    <span class="tag strong">已选 3</span>
+    <button class="btn ghost" onclick="toast('已清空勾选')">清空勾选</button>
+    <button class="btn" onclick="toast('打开迁移弹窗（平台复选 + 形态）')">迁移勾选 → 项目…</button>
+    <button class="btn ghost" onclick="toast('打开迁移弹窗（用户级）')">迁移勾选 → 用户…</button>
+    <button class="btn danger-quiet" title="连各平台安装位置与订阅源实文件一起删，不可恢复（先预演再确认）" onclick="toast('打开彻底删除预演（dry-run 清单）')">彻底删除…</button>
+  </div>
+
+  <div class="skl-grid">
+    <div class="skl-card" onclick="toast('打开 skill 详情')">
+      <div class="sc-top"><input type="checkbox" checked onclick="event.stopPropagation()"><span class="sc-name">web-access</span></div>
+      <div class="sc-desc">浏览器自动化与网页访问的标准流程</div>
+      <div class="sc-foot" onclick="event.stopPropagation()">
+        <span class="tag strong">已安装 2/2</span>
+        <span class="spacer"></span>
+        <span class="sc-mini" onclick="toast('打开 skill 详情')">详情</span>
+      </div>
+    </div>
+    <div class="skl-card" onclick="toast('打开 skill 详情')">
+      <div class="sc-top"><input type="checkbox" checked onclick="event.stopPropagation()"><span class="sc-name">skill-creator</span></div>
+      <div class="sc-desc">创建结构合规的 agent skill</div>
+      <div class="sc-foot" onclick="event.stopPropagation()">
+        <span class="tag">已安装 1/3</span>
+        <span class="spacer"></span>
+        <span class="sc-mini" onclick="toast('打开 skill 详情')">详情</span>
+      </div>
+    </div>
+    <div class="skl-card" onclick="toast('打开 skill 详情')">
+      <div class="sc-top"><input type="checkbox" checked onclick="event.stopPropagation()"><span class="sc-name">doc-extractor</span></div>
+      <div class="sc-desc">从网页提取干净正文，去广告去导航</div>
+      <div class="sc-foot" onclick="event.stopPropagation()">
+        <span class="tag">未安装</span>
+        <span class="spacer"></span>
+        <span class="sc-mini" onclick="toast('打开 skill 详情')">详情</span>
+      </div>
+    </div>
+    <div class="skl-card" onclick="toast('打开 skill 详情')">
+      <div class="sc-top"><input type="checkbox" onclick="event.stopPropagation()"><span class="sc-name">article-extractor</span></div>
+      <div class="sc-desc">下载并清洗文章正文，保存为可读文本</div>
+      <div class="sc-foot" onclick="event.stopPropagation()">
+        <span class="tag">未安装</span>
+        <span class="spacer"></span>
+        <span class="sc-mini" onclick="toast('打开 skill 详情')">详情</span>
+      </div>
+    </div>
+    <div class="skl-card" onclick="toast('打开 skill 详情')">
+      <div class="sc-top"><input type="checkbox" onclick="event.stopPropagation()"><span class="sc-name">intent-capture</span></div>
+      <div class="sc-desc">整理需求、明确目的、沉淀意图文档</div>
+      <div class="sc-foot" onclick="event.stopPropagation()">
+        <span class="tag">已安装 1/1</span>
+        <span class="spacer"></span>
+        <span class="sc-mini" onclick="toast('打开 skill 详情')">详情</span>
+      </div>
+    </div>
+    <div class="skl-card" onclick="toast('打开 skill 详情')">
+      <div class="sc-top"><input type="checkbox" onclick="event.stopPropagation()"><span class="sc-name">codebase-optimizer</span></div>
+      <div class="sc-desc">分析代码库结构，生成防腐蚀规范</div>
+      <div class="sc-foot" onclick="event.stopPropagation()">
+        <span class="tag">已安装 2/3</span>
+        <span class="spacer"></span>
+        <span class="sc-mini" onclick="toast('打开 skill 详情')">详情</span>
+      </div>
+    </div>
+  </div>
+</div>
+
+</main>
+
+<footer>nx-rh 原型 v4 · Skill 三个子页（平台 / 项目 / 订阅源）· 仅审核用 · 每页一枚实心主按钮</footer>
+
+<div class="toast-stack" id="toasts"></div>
+
+<div class="proto-fab">
+  原型 v4 子页 · 画面
+  <button class="pb on" id="b-platform" onclick="switchPanel('p-platform','b-platform')">平台子页</button>
+  <button class="pb" id="b-project" onclick="switchPanel('p-project','b-project')">项目子页</button>
+  <button class="pb" id="b-hub" onclick="switchPanel('p-hub','b-hub')">订阅源子页</button>
+</div>
+
+<script>
+function switchPanel(id, bid) {
+  document.querySelectorAll('.panel').forEach(function (p) { p.classList.remove('active'); });
+  document.getElementById(id).classList.add('active');
+  document.querySelectorAll('.proto-fab .pb').forEach(function (b) { b.classList.remove('on'); });
+  document.getElementById(bid).classList.add('on');
+  window.scrollTo(0, 0);
+}
+function toast(msg) {
+  var stack = document.getElementById('toasts');
+  var t = document.createElement('div');
+  t.className = 'toast';
+  t.textContent = msg;
+  stack.appendChild(t);
+  setTimeout(function () { t.remove(); }, 2600);
+}
+</script>
+</body>
+</html>
