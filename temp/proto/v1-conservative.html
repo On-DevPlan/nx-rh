@@ -444,7 +444,7 @@ td.cell-name .sub-desc { color: var(--mid); font-size: 11px; margin-top: 1px; }
           <td><span class="muted">未安装</span></td>
           <td><span class="muted">12 天前</span></td>
           <td class="ops">
-            <button class="btn small ghost" onclick="toast('已在文件管理器打开实体目录')">定位</button>
+            <button class="btn small ghost" onclick="toast('已复制实体路径 D:/pkgs/k8s-skills')">复制路径</button>
             <button class="btn small danger" onclick="openModal('m-remove')">移除</button>
           </td>
         </tr>
@@ -601,10 +601,9 @@ td.cell-name .sub-desc { color: var(--mid); font-size: 11px; margin-top: 1px; }
           <span class="pill" onclick="this.classList.toggle('on')">Universal (.agents)</span>
           <span class="pill" onclick="this.classList.toggle('on')">Cursor</span>
         </div>
-        <div class="plats">
-          <span class="pill on">跟随设置（symlink）</span>
-          <span class="pill" onclick="this.classList.toggle('on')">symlink</span>
-          <span class="pill" onclick="this.classList.toggle('on')">copy</span>
+        <div class="row-inline">
+          <label style="font-size:11px;color:var(--mid);font-weight:600">安装形态</label>
+          <select><option selected>跟随设置（auto）</option><option>symlink（软链接）</option><option>copy（实体复制）</option></select>
         </div>
       </div>
       <div class="dlg-acts">
