@@ -64,6 +64,7 @@ export function RemotePage({ tick }) {
   const [busy, setBusy] = useState('');            // 正在更新的 skill 名
   const [q, setQ] = useState('');
   const [owner, setOwner] = useState('');
+  const [limit, setLimit] = useState('20');          // 搜索条数（后端默认 20）
   const [searching, setSearching] = useState(false);
   const [results, setResults] = useState(null);
   const [importing, setImporting] = useState('');  // 正在导入的 source
@@ -143,6 +144,19 @@ export function RemotePage({ tick }) {
     await refresh();
   });
 
+  // ---- 软链出去：在别处建一个指向容器内实体的链接（容器里这份不动）----
+  const linkOut = (s) => guard(async () => {
+    const target = await dialog({
+      title: '软链出去',
+      input: true,
+      placeholder: '目标位置（要新建的链接，如 D:/lab/skills）',
+      message: `在目标位置建一个指向容器内「${s.name}」的链接；容器里这份不动。`,
+    });
+    if (!target) return;
+    const r = await api('/api/skills/remote/link-out', { method: 'POST', body: { name: s.name, target }, timeoutMs: 30000 });
+    toast(`已链出: ${s.name} → ${r.to || target}`);
+  });
+
   // ---- 搜索 → 确认 → 导入 ----
   const doSearch = () => guard(async () => {
     if (searching) return;
@@ -151,6 +165,7 @@ export function RemotePage({ tick }) {
     try {
       const qs = new URLSearchParams({ q });
       if (owner.trim()) qs.set('owner', owner.trim());
+      if (limit) qs.set('limit', String(limit));
       const r = await api('/api/skills/search?' + qs.toString(), { timeoutMs: 30000 });
       setResults(r.results || []);
     } finally { setSearching(false); }
@@ -238,6 +253,14 @@ export function RemotePage({ tick }) {
               onChange={(e) => setOwner(e.target.value)}
               onKeyDown={(e) => { if (e.key === 'Enter') doSearch(); }}
             />
+            <select
+              value={limit} onChange={(e) => setLimit(e.target.value)}
+              title="最多返回条数（默认 20）"
+            >
+              <option value="10">条数 10</option>
+              <option value="20">条数 20</option>
+              <option value="50">条数 50</option>
+            </select>
           </div>
         ) : (
           <div className="tz-filter">
@@ -324,13 +347,28 @@ export function RemotePage({ tick }) {
             </div>
             <div className="row">
               <span className="name" style={{ width: 150 }}>加软链</span>
-              <span className="desc">remote link —— 在「内容」区每个 skill 的「加软链…」里，把 Hub 内的 skill 链到别处目录</span>
-            </div>
-            <div className="row">
-              <span className="name" style={{ width: 150 }}>软链出去</span>
-              <span className="desc">remote link-out —— 端点已备（POST /api/skills/remote/link-out），Web 入口为增量提案</span>
+              <span className="desc">remote link —— 在「内容」区每个 skill 的「加软链…」里，把别处的 skill 链进容器</span>
             </div>
           </div></div>
+
+          <div className="card">
+            <div className="colhead">
+              <h3>软链出去</h3>
+              <span className="muted">在别处建一个指向容器内实体的链接 · 容器里这份不动</span>
+            </div>
+            <div className="list">
+              {skills.map((s) => (
+                <div key={s.name} className="row">
+                  <span className="name" style={{ width: 150 }}>{s.name}</span>
+                  <span className="desc mono" title={s.dir}>{s.dir}</span>
+                  <span className="acts">
+                    <button className="btn small ghost" onClick={() => linkOut(s)}>链出去…</button>
+                  </span>
+                </div>
+              ))}
+              {skills.length ? null : <div className="row muted">（容器里还没有 skill）</div>}
+            </div>
+          </div>
         </>
       ) : null}
 
