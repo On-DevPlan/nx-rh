@@ -9,7 +9,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { api } from '../../../web/frontend/api/client.js';
 import { useStore } from '../../../web/frontend/store.jsx';
-import { useToast, useGuard, useDialog } from '../../../web/frontend/components/ui.jsx';
+import { useToast, useGuard, useDialog, Modal } from '../../../web/frontend/components/ui.jsx';
 import { CliHints } from '../../../web/frontend/components/CliHints.jsx';
 import { Crumbs, SkillCard, useSel, makeHit } from './shared.jsx';
 import { goHub, goOverview, goSkill } from './routes.js';
@@ -68,6 +68,7 @@ export function RemotePage({ tick }) {
   const [searching, setSearching] = useState(false);
   const [results, setResults] = useState(null);
   const [importing, setImporting] = useState('');  // 正在导入的 source
+  const [preview, setPreview] = useState(null);  // 导入预演：{ source, skills[], picked:Set }
 
   const load = useCallback(async () => {
     const d = await api('/api/skills/remote').catch(() => null);
@@ -163,7 +164,7 @@ export function RemotePage({ tick }) {
     if (!q.trim()) { toast('先输入关键词'); return; }
     setSearching(true);
     try {
-      const qs = new URLSearchParams({ q });
+      const qs = new URLSearchParams({ query: q });
       if (owner.trim()) qs.set('owner', owner.trim());
       if (limit) qs.set('limit', String(limit));
       const r = await api('/api/skills/search?' + qs.toString(), { timeoutMs: 30000 });
@@ -171,7 +172,8 @@ export function RemotePage({ tick }) {
     } finally { setSearching(false); }
   });
 
-  // 导入前先「看清楚再确认」：--dry-run 拉预览（列名称/描述/版本），确认后才真导。
+  // 导入前先「看清楚再确认」：--dry-run 拉预览（列名称/描述/指纹），确认后才真导。
+  // 预览做成可选清单——只导勾中的那几个（不全导）。
   const confirmImport = (r) => guard(async () => {
     setImporting(r.source);
     let preview;
@@ -180,17 +182,37 @@ export function RemotePage({ tick }) {
         method: 'POST', body: { spec: r.source, 'dry-run': true }, timeoutMs: 300000,
       });
     } finally { setImporting(''); }
-    const list = (preview.skills || []).map((s) => `  · ${s.name} — ${(s.description || '').slice(0, 56)}`).join('\n');
-    const ok = await dialog({
-      title: `导入到远程订阅（${preview.count} 个 skill）`,
-      message: `来源: ${r.source}\n\n${list}\n\n拉取后进远程订阅仓库，之后可 migrate 到各平台。`,
-      okText: '导入',
-    });
-    if (!ok) return;
-    setImporting(r.source);
+    const skills = preview.skills || [];
+    setPreview({ source: r.source, skills, picked: new Set(skills.map((s) => s.name)) });
+  });
+
+  const togglePick = (name) => setPreview((p) => {
+    if (!p) return p;
+    const picked = new Set(p.picked);
+    picked.has(name) ? picked.delete(name) : picked.add(name);
+    return { ...p, picked };
+  });
+
+  // 真导：全选时一次整仓导；只选一部分时——**导一次再移除未选**。
+  // 为什么不逐个 name 导：importToRemote 每次调用都会重新拉一遍上游，
+  // 选 3 个导 3 次 = 克隆 3 次仓库。导 1 次 + 移除未选，终态一致、只拉一次。
+  const doImport = () => guard(async () => {
+    if (!preview) return;
+    const all = preview.skills.map((s) => s.name);
+    const picked = all.filter((n) => preview.picked.has(n));
+    const skipped = all.filter((n) => !preview.picked.has(n));
+    if (!picked.length) { toast('一个都没勾选'); return; }
+    setImporting(preview.source);
     try {
-      const res = await api('/api/skills/remote/import', { method: 'POST', body: { spec: r.source }, timeoutMs: 300000 });
-      toast(`已导入 ${res.count} 个: ${(res.imported || []).join(', ')}`);
+      const res = await api('/api/skills/remote/import', { method: 'POST', body: { spec: preview.source }, timeoutMs: 300000 });
+      const imported = res.imported || [];
+      for (const n of skipped) {
+        if (!imported.includes(n)) continue;
+        await api('/api/skills/remote/remove', { method: 'POST', body: { name: [n] }, timeoutMs: 30000 });
+      }
+      const kept = picked.filter((n) => imported.includes(n));
+      toast(`已导入 ${kept.length} 个: ${kept.join('、')}${skipped.length ? `（未勾选的 ${skipped.length} 个已移除）` : ''}`);
+      setPreview(null);
       await refresh();
     } finally { setImporting(''); }
   });
@@ -373,6 +395,30 @@ export function RemotePage({ tick }) {
       ) : null}
 
       <CliHints module="skills" only={['skill.hub.remote.', 'skill.hub.search', 'skill.hub.refresh']} />
+
+      {preview ? (
+        <Modal title={`导入到远程订阅 · ${preview.source}`} onClose={() => setPreview(null)}>
+          <div className="vlegend" style={{ padding: '0 0 8px' }}>
+            上游共 {preview.skills.length} 个 skill，勾选要导入的（默认全选）。没勾的不会留在容器里。
+          </div>
+          <div className="list" style={{ border: '1px solid var(--soft-2)', borderRadius: 6, maxHeight: 320, overflow: 'auto' }}>
+            {preview.skills.map((s) => (
+              <label key={s.name} className="row src-row">
+                <input type="checkbox" checked={preview.picked.has(s.name)} onChange={() => togglePick(s.name)} />
+                <span className="name" style={{ width: 190 }}>{s.name}</span>
+                <span className="desc" title={s.description || ''}>{(s.description || '').slice(0, 60) || '（无描述）'}</span>
+                <span className="tag mono" title="上游目录指纹">↑{String(s.hash || '').slice(0, 6)}</span>
+              </label>
+            ))}
+          </div>
+          <div className="dlg-acts">
+            <button className="btn ghost" onClick={() => setPreview(null)}>取消</button>
+            <button className="btn" disabled={!!importing || !preview.picked.size} onClick={doImport}>
+              {importing ? '导入中…' : `导入勾选的 ${preview.picked.size} 个`}
+            </button>
+          </div>
+        </Modal>
+      ) : null}
       {dlgNode}
     </>
   );
