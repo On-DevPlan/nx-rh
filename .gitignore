@@ -25,3 +25,6 @@ src/web/public/
 # Python 字节码（assets/rh-gitsync/scripts/ 的本地调试残留，不能进发布包）
 __pycache__/
 *.pyc
+
+# 兄弟项目 nx-kv 的本地 checkout（另一个仓库，不入库）
+nx-kv/
