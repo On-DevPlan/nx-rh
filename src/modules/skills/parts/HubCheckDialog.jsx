@@ -247,7 +247,7 @@ export function HubCheckDialog({ onClose }) {
                     <Copyable className="desc mono" text={p.path} title="点击复制路径">{p.path}</Copyable>
                     <span className="muted" style={{ fontSize: 12, flex: '0 1 220px', textAlign: 'right' }}>{p.reason}</span>
                     <span className="acts">
-                      <button className="btn small ghost" title="取消订阅该来源（订阅配置改动，不动磁盘）" onClick={() => removeSource(p.path)}>取消订阅</button>
+                      <button className="btn small danger-quiet" title="取消订阅该来源（订阅配置改动，不动磁盘）" onClick={() => removeSource(p.path)}>取消订阅</button>
                     </span>
                   </div>
                 ))}

@@ -243,7 +243,7 @@ export function SkillDetail({ name, tick }) {
                 {/* 链接行：可「转实体」物化 + 「撤销」摘指针；实体行本就是独立副本，只需「删除」 */}
                 {c.linkType ? <button className="btn small ghost" title="转成实体副本，不再随订阅源变化" onClick={() => materializeCell(c)}>转实体</button> : null}
                 <button
-                  className="btn small ghost"
+                  className={c.linkType ? 'btn small ghost' : 'btn small danger-quiet'}
                   title={c.linkType ? '撤销安装（订阅源不受影响）' : '删除这份实体副本——可能含本地改动，删除后不可恢复（Hub 里那份仍在）'}
                   onClick={() => toggleCell(c)}
                 >
@@ -291,7 +291,7 @@ export function SkillDetail({ name, tick }) {
                 <button className="btn" onClick={() => migrateScope('project')}>迁移 → 项目</button>
                 <button className="btn ghost" onClick={() => migrateScope('user')}>迁移 → 用户</button>
                 <button className="btn ghost" onClick={openEdit}>编辑</button>
-                <button className="btn ghost" title="只从订阅源下架，保留各平台安装位置" onClick={doRemove}>从订阅源删除</button>
+                <button className="btn danger-quiet" title="只从订阅源下架，保留各平台安装位置" onClick={doRemove}>从订阅源删除</button>
               </>}
           <button className="btn danger-quiet" title="所有安装位置 + 订阅源实文件一并删除" onClick={doPurge}>彻底删除…</button>
         </div>

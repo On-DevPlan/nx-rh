@@ -44,7 +44,7 @@ function RepoRow({ s, checked, busy, onToggle, onUpdate, onRemove, onLink }) {
         <span className="sc-mini" onClick={(e) => { e.stopPropagation(); onUpdate(s); }}>{busy ? '更新中…' : '更新'}</span>
       )}
       <span className="sc-mini" onClick={(e) => { e.stopPropagation(); onLink(s); }}>加软链…</span>
-      <span className="sc-mini" style={{ color: 'var(--bad,#c33)' }} onClick={(e) => { e.stopPropagation(); onRemove(s); }}>移除</span>
+      <span className="sc-mini danger" onClick={(e) => { e.stopPropagation(); onRemove(s); }}>移除</span>
     </SkillCard>
   );
 }
@@ -57,6 +57,7 @@ export function RemotePage({ tick }) {
   const sel = useSel();
   const [filter, setFilter] = useState('');        // 本列表的名称/描述过滤（与本地源同款）
   const hit = makeHit(filter);
+  const [prune, setPrune] = useState(false);       // 全部更新时顺带清理上游已删的僵尸条目
 
   const [hub, setHub] = useState(null);            // { dir, skills[] }
   const [err, setErr] = useState('');
@@ -97,9 +98,10 @@ export function RemotePage({ tick }) {
     if (busy) return;
     setBusy('*');
     try {
-      const res = await api('/api/skills/remote/update', { method: 'POST', body: {}, timeoutMs: 300000 });
+      const res = await api('/api/skills/remote/update', { method: 'POST', body: prune ? { prune: true } : {}, timeoutMs: 300000 });
       const changed = (res.results || []).filter((x) => x.status === 'updated').length;
-      toast(`已检查 ${(res.results || []).length} 个，${changed} 个有更新`);
+      const pruned = (res.results || []).filter((x) => x.status === 'removed').length;
+      toast(`已检查 ${(res.results || []).length} 个，${changed} 个有更新${pruned ? `，${pruned} 个上游已删${prune ? '并已清理' : '（Hub 里还留着）'}` : ''}`);
       await refresh();
     } finally { setBusy(''); }
   });
@@ -219,6 +221,10 @@ export function RemotePage({ tick }) {
               全选
             </label>
             <input className="search" placeholder="过滤名称 / 描述…" value={filter} spellCheck="false" onChange={(e) => setFilter(e.target.value)} />
+            <label className="chk-all" title="上游已删除的条目，一并从台账里清掉（--prune）">
+              <input type="checkbox" checked={prune} onChange={(e) => setPrune(e.target.checked)} />
+              清理上游已删
+            </label>
           </div>
         ) : seg === 'find' ? (
           <div className="tz-filter">

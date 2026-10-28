@@ -29,7 +29,7 @@ export function WorktreeTable({ worktrees, onOpen, onRebase, onRemove }) {
               {!w.isMain ? (
                 <>
                   <button className="btn small ghost" onClick={() => onRebase(w)}>rebase</button>
-                  <button className="btn small ghost" onClick={() => onRemove(w)}>删除</button>
+                  <button className="btn small danger-quiet" onClick={() => onRemove(w)}>删除</button>
                 </>
               ) : null}
             </td>
@@ -64,7 +64,7 @@ export function ExtTable({ items, isMain, onRemove }) {
               {it.mtime ? it.mtime.slice(0, 16).replace('T', ' ') : '-'}
             </td>
             <td className="ops" data-label="操作">
-              <button className="btn small ghost" onClick={() => onRemove(it)}>删除</button>
+              <button className="btn small danger-quiet" onClick={() => onRemove(it)}>删除</button>
             </td>
           </tr>
         )) : (

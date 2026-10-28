@@ -376,7 +376,7 @@ export function SkillSettingsDialog({ onClose }) {
       <span className="name mono" title={p} style={{ maxWidth: 260, overflow: 'hidden', textOverflow: 'ellipsis' }}>{p}</span>
       {kind === 'hub' && s.skillHubPath === p ? <span className="tag strong">主源</span> : null}
       <span className="acts">
-        <button className="btn small ghost" onClick={() => removeCandidate(kind, p)}>移除</button>
+        <button className="btn small danger-quiet" onClick={() => removeCandidate(kind, p)}>移除</button>
       </span>
     </div>
   )) : <div className="row muted">（暂无）</div>;

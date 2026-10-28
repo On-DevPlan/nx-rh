@@ -59,7 +59,7 @@ function VarQuadrant({ scope, values, shadowMap, writable, busy, onEdit, onDelet
                 : sh?.duplicate ? <span className="tag" title="两个 scope 都有且值相同">相同</span> : null}
               <span className="acts">
                 <button className="btn small ghost" disabled={busy || !canWrite} title={canWrite ? '编辑' : '需要管理员身份'} onClick={() => onEdit(v)}>编辑</button>
-                <button className="btn small ghost" disabled={busy || !canWrite} title={canWrite ? '删除' : '需要管理员身份'} onClick={() => onDelete(v)}>删除</button>
+                <button className="btn small danger-quiet" disabled={busy || !canWrite} title={canWrite ? '删除' : '需要管理员身份'} onClick={() => onDelete(v)}>删除</button>
               </span>
             </div>
           );
@@ -84,7 +84,7 @@ function PathQuadrant({ scope, entries, writable, busy, onRemove, onAdd, onAddTe
             <Copyable className="desc mono" text={p.path}>{truncate(p.path)}</Copyable>
             {p.duplicate ? <span className="tag" title="与另一条目重复">重复</span> : null}
             <span className="acts">
-              <button className="btn small ghost" disabled={busy || !canWrite} title={canWrite ? '从 PATH 移除' : '需要管理员身份'} onClick={() => onRemove(p.path)}>移除</button>
+              <button className="btn small danger-quiet" disabled={busy || !canWrite} title={canWrite ? '从 PATH 移除' : '需要管理员身份'} onClick={() => onRemove(p.path)}>移除</button>
             </span>
           </div>
         )) : <div className="row muted">（{SCOPE_LABEL[scope]} PATH 为空）</div>}

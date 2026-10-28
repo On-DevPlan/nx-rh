@@ -965,6 +965,9 @@ textarea.dlg-input:focus { outline: none; border-color: var(--mid); box-shadow: 
   padding: 1px 6px; background: var(--soft); cursor: pointer;
 }
 .skl-card .sc-mini:hover { border-color: var(--mid); color: var(--ink); }
+/* 行内破坏性动作：描边红字（不用内联样式，与 .btn.danger-quiet 同一语言） */
+.skl-card .sc-mini.danger { background: var(--paper); color: #b3261e; border-color: #e0b6b3; }
+.skl-card .sc-mini.danger:hover { background: var(--soft); color: #b3261e; border-color: #b3261e; }
 
 /* 详情页：文件预览收进可折叠块（页面主体先给安装状态与操作） */
 .skl-files-wrap { margin: 14px 0 4px; }
