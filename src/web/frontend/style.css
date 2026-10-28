@@ -147,18 +147,14 @@ main { padding: 14px 24px 28px; max-width: none; }
 .panel { display: none; }
 .panel.active { display: block; }
 
-/* ---------- 工具栏 ---------- */
-.toolbar { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-bottom: 10px; }
-.toolbar label { color: var(--mid); }
 .sep { width: 1px; height: 16px; background: var(--soft-2); margin: 0 4px; }
 .grow { flex: 1 1 220px; max-width: 340px; min-width: 160px; }
-.toolbar .search { flex: 1 1 240px; max-width: 460px; }
 
 /* ---------- 统一工具区：每页一条、位置固定（标题带正下方） ----------
    骨架：crumbs（仅子页）→ 标题带（不放按钮）→ .toolzone → 内容。
    左起：← 返回（子页）· 分隔线 · 过滤/搜索/全选；右侧动作组，唯一实心主按钮最右。
    多区段页的过滤组与主按钮随区段切换（位置不动内容换）。
-   过渡期与旧 .toolbar 共存（R2 起 JSX 逐步迁入，迁完后再评估移除旧类）。 */
+   旧 .toolbar 体系已随 R2 的 JSX 迁移完成清退（R6）。 */
 .toolzone { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; padding: 6px 10px; background: var(--soft); border-radius: var(--radius-btn); margin: 0 0 12px; }
 .toolzone .tz-filter { display: flex; gap: 8px; align-items: center; flex: 1 1 240px; min-width: 0; flex-wrap: wrap; }
 .toolzone .tz-filter[hidden] { display: none; }
@@ -180,59 +176,6 @@ main { padding: 14px 24px 28px; max-width: none; }
 }
 .seg .sg:hover { color: var(--ink); }
 .seg .sg.on { background: var(--paper); color: var(--ink); font-weight: 600; box-shadow: var(--shadow-relief); }
-
-/* 订阅源子页：全选勾选（作用于当前过滤结果） */
-.toolbar .chk-all {
-  display: inline-flex; align-items: center; gap: 6px;
-  white-space: nowrap; cursor: pointer; user-select: none;
-}
-
-/* 选中之后才出现的操作条 */
-.toolbar.bulk {
-  background: var(--soft);
-  border-radius: var(--radius-btn);
-  padding: 6px 10px;
-  margin: 2px 0 10px;
-}
-
-/* 工具栏里的「设置」浮层 */
-.tb-set { position: relative; font-size: 12px; }
-.tb-set > summary {
-  cursor: pointer;
-  user-select: none;
-  list-style: none;
-  color: var(--mid);
-  height: var(--btn-h);
-  display: inline-flex;
-  align-items: center;
-  gap: 5px;
-  padding: 0 10px;
-  border-radius: var(--radius-btn);
-}
-.tb-set > summary::-webkit-details-marker { display: none; }
-.tb-set > summary::after { content: '▸'; font-size: 10px; }
-.tb-set[open] > summary::after { content: '▾'; }
-.tb-set > summary:hover { color: var(--ink); background: var(--soft); }
-.tb-set[open] > summary { color: var(--ink); background: var(--soft); }
-.tb-set-box {
-  position: absolute;
-  right: 0;
-  top: calc(100% + 6px);
-  z-index: 30;
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-  min-width: 400px;
-  padding: 12px 14px;
-  background: var(--paper);
-  border: 1px solid var(--soft-2);
-  border-radius: 8px;
-  box-shadow: var(--shadow-pop);
-}
-.tb-set-box .row-inline > label { flex: 0 0 66px; color: var(--mid); }
-.tb-set-box .row-inline > select { flex: 1; min-width: 0; }
-
-
 
 /* ---------- skill 查看器：左文件树 / 右内容 ---------- */
 .skl-files {
@@ -472,7 +415,6 @@ input:focus, select:focus {
   margin-bottom: 14px;
   overflow: hidden;
 }
-.card.hidden { display: none; }
 .colhead {
   display: flex;
   align-items: center;
@@ -545,7 +487,6 @@ input:focus, select:focus {
 .row .acts { margin-left: auto; display: flex; align-items: center; gap: 6px; flex-shrink: 0; }
 
 /* 未入 Hub 扁平行的位置摘要 */
-.orphan-loc { flex: 0 1 auto; min-width: 0; color: var(--mid); font-size: 11px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
 /* ---------- pill / tag ---------- */
 .plats { display: flex; gap: 4px; flex-wrap: wrap; }
@@ -667,7 +608,6 @@ dd .adapter-dir { display: inline-block; margin: 2px 16px 2px 0; }
   z-index: 40;
   overflow: auto;
 }
-.modal.hidden { display: none; }
 .modal-box {
   background: var(--paper);
   border-radius: var(--radius-btn);
@@ -718,54 +658,10 @@ pre {
 /* diff 行内高亮 */
 .d-add { color: #1a7f37; background: rgba(46,160,67,.08); }
 .d-del { color: #b3261e; background: rgba(179,38,30,.08); text-decoration: line-through; }
-.conflict-file { background: rgba(179,38,30,.10); font-weight: 600; }
-
-/* ---------- env 页 ---------- */
-.row.vrow { gap: 8px; }
-.row.vrow .name { flex: 0 0 190px; width: 190px; }
-.row.vrow .desc { font-size: 11px; }
-.row.vrow.open { background: var(--soft); border-bottom: 0; }
-
-.vcaret {
-  flex: 0 0 14px;
-  width: 14px;
-  padding: 0;
-  border: 0;
-  background: none;
-  font: inherit;
-  font-size: 10px;
-  line-height: 1;
-  color: var(--mid);
-  cursor: pointer;
-}
-.vcaret:hover { color: var(--ink); }
-
-.vsub {
-  padding: 6px 12px 10px;
-  background: var(--soft);
-  border-bottom: var(--border);
-}
-.vsub .vnote { font-size: 11px; margin-bottom: 3px; }
-.vsub .vadd { margin-top: 10px; }
 
 .vlegend { padding: 8px 12px; font-size: 11px; line-height: 1.7; color: var(--mid); }
 
-.vfield {
-  display: flex;
-  align-items: baseline;
-  gap: 8px;
-  min-height: 24px;
-  padding: 3px 0;
-}
-.vfield .idx { flex: 0 0 auto; color: var(--mid); font-size: 11px; }
-.vfield .kind { flex: 0 0 auto; font-size: 11px; }
-.vfield .val { flex: 1; min-width: 0; font-size: 11px; white-space: pre-wrap; word-break: break-word; }
-.vfield .acts { margin-left: auto; display: flex; gap: 6px; flex-shrink: 0; align-self: center; }
-
 .row .name.snpid { flex: 0 0 220px; width: 220px; }
-
-.row.vrow.readonly .name { font-weight: 400; color: var(--mid); }
-.row.vrow.readonly .desc { opacity: 0.8; }
 
 textarea.dlg-input {
   height: auto;
@@ -804,9 +700,6 @@ textarea.dlg-input:focus { outline: none; border-color: var(--mid); box-shadow: 
   .page-head .acts { width: 100%; }
   .page-head .acts .btn { flex: 1; }
 
-  .toolbar { gap: 8px; }
-  .toolbar .grow, .toolbar .search { flex: 1 1 100%; max-width: none; }
-  .tb-set-box { min-width: min(360px, 92vw); }
 
   /* skill 文件树转纵向 */
   .skl-files { grid-template: none; display: flex; flex-direction: column; }
@@ -820,7 +713,7 @@ textarea.dlg-input:focus { outline: none; border-color: var(--mid); box-shadow: 
   }
 
   /* 列表行：名称宽度放开，描述换行 */
-  .row.skl .name, .row.vrow .name { width: auto; flex: 0 0 auto; }
+  .row.skl .name { width: auto; flex: 0 0 auto; }
   .row.skl { flex-wrap: wrap; }
   .row.skl .desc { flex: 1 1 100%; order: 5; }
   .row.skl .acts { opacity: 1; }
