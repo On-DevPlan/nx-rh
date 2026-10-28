@@ -69,7 +69,7 @@ export function SkillEditor({ mode, skill = {}, close, reload }) {
 
 // 收进订阅源：选源弹窗（submit 的目标源可挑，缺省主源）
 export function SubmitIntoDialog({ names, onClose, onDone }) {
-  const { boot, refreshBoot } = useStore();
+  const { boot, afterWrite } = useStore();
   const toast = useToast();
   const guard = useGuard();
   const { dialog, node: dlgNode } = useDialog();
@@ -96,7 +96,7 @@ export function SubmitIntoDialog({ names, onClose, onDone }) {
         r = await api('/api/skills/submit', { method: 'POST', body: { name: names, to: 'all', platform: 'all', into, force: true } });
       }
       toast(`已收进 ${srcLabel(into)}（${r.submitted} 个，跳过 ${r.skipped}）`);
-      await refreshBoot();
+      await afterWrite();
       onDone();
     } finally {
       setBusy(false);
@@ -132,6 +132,7 @@ export function MigrateToDialog({ names, to, boot, onClose, onDone }) {
   const single = names.length === 1;
   const toast = useToast();
   const guard = useGuard();
+  const { afterWrite } = useStore();
   const settings = boot?.settings || {};
   const adapters = boot?.adapters || [];
   const enabledIds = settings.platforms?.length ? settings.platforms : ['claude-code'];
@@ -164,6 +165,9 @@ export function MigrateToDialog({ names, to, boot, onClose, onDone }) {
         }
       }
       if (done.length) toast(`已迁移到${to === 'user' ? '用户' : '项目'}级：${done.join('、')}`);
+      // 迁移改的是「各平台目录里有什么」：订阅源页的安装数、总览的平台统计、
+      // 详情页的安装矩阵全都要重拉一遍（统一广播，调用方不必各自 reload）
+      await afterWrite();
       onDone();
     } finally {
       setBusy(false);
@@ -209,6 +213,7 @@ export function MigrateToDialog({ names, to, boot, onClose, onDone }) {
 export function BatchPurgeDialog({ names, onClose, onDone }) {
   const toast = useToast();
   const guard = useGuard();
+  const { afterWrite, dropSel } = useStore();
   const [pending, setPending] = useState(names); // 还没删掉的（部分完成后收窄）
   const [plan, setPlan] = useState(null);        // dry-run 结果：{ results:[…] } 或 { error }
   const [force, setForce] = useState(false);
@@ -238,6 +243,11 @@ export function BatchPurgeDialog({ names, onClose, onDone }) {
       const rs = r.results || [r];
       const doneN = rs.filter((x) => x.status === 'ok' && !x.dryRun).length;
       const restNames = rs.filter((x) => x.status !== 'ok' || x.dryRun).map((x) => x.name);
+      // 删掉的那些名字要从持久化勾选里摘掉（否则批量按钮按旧勾选亮着，点下去剩空集），
+      // 并广播失效让列表 / 统计重拉。部分完成时也照样广播——已删的确实不在了。
+      const goneNames = pending.filter((n) => !restNames.includes(n));
+      if (goneNames.length) dropSel(goneNames);
+      await afterWrite();
       if (!restNames.length) {
         toast(`已彻底删除 ${doneN + purgedN} 个 skill`);
         onDone();
@@ -316,21 +326,32 @@ export function BatchPurgeDialog({ names, onClose, onDone }) {
 // Skill 域设置的完整弹窗：订阅源 / 项目目录候选 / 迁移形态 / 默认平台 / 平台范围。
 // 从「设置」页整体迁入——这些项只在 Skill 页里被用到，就地可改才是它们的场景；
 // 设置页不再保留重复块（flat 单一入口，避免两处漂移）。
-export function SkillSettingsDialog({ onClose }) {
-  const { boot, patchUi, refreshBoot } = useStore();
+//
+// settings 入参：调用方把 /api/skills 载荷里的 settings 传进来（30ms 级）。bootstrap
+// 带着 worktrees 聚合（大仓实测 11s），平台范围这类开关若只认 boot，点完要等十秒才见变化。
+export function SkillSettingsDialog({ onClose, settings: liveSettings }) {
+  const { boot, patchUi, afterWrite } = useStore();
   const toast = useToast();
   const guard = useGuard();
   const { dialog, node: dlgNode } = useDialog();
   const [hubInput, setHubInput] = useState('');
   const [projectInput, setProjectInput] = useState('');
 
-  const s = boot?.settings || {};
+  // 平台范围 / 默认平台 / 迁移形态优先用快数据，其余（订阅源候选、项目候选）只有 boot 有
+  const s = {
+    ...(boot?.settings || {}),
+    ...(liveSettings?.platforms ? { platforms: liveSettings.platforms } : {}),
+    ...(liveSettings?.defaultPlatform ? { defaultPlatform: liveSettings.defaultPlatform } : {}),
+    ...(liveSettings?.syncMode ? { skillSyncMode: liveSettings.syncMode } : {}),
+  };
   const adapters = boot?.adapters || [];
   const scope = new Set(s.platforms || []);
 
   const patch = (body) => guard(async () => {
     await api('/api/settings', { method: 'POST', body });
-    await refreshBoot();
+    // 本弹窗浮在总览页上方：写完后总览的平台卡片（启用状态 / 默认 / 统计数）
+    // 必须立刻跟着变，否则关掉弹窗看到的还是旧画面（这正是「非 F5 不可见」的来源）
+    await afterWrite();
   });
 
   const addSource = () => guard(async () => {
@@ -339,7 +360,7 @@ export function SkillSettingsDialog({ onClose }) {
     await api('/api/skills/sources', { method: 'POST', body: { path: p } });
     setHubInput('');
     patchUi({ source: '' });
-    await refreshBoot();
+    await afterWrite();
   });
 
   const addProject = () => guard(async () => {
@@ -347,7 +368,7 @@ export function SkillSettingsDialog({ onClose }) {
     if (!p) { toast('请输入项目根目录'); return; }
     await api('/api/skills/project', { method: 'POST', body: { path: p } });
     setProjectInput('');
-    await refreshBoot();
+    await afterWrite();
   });
 
   const removeCandidate = (kind, p) => guard(async () => {
@@ -355,7 +376,7 @@ export function SkillSettingsDialog({ onClose }) {
     if (!ok) return;
     await api(kind === 'hub' ? '/api/skills/sources' : '/api/skills/project', { method: 'DELETE', body: { path: p } });
     if (kind === 'hub' && s.skillHubPath === p) patchUi({ source: '' });
-    await refreshBoot();
+    await afterWrite();
   });
 
   const togglePlatform = (id) => {

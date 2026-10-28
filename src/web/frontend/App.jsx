@@ -13,16 +13,17 @@ function viewFromHash() {
 }
 
 export default function App() {
-  const { boot, ui, patchUi, switchScope, registerDir, scopeTick, refreshBoot } = useStore();
+  const { boot, ui, patchUi, switchScope, registerDir, scopeTick, afterWrite } = useStore();
   const { toast } = useToast();
   const { dialog, node: dlgNode } = useDialog();
 
-  // 窗口聚焦时刷新 bootstrap：别的终端跑 nx-rh serve 登记了新目录，这里能看到
+  // 窗口重新可见时做一次「写后失效」：别的终端跑了 CLI 命令（或起了另一个 serve 登记目录），
+  // 回到面板应当即可见——这是「写操作后不刷新」在跨来源场景下的同一修法。
   useEffect(() => {
-    const onVis = () => { if (document.visibilityState === 'visible') refreshBoot().catch(() => {}); };
+    const onVis = () => { if (document.visibilityState === 'visible') afterWrite().catch(() => {}); };
     document.addEventListener('visibilitychange', onVis);
     return () => document.removeEventListener('visibilitychange', onVis);
-  }, [refreshBoot]);
+  }, [afterWrite]);
 
   // 初始进入：hash 优先，否则用持久化的上次视图
   useEffect(() => {

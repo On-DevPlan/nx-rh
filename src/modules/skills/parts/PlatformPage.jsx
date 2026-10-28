@@ -8,15 +8,19 @@ import { SubmitIntoDialog } from './dialogs.jsx';
 import { goOverview, goSkill } from './routes.js';
 
 export function PlatformPage({ platformId, tick }) {
-  const { data, reload } = useSkillsData({ platform: platformId }, tick);
-  const { boot, patchUi, toggleSel, refreshBoot } = useStore();
+  // 数据刷新由 useSkillsData 内部订阅 store 的 dataEpoch 完成，本页不再持 reload
+  const { data } = useSkillsData({ platform: platformId }, tick);
+  const { boot, patchUi, toggleSel, afterWrite } = useStore();
   const toast = useToast();
   const guard = useGuard();
   const { node: dialogNode } = useDialog();
   const [q, setQ] = useState('');
   const [submitNames, setSubmitNames] = useState(null);
 
-  const settings = boot?.settings || {};
+  // 平台范围优先读 /api/skills 载荷里的 settings（30ms 级），boot 兜底：
+  // bootstrap 带了 worktrees 聚合，在有多工作树的大仓上要十秒级——开关平台时
+  // 「按钮文案 / 启用标签」不该等它。data.settings 与 boot.settings 是同一份 store 的投影。
+  const settings = { ...(boot?.settings || {}), ...(data?.settings || {}) };
   const enabled = (settings.platforms || []).includes(platformId);
   const sel = useSel();
   const hit = makeHit(q);
@@ -38,7 +42,9 @@ export function PlatformPage({ platformId, tick }) {
       if (!def) def = platformId;
     }
     await api('/api/settings', { method: 'POST', body: { platforms: next, defaultPlatform: def } });
-    await refreshBoot();
+    // 平台范围变了：本页的启用标签、总览页的平台卡片（enabled / isDefault）
+    // 与各平台的 skill 统计都要跟着变——写后统一广播，别只刷 boot
+    await afterWrite();
   });
 
   const platName = ((boot?.adapters || []).find((a) => a.id === platformId) || {}).name || platformId;
@@ -110,7 +116,7 @@ export function PlatformPage({ platformId, tick }) {
         <SubmitIntoDialog
           names={submitNames}
           onClose={() => setSubmitNames(null)}
-          onDone={async () => { setSubmitNames(null); patchUi({ selSkills: [] }); await reload(); }}
+          onDone={async () => { setSubmitNames(null); patchUi({ selSkills: [] }); }}
         />
       ) : null}
       {dialogNode}

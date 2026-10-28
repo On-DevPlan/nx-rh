@@ -48,6 +48,46 @@ export function StoreProvider({ children }) {
     return b;
   }, []);
 
+  // ─── 写后失效：一处广播，全画面重拉 ────────────────────────────────
+  // 改造前的缺口：每个写操作各自决定刷新范围（多数只 refreshBoot 或只 reload 当前页），
+  // 于是「在平台范围里停用一个平台」之后，总览页的平台卡片仍是「已启用」；
+  // 「从订阅源迁移若干 skill」回总览，平台统计数还是旧的——非 F5 不可见。
+  //
+  // 数据纪元（dataEpoch）：任何写操作成功后自增。所有「按需拉 /api 数据」的钩子把它
+  // 放进 effect 依赖，纪元一变就重拉——谁需要刷新不再靠调用方逐个记得，而是统一广播。
+  // 只放在内存里（不落 localStorage）：它是「数据版本」，不是用户选择。
+  const [dataEpoch, setDataEpoch] = useState(0);
+
+  const invalidate = useCallback(() => setDataEpoch((n) => n + 1), []);
+
+  // 写操作成功后的唯一收尾：先广播失效，再把 bootstrap 放到后台（延迟一点）重拉。
+  //
+  // 两个约束叠在一起，决定了这里的顺序与延迟：
+  //  1. bootstrap 带着 worktrees 聚合，本机实测 11.3s（其中 /api/wt/context 9.8s），
+  //     而且它是**事件循环阻塞**式的——它跑的时候连 /api/health 都要等 11s。
+  //     各视图真正需要的数据（/api/skills、/api/skills/detail…）只有几十毫秒。
+  //  2. 所以先让写操作自己的提示和视图重拉走完（纪元同步 +1、数据请求先发出去），
+  //     再延迟 300ms 放 bootstrap 出去；否则它会把后面所有请求堵在服务端。
+  // 300ms 是「数据请求已发出且本机都答完了」的经验值，不为省流量，只为不被堵。
+  const afterWrite = useCallback(() => {
+    setDataEpoch((n) => n + 1);
+    setTimeout(() => {
+      refreshBoot().catch(() => { /* 后台补数据失败不该影响本次写操作的结果提示 */ });
+    }, 300);
+  }, [refreshBoot]);
+
+  // 数据里已经不存在的名字要从「持久化勾选」里摘掉，否则批量按钮会凭空亮着
+  // （「已选 3」但三项都删了，点下去什么都不剩）。只在删除类操作里按名字精确摘，
+  // 不做「全量重投影」——勾选可以跨页携带，用某一页的数据全集去修剪会误删。
+  const dropSel = useCallback((names) => {
+    const gone = new Set(names || []);
+    if (!gone.size) return;
+    setUi((u) => {
+      const next = u.selSkills.filter((n) => !gone.has(n));
+      return next.length === u.selSkills.length ? u : { ...u, selSkills: next };
+    });
+  }, []);
+
   const refreshBundled = useCallback(async () => {
     setBundled(await api('/api/bundled').catch(() => null));
   }, []);
@@ -95,8 +135,13 @@ export function StoreProvider({ children }) {
   }, []);
 
   const value = useMemo(
-    () => ({ boot, bundled, ui, patchUi, toggleSel, refreshBoot, refreshBundled, switchScope, registerDir, scopeTick }),
-    [boot, bundled, ui, patchUi, toggleSel, refreshBoot, refreshBundled, switchScope, registerDir, scopeTick]
+    () => ({
+      boot, bundled, ui, patchUi, toggleSel, refreshBoot, refreshBundled, switchScope, registerDir, scopeTick,
+      // 写后失效三件套（见上方注释）：dataEpoch 当 effect 依赖，afterWrite 写后收尾，dropSel 修剪勾选
+      dataEpoch, invalidate, afterWrite, dropSel,
+    }),
+    [boot, bundled, ui, patchUi, toggleSel, refreshBoot, refreshBundled, switchScope, registerDir, scopeTick,
+      dataEpoch, invalidate, afterWrite, dropSel]
   );
   return <StoreCtx.Provider value={value}>{children}</StoreCtx.Provider>;
 }

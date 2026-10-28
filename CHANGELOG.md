@@ -39,6 +39,23 @@
 - **submit 落入远程订阅写台账**：`skill submit --into <远程订阅>` 收进的 skill 现在登记进
   版本台账（此前裸拷，`remote list` 显示为手写定义、update 对它失明）。
 
+### Fixed
+
+- **面板写操作后界面不自动刷新（必须 F5）**。根因是「写完谁该重拉」全靠各处调用方自觉：
+  多数写操作只刷 `bootstrap` 或只 `reload()` 当前页，于是平台范围开关后总览卡片仍是「已启用」、
+  迁移 / 收进 / 彻底删除后统计数与安装矩阵仍是旧值、订阅新目录时当前 hash 不变而网格不出新卡。
+  现在 store 提供统一的**写后失效广播**（`dataEpoch` + `afterWrite` / `invalidate`）：
+  写操作成功即自增纪元，所有按需拉 `/api` 数据的钩子把它当 effect 依赖，一次广播全画面重拉；
+  删除类操作同时把已消失的名字从持久化勾选里摘掉（`dropSel`），批量按钮不再按幽灵勾选亮着。
+  实测（真面板 + 无头 Chrome，CDP 驱动）：平台范围开关 118ms、订阅新目录 338ms、
+  迁移到平台 104ms 内界面自更新，全程不按 F5。新增护栏 `tests/unit/view-refresh.test.mjs`
+  断言「视图层不再直接调 refreshBoot」「数据钩子订阅纪元」「skills 模块的写请求都有 afterWrite 收尾」。
+- **写后刷新不再被 `bootstrap` 拖住**：`/api/bootstrap` 带着 worktrees 聚合，本机实测 11.3s
+  （其中 `/api/wt/context` 9.8s）且是事件循环阻塞式的——它跑的时候连 `/api/health` 都要等 11s。
+  写后收尾因此改为「先广播、数据请求先发出去，`bootstrap` 延迟 300ms 再后台补」，
+  平台范围 / 默认平台 / 迁移形态这些界面优先读 `/api/skills` 载荷里的 settings（30ms 级），
+  不再等 boot。（bootstrap 自身的 11s 是独立的后端性能问题，另案处理。）
+
 ## [0.17.1] - 2026-10-25
 
 ### Changed

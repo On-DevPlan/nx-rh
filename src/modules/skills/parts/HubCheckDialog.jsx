@@ -1,4 +1,4 @@
-// 检查订阅源：跨源实文件重复与冲突（GET /api/skills/hub-check 的弹窗形态）。
+﻿// 检查订阅源：跨源实文件重复与冲突（GET /api/skills/hub-check 的弹窗形态）。
 // 报告 + 就地收敛：
 //   · 来源配置问题（缺目录/空源/嵌套/重复根）→ 取消订阅（配置层动作）
 //   · 跨源冲突 / 重复订阅 → 逐条「以此为准…」唯一化（POST /api/skills/dedupe）：
@@ -38,7 +38,7 @@ export function HubCheckDialog({ onClose }) {
     return () => { alive = false; };
   }, [tick]);
 
-  const { refreshBoot } = useStore();
+  const { afterWrite } = useStore();
   const toast = useToast();
   const guard = useGuard();
   const { dialog, node: dlgNode } = useDialog();
@@ -54,7 +54,7 @@ export function HubCheckDialog({ onClose }) {
     if (!ok) return;
     await api('/api/skills/sources', { method: 'DELETE', body: { path } });
     toast('已取消订阅');
-    await refreshBoot();
+    await afterWrite();
     setTick((t) => t + 1); // 重查本弹窗
   });
 
@@ -72,7 +72,7 @@ export function HubCheckDialog({ onClose }) {
       const n = r.linked.length + r.removed.length;
       toast(`已唯一化 ${resolve.name}：其余 ${n} 份${as === 'link' ? '已转链接' : '已删除'}${r.removed.some((x) => x.degraded) ? '（其中 1 处建链失败，已回填副本）' : ''}`);
       setResolve(null);
-      await refreshBoot();
+      await afterWrite();
       setTick((t) => t + 1); // 重查，该组应从冲突/重复里消失
     } finally {
       setBusy(false);
@@ -123,7 +123,7 @@ export function HubCheckDialog({ onClose }) {
       toast(`已唯一化 ${r.totals.groups} 组：其余 ${r.totals.linked + r.totals.removed} 处已转软链接`
         + (r.totals.skipped ? `，跳过 ${r.totals.skipped} 处（与准份同一实体）` : '')
         + (r.totals.degraded ? `，${r.totals.degraded} 处建链失败已回填副本` : ''));
-      await refreshBoot();
+      await afterWrite();
       setTick((t) => t + 1); // 重查，这些组应从冲突/重复里消失
     } finally {
       setBusy(false);

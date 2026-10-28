@@ -8,8 +8,9 @@ import { MigrateToDialog, BatchPurgeDialog } from './dialogs.jsx';
 import { goOverview, goSkill } from './routes.js';
 
 export function HubPage({ hubPath, tick }) {
-  const { data, reload } = useSkillsData({ source: hubPath }, tick);
-  const { boot, patchUi, toggleSel, refreshBoot } = useStore();
+  // 数据刷新由 useSkillsData 内部订阅 store 的 dataEpoch 完成，本页不再持 reload
+  const { data } = useSkillsData({ source: hubPath }, tick);
+  const { boot, patchUi, toggleSel, afterWrite } = useStore();
   const toast = useToast();
   const guard = useGuard();
   const [q, setQ] = useState('');
@@ -44,7 +45,8 @@ export function HubPage({ hubPath, tick }) {
 
   const makeMain = () => guard(async () => {
     await api('/api/skills/sources', { method: 'POST', body: { path: hubPath } });
-    await refreshBoot();
+    // 主源变化会改「哪个源是当前源」：本页徽标、总览卡片、各 skill 的 current 标记都要跟着变
+    await afterWrite();
     toast('已设为主源');
   });
 
@@ -108,7 +110,7 @@ export function HubPage({ hubPath, tick }) {
           to={migrateTo}
           boot={boot}
           onClose={() => setMigrateTo(null)}
-          onDone={async () => { setMigrateTo(null); patchUi({ selSkills: [] }); await reload(); }}
+          onDone={async () => { setMigrateTo(null); patchUi({ selSkills: [] }); }}
         />
       ) : null}
 
@@ -116,7 +118,7 @@ export function HubPage({ hubPath, tick }) {
         <BatchPurgeDialog
           names={checked}
           onClose={() => setPurgeOpen(false)}
-          onDone={async () => { setPurgeOpen(false); patchUi({ selSkills: [] }); await reload(); refreshBoot(); }}
+          onDone={async () => { setPurgeOpen(false); patchUi({ selSkills: [] }); await afterWrite(); }}
         />
       ) : null}
     </>

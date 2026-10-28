@@ -15,8 +15,12 @@ export function shortLabel(adapterId, adapters) {
 export const makeHit = (q) => (n, d) => !q || `${n} ${d || ''}`.toLowerCase().includes(q.toLowerCase());
 
 // 订阅源 + 平台维度的一份默认数据（总览、平台子页、订阅源子页共用）
+//
+// 刷新由两处驱动：局部 tick（本页需要强制重拉时用）与 store 的 dataEpoch
+// （任何写操作成功后的全局广播）。旧的写法只认 tick，于是「在 A 页写、
+// B 页的数据要跟着变」必须靠每一处调用方自觉——漏一处就是必须按 F5 的老毛病。
 export function useSkillsData({ platform, source }, tick) {
-  const { ui } = useStore();
+  const { ui, dataEpoch } = useStore();
   const project = ui.activeScope?.path || '';
   const load = useCallback(async () => {
     const qs = new URLSearchParams();
@@ -27,7 +31,7 @@ export function useSkillsData({ platform, source }, tick) {
   }, [project, platform, source]);
 
   const [data, setData] = useState(null);
-  useEffect(() => { let alive = true; load().then((d) => { if (alive) setData(d); }); return () => { alive = false; }; }, [load, tick]);
+  useEffect(() => { let alive = true; load().then((d) => { if (alive) setData(d); }); return () => { alive = false; }; }, [load, tick, dataEpoch]);
   return { data, reload: load, setData };
 }
 

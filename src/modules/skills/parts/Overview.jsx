@@ -1,6 +1,7 @@
 // ① 总览页：订阅源入口 + 当前项目入口 + 全部平台入口 + Skill 设置。
 import { useState } from 'react';
 import { api } from '../../../web/frontend/api/client.js';
+import { useStore } from '../../../web/frontend/store.jsx';
 import { useGuard, useDialog } from '../../../web/frontend/components/ui.jsx';
 import { CliHints } from '../../../web/frontend/components/CliHints.jsx';
 import { sourceLabel, lastSeg } from './shared.jsx';
@@ -10,6 +11,7 @@ import { HubCheckDialog } from './HubCheckDialog.jsx';
 
 export function Overview({ data, openCreate }) {
   const guard = useGuard();
+  const { afterWrite } = useStore();
   const { dialog, node: dialogNode } = useDialog();
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [checkOpen, setCheckOpen] = useState(false);
@@ -26,6 +28,9 @@ export function Overview({ data, openCreate }) {
     });
     if (!p) return;
     await api('/api/skills/sources', { method: 'POST', body: { path: p }, timeoutMs: 120000 });
+    // 原来只 goOverview()——但当前已经在 #/skills，hash 不变就不触发路由事件，
+    // 新订阅源不出现在网格里，看起来像「点了没反应」。写后广播才是正解。
+    await afterWrite();
     goOverview();
   });
 
@@ -132,7 +137,7 @@ export function Overview({ data, openCreate }) {
       </div>
 
       <CliHints module="skills" />
-      {settingsOpen ? <SkillSettingsDialog onClose={() => setSettingsOpen(false)} /> : null}
+      {settingsOpen ? <SkillSettingsDialog onClose={() => setSettingsOpen(false)} settings={data?.settings} /> : null}
       {checkOpen ? <HubCheckDialog onClose={() => setCheckOpen(false)} /> : null}
       {dialogNode}
     </>

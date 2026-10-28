@@ -50,7 +50,7 @@ function RepoRow({ s, checked, busy, onToggle, onUpdate, onRemove, onLink }) {
 }
 
 export function RemotePage({ tick }) {
-  const { patchUi, refreshBoot } = useStore();
+  const { patchUi, afterWrite, dataEpoch } = useStore();
   const toast = useToast();
   const guard = useGuard();
   const { dialog, node: dlgNode } = useDialog();
@@ -76,9 +76,11 @@ export function RemotePage({ tick }) {
     if (!d) setErr('读取失败');
   }, []);
 
-  useEffect(() => { let alive = true; load().then(() => { if (!alive) return; }); return () => { alive = false; }; }, [load, tick]);
+  // tick 用于本页强制重查；dataEpoch 是写后全局广播（store「写后失效」）
+  useEffect(() => { let alive = true; load().then(() => { if (!alive) return; }); return () => { alive = false; }; }, [load, tick, dataEpoch]);
 
-  const refresh = async () => { await load(); await refreshBoot(); };
+  // 写后统一收尾：广播失效（本页列表随 dataEpoch 重拉）+ 重拉 bootstrap
+  const refresh = async () => { await afterWrite(); };
 
   // ---- 更新：按来源重拉，指纹变了才换 ----
   const updateOne = (s) => guard(async () => {

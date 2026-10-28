@@ -9,7 +9,7 @@ import { SubmitIntoDialog } from './dialogs.jsx';
 import { goOverview, goSkill } from './routes.js';
 
 function useProjectSkills(tick) {
-  const { ui } = useStore();
+  const { ui, dataEpoch } = useStore();
   const project = ui.activeScope?.path || '';
   const load = useCallback(async () => {
     const qs = new URLSearchParams();
@@ -17,12 +17,13 @@ function useProjectSkills(tick) {
     return await api('/api/skills/project-skills?' + qs.toString()).catch(() => null);
   }, [project]);
   const [data, setData] = useState(null);
-  useEffect(() => { let alive = true; load().then((d) => { if (alive) setData(d); }); return () => { alive = false; }; }, [load, tick]);
+  // dataEpoch：写操作成功后的全局广播（见 store.jsx「写后失效」）——别只依赖 tick
+  useEffect(() => { let alive = true; load().then((d) => { if (alive) setData(d); }); return () => { alive = false; }; }, [load, tick, dataEpoch]);
   return { data, reload: load };
 }
 
 export function ProjectPage({ tick }) {
-  const { data, reload } = useProjectSkills(tick);
+  const { data } = useProjectSkills(tick);
   const { boot, patchUi, toggleSel } = useStore();
   const toast = useToast();
   const [q, setQ] = useState('');
@@ -101,7 +102,7 @@ export function ProjectPage({ tick }) {
         <SubmitIntoDialog
           names={submitNames}
           onClose={() => setSubmitNames(null)}
-          onDone={async () => { setSubmitNames(null); patchUi({ selSkills: [] }); await reload(); toast('已收进'); }}
+          onDone={async () => { setSubmitNames(null); patchUi({ selSkills: [] }); toast('已收进'); }}
         />
       ) : null}
     </>

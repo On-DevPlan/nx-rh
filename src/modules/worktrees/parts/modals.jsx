@@ -1,5 +1,5 @@
 // 工作树页的表单弹窗：每个弹窗自带 onSubmit 调 api，接收 {onClose, onDone}。
-// onDone = 完成后的刷新回调（通常是 refreshBoot）；表单状态不外泄。
+// onDone = 完成后的刷新回调（调用方统一接 store 的 afterWrite：广播失效 + 重拉 bootstrap）；表单状态不外泄。
 import { api } from '../../../web/frontend/api/client.js';
 import { useGuard, useToast, Copyable, Modal } from '../../../web/frontend/components/ui.jsx';
 

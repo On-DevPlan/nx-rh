@@ -27,8 +27,10 @@ import { SkillEditor } from './parts/dialogs.jsx';
 
 export default function SkillsView() {
   const [route, setRoute] = useState(parseRoute);
-  const [tick, setTick] = useState(0);
-  const { ui, patchUi } = useStore();
+  // 刷新信号统一取自 store 的数据纪元：任何写操作成功都会 +1（见 store.jsx「写后失效」），
+  // 于是「在详情页改了什么、回总览还是旧数字」这类跨页陈旧不会发生。
+  // 本页自己需要强制重拉时调 invalidate()，与全局广播走同一条路。
+  const { ui, patchUi, dataEpoch, invalidate } = useStore();
 
   useEffect(() => {
     const onHash = () => { setRoute(parseRoute()); window.scrollTo(0, 0); };
@@ -37,9 +39,8 @@ export default function SkillsView() {
   }, []);
 
   // 总览需要一份默认数据
+  const tick = dataEpoch;
   const overview = useSkillsData({}, tick);
-
-  const bump = () => setTick((t) => t + 1);
 
   const openCreate = () => patchUi({ editor: { mode: 'create' } });
   const editor = ui.editor;
@@ -69,7 +70,7 @@ export default function SkillsView() {
             mode={editor.mode}
             skill={editor.skill || {}}
             close={closeEditor}
-            reload={async () => { bump(); }}
+            reload={async () => { invalidate(); }}
           />
         </Modal>
       ) : null}

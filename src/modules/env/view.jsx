@@ -11,6 +11,7 @@
 // 每个按钮 = 一条 HTTP 路由 = 一条 CLI 命令（同源于 ../env/index.js 的 action 声明）。
 import { useCallback, useEffect, useState } from 'react';
 import { api } from '../../web/frontend/api/client.js';
+import { useStore } from '../../web/frontend/store.jsx';
 import { useToast, useGuard, useDialog, Modal, DiffPre, Copyable } from '../../web/frontend/components/ui.jsx';
 import { CliHints } from '../../web/frontend/components/CliHints.jsx';
 
@@ -108,6 +109,9 @@ export default function EnvView() {
   const toast = useToast();
   const guard = useGuard();
   const { dialog, node: dialogNode } = useDialog();
+  // 本页写操作自己 load()；dataEpoch 兜的是「别处改了 / 从 CLI 改了，回到面板要看到」
+  // 这类跨来源变化（store「写后失效」的全局广播 + 窗口聚焦时的刷新）
+  const { dataEpoch } = useStore();
 
   const [status, setStatus] = useState(null);
   const [list, setList] = useState(null);
@@ -132,7 +136,7 @@ export default function EnvView() {
     setSnapshots(snaps);
   }, []);
 
-  useEffect(() => { load().catch((e) => toast(String(e.message || e))); }, [load, toast]);
+  useEffect(() => { load().catch((e) => toast(String(e.message || e))); }, [load, toast, dataEpoch]);
 
   const supported = status?.supported === true;
   const sysWritable = status?.scopeWritable?.system === true;

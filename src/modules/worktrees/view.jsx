@@ -1,4 +1,4 @@
-// 工作树页：工作树清单 + 主项目上下文 + 扩展文件登记/发现/同步。
+﻿// 工作树页：工作树清单 + 主项目上下文 + 扩展文件登记/发现/同步。
 // 每个按钮 = 一条 HTTP 路由 = 一条 CLI 命令（同源于模块 action 声明）。
 // 录入类动作收进弹窗，主页面保持干净；移动端表格转卡片。
 //
@@ -17,7 +17,7 @@ import {
 } from './parts/flows.jsx';
 
 export default function WorktreesView() {
-  const { boot, refreshBoot } = useStore();
+  const { boot, afterWrite } = useStore();
   const guard = useGuard();
   const { dialog, node: dialogNode } = useDialog();
   const [modal, setModal] = useState(null);
@@ -48,7 +48,7 @@ export default function WorktreesView() {
     guard(async () => {
       const r = await api('/api/wt/fanout', { method: 'POST', body: { yes: true } });
       showResult({ title: 'Fanout 结果', text: fanoutText(r) });
-      await refreshBoot();
+      await afterWrite();
     });
 
   const doRebase = (w) =>
@@ -61,7 +61,7 @@ export default function WorktreesView() {
       if (!ok) return;
       const r = await api('/api/wt/rebase', { method: 'POST', body: { ref: w.name } });
       showResult({ title: 'Rebase 结果', text: rebaseText(r) });
-      await refreshBoot();
+      await afterWrite();
     });
 
   const doOpen = (w) =>
@@ -81,7 +81,7 @@ export default function WorktreesView() {
       const r = await api(`/api/wt/${encodeURIComponent(w.name)}`, { method: 'DELETE' });
       if (r.status === 'blocked')
         showResult({ title: '未移除', text: r.reason });
-      await refreshBoot();
+      await afterWrite();
     });
 
   // ---- 扩展文件动作 ----
@@ -99,7 +99,7 @@ export default function WorktreesView() {
         title: '扩展文件已登记',
         text: `新登记 ${r.summary.added} 个\n` + r.added.map((x) => '  + ' + x.relPath).join('\n'),
       });
-      await refreshBoot();
+      await afterWrite();
     });
 
   const doExtRemove = (it) =>
@@ -111,7 +111,7 @@ export default function WorktreesView() {
       });
       if (!ok) return;
       await api(`/api/wt/ext/${encodeURIComponent(it.id)}`, { method: 'DELETE' });
-      await refreshBoot();
+      await afterWrite();
     });
 
   const head = (
@@ -204,9 +204,9 @@ export default function WorktreesView() {
       <CliHints module="worktrees" />
 
       {/* 弹窗分发：表单类在 modals.jsx，流程类在 flows.jsx */}
-      {modal?.kind === 'new' ? <NewWtModal cfg={cfg} onClose={() => setModal(null)} onDone={(next) => { setModal(next); refreshBoot(); }} /> : null}
-      {modal?.kind === 'config' ? <ConfigModal cfg={cfg} onClose={() => setModal(null)} onDone={() => { setModal(null); refreshBoot(); }} /> : null}
-      {modal?.kind === 'extAdd' ? <ExtAddModal onClose={() => setModal(null)} onDone={() => { setModal(null); refreshBoot(); }} /> : null}
+      {modal?.kind === 'new' ? <NewWtModal cfg={cfg} onClose={() => setModal(null)} onDone={(next) => { setModal(next); afterWrite(); }} /> : null}
+      {modal?.kind === 'config' ? <ConfigModal cfg={cfg} onClose={() => setModal(null)} onDone={() => { setModal(null); afterWrite(); }} /> : null}
+      {modal?.kind === 'extAdd' ? <ExtAddModal onClose={() => setModal(null)} onDone={() => { setModal(null); afterWrite(); }} /> : null}
       {modal?.kind === 'context' ? <ContextModal c={modal.payload} onClose={() => setModal(null)} /> : null}
       {modal?.kind === 'fanout' ? <FanoutModal payload={modal.payload} onClose={() => setModal(null)} onRun={runFanout} /> : null}
       {modal?.kind === 'discover' ? <DiscoverModal payload={modal.payload} onClose={() => setModal(null)} onApply={applyDiscover} /> : null}

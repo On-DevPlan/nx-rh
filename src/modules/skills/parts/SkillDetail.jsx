@@ -117,7 +117,7 @@ function SkillFiles({ name }) {
 }
 
 export function SkillDetail({ name, tick }) {
-  const { boot, patchUi, refreshBoot } = useStore();
+  const { boot, patchUi, afterWrite, dropSel, dataEpoch } = useStore();
   const toast = useToast();
   const guard = useGuard();
   const { dialog, node: dialogNode } = useDialog();
@@ -130,7 +130,8 @@ export function SkillDetail({ name, tick }) {
   const load = useCallback(async () => {
     setD(await api('/api/skills/detail?name=' + encodeURIComponent(name)).catch(() => null));
   }, [name]);
-  useEffect(() => { load(); }, [load, tick]);
+  // dataEpoch：写操作成功后的全局广播（store「写后失效」）——安装矩阵 / 文件清单都会重拉
+  useEffect(() => { load(); }, [load, tick, dataEpoch]);
 
   const isOrphan = d && (d.origin === 'link' || d.origin === 'target');
 
@@ -146,19 +147,19 @@ export function SkillDetail({ name, tick }) {
       toast(r.removed?.length ? (cell.linkType ? `已撤销 ${SCOPE_SHORT[cell.scope]}·${cell.platform}` : `已删除 ${SCOPE_SHORT[cell.scope]}·${cell.platform} 的实体副本`) : '该目标本就没有');
     } else {
       const r = await api('/api/skills/migrate', { method: 'POST', body: { ...base, mode: settings.skillSyncMode } });
-      if (r.status === 'blocked') { toast('跨源冲突，先解决订阅'); await load(); return; }
+      if (r.status === 'blocked') { toast('跨源冲突，先解决订阅'); await afterWrite(); return; }
       toast(`已迁移到 ${SCOPE_SHORT[cell.scope]}·${cell.platform}`);
     }
-    await load();
+    await afterWrite();
   });
 
   // 单格按实体副本迁移（绕过全局「迁移形态」设置）：方便在平台之间互拷、
   // 或想要一份不随 Hub 变动的独立副本。
   const migrateCellCopy = (cell) => guard(async () => {
     const r = await api('/api/skills/migrate', { method: 'POST', body: { name, to: cell.scope, platform: cell.platform, mode: 'copy' } });
-    if (r.status === 'blocked') { toast('跨源冲突，先解决订阅'); await load(); return; }
+    if (r.status === 'blocked') { toast('跨源冲突，先解决订阅'); await afterWrite(); return; }
     toast(`已复制实体到 ${SCOPE_SHORT[cell.scope]}·${cell.platform}`);
-    await load();
+    await afterWrite();
   });
 
   // 链接 → 实体副本（物化）：断开与订阅源的实时同步，之后这里的内容独立演进。
@@ -170,7 +171,7 @@ export function SkillDetail({ name, tick }) {
     if (!ok) return;
     const r = await api('/api/skills/materialize', { method: 'POST', body: { name, to: cell.scope, platform: cell.platform } });
     toast(r.converted ? '已转为实体副本' : '（这里本就是实体）');
-    await load();
+    await afterWrite();
   });
 
   // 批量到某作用域：弹窗显式选平台（可多选启用中的平台，缺省勾默认平台）+ 形态。
@@ -195,6 +196,9 @@ export function SkillDetail({ name, tick }) {
       await api('/api/skills/' + encodeURIComponent(name), { method: 'DELETE', body: { force: true } });
     }
     toast('已从订阅源删除');
+    // 名字已从数据里消失：本地勾选要跟着摘掉，别让批量按钮按幽灵勾选亮着
+    dropSel([name]);
+    await afterWrite();
     goOverview();
   });
 
@@ -209,6 +213,8 @@ export function SkillDetail({ name, tick }) {
     if (!ok) return;
     await api('/api/skills/purge', { method: 'POST', body: { name, force: true } });
     toast('已彻底删除');
+    dropSel([name]);
+    await afterWrite();
     goOverview();
   });
 
@@ -342,7 +348,7 @@ export function SkillDetail({ name, tick }) {
         <SubmitIntoDialog
           names={[name]}
           onClose={() => setSubmitOpen(false)}
-          onDone={async () => { setSubmitOpen(false); await load(); await refreshBoot(); }}
+          onDone={async () => { setSubmitOpen(false); }}
         />
       ) : null}
       {migrateTo ? (
@@ -351,7 +357,7 @@ export function SkillDetail({ name, tick }) {
           to={migrateTo}
           boot={boot}
           onClose={() => setMigrateTo(null)}
-          onDone={async () => { setMigrateTo(null); await load(); }}
+          onDone={async () => { setMigrateTo(null); }}
         />
       ) : null}
       {dialogNode}
