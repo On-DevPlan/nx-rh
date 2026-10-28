@@ -181,6 +181,16 @@ export function RemotePage({ tick }) {
   const skills = hub?.skills || [];
   const visible = skills.filter((s) => hit(s.name, s.description));
 
+  // 多区段（工作台式）：工具区的过滤组与主按钮随区段联动，位置不动内容换
+  const [seg, setSeg] = useState('content'); // 'content' | 'find' | 'adv'
+  const segTabs = (
+    <div className="seg">
+      <button className={'sg' + (seg === 'content' ? ' on' : '')} onClick={() => setSeg('content')}>内容</button>
+      <button className={'sg' + (seg === 'find' ? ' on' : '')} onClick={() => setSeg('find')}>发现导入</button>
+      <button className={'sg' + (seg === 'adv' ? ' on' : '')} onClick={() => setSeg('adv')}>定义与软链</button>
+    </div>
+  );
+
   return (
     <>
       <Crumbs trail={[{ label: '远程订阅' }]} />
@@ -194,90 +204,129 @@ export function RemotePage({ tick }) {
       <div className="toolzone">
         <button className="btn small ghost" onClick={goOverview}>← 返回</button>
         <span className="sep"></span>
-        <div className="tz-filter">
-          {/* 与本地源同构：内容浏览在订阅源页（同 #/skills/hub/<path>），
-              这一页只管「从哪来」——发现、导入、容器维护 */}
-          <span className="muted">内容浏览在订阅源页，这一页管「从哪来」：发现、导入、容器维护</span>
-        </div>
+        {seg === 'content' ? (
+          <div className="tz-filter">
+            <label className="chk-all">
+              <input
+                type="checkbox" title="全选（用于批量操作）"
+                checked={visible.length > 0 && visible.every((s) => sel.has(s.name))}
+                onChange={(e) => patchUi((u) => {
+                  const set = new Set(u.selSkills);
+                  for (const s of visible) e.target.checked ? set.add(s.name) : set.delete(s.name);
+                  return { selSkills: [...set] };
+                })}
+              />
+              全选
+            </label>
+            <input className="search" placeholder="过滤名称 / 描述…" value={filter} spellCheck="false" onChange={(e) => setFilter(e.target.value)} />
+          </div>
+        ) : seg === 'find' ? (
+          <div className="tz-filter">
+            <input
+              className="search" placeholder="关键词（至少 2 个字符）…" value={q} spellCheck="false"
+              onChange={(e) => setQ(e.target.value)}
+              onKeyDown={(e) => { if (e.key === 'Enter') doSearch(); }}
+            />
+            <input
+              placeholder="owner（可选）" value={owner} spellCheck="false"
+              onChange={(e) => setOwner(e.target.value)}
+              onKeyDown={(e) => { if (e.key === 'Enter') doSearch(); }}
+            />
+          </div>
+        ) : (
+          <div className="tz-filter">
+            <span className="muted">手写定义与双向软链 · 链接不复制内容</span>
+          </div>
+        )}
         <div className="tz-acts">
           {hub?.dir ? (
             <button className="btn ghost" onClick={() => goHub(hub.dir)}>看内容…</button>
           ) : null}
-          <button className="btn ghost" onClick={addDefinition}>＋ 添加定义</button>
-          <button className="btn" onClick={updateAll} disabled={!!busy || !skills.length}>
-            {busy === '*' ? '更新中…' : '全部更新'}
-          </button>
+          {seg === 'content' ? (
+            <button className="btn" onClick={updateAll} disabled={!!busy || !skills.length}>
+              {busy === '*' ? '更新中…' : '全部更新'}
+            </button>
+          ) : seg === 'find' ? (
+            <button className="btn" onClick={doSearch} disabled={searching}>{searching ? '搜索中…' : '搜索'}</button>
+          ) : (
+            <button className="btn" onClick={addDefinition}>＋ 添加定义</button>
+          )}
         </div>
       </div>
 
-      <div className="section-label">远程订阅内容
-        <span className="hint">{skills.length} 个 · 实体/软链都可迁移到平台；导入的才有上游可更新</span>
-      </div>
-      <div className="toolbar">
-        <label className="chk-all">
-          <input
-            type="checkbox" title="全选（用于批量操作）"
-            checked={visible.length > 0 && visible.every((s) => sel.has(s.name))}
-            onChange={(e) => patchUi((u) => {
-              const set = new Set(u.selSkills);
-              for (const s of visible) e.target.checked ? set.add(s.name) : set.delete(s.name);
-              return { selSkills: [...set] };
-            })}
-          />
-          全选
-        </label>
-        <input className="search grow" placeholder="过滤名称 / 描述…" value={filter} spellCheck="false" onChange={(e) => setFilter(e.target.value)} />
-      </div>
-      <div className="skl-grid">
-        {visible.map((s) => (
-          <RepoRow
-            key={s.name} s={s} checked={sel.has(s.name)} busy={busy === s.name}
-            onToggle={() => patchUi((u) => {
-              const set = new Set(u.selSkills);
-              set.has(s.name) ? set.delete(s.name) : set.add(s.name);
-              return { selSkills: [...set] };
-            })}
-            onUpdate={updateOne} onRemove={removeOne} onLink={linkOne}
-          />
-        ))}
-        {hub && !skills.length ? <div className="muted">（远程订阅还是空的——用下面的搜索导入，或「＋ 添加定义」）</div> : null}
-        {hub && skills.length && !visible.length ? <div className="muted">（没有匹配过滤条件的 skill）</div> : null}
-        {!hub && !err ? <div className="muted">读取中…</div> : null}
-        {err ? <div className="dlg-msg">{err}</div> : null}
-      </div>
+      {segTabs}
 
-      <div className="section-label">发现
-        <span className="hint">搜 skills.sh · 确认后导入到 Hub</span>
-      </div>
-      <div className="toolbar">
-        <input
-          className="search grow" placeholder="关键词（至少 2 个字符）…" value={q} spellCheck="false"
-          onChange={(e) => setQ(e.target.value)}
-          onKeyDown={(e) => { if (e.key === 'Enter') doSearch(); }}
-        />
-        <input
-          className="search" style={{ maxWidth: 160 }} placeholder="owner（可选）" value={owner} spellCheck="false"
-          onChange={(e) => setOwner(e.target.value)}
-          onKeyDown={(e) => { if (e.key === 'Enter') doSearch(); }}
-        />
-        <button className="btn ghost" onClick={doSearch} disabled={searching}>{searching ? '搜索中…' : '搜索'}</button>
-      </div>
-      <div className="list" style={{ marginTop: 8 }}>
-        {(results || []).map((r) => (
-          <div key={r.slug || r.name} className="row">
-            <div className="name">{r.name}</div>
-            <div className="desc mono" title={r.source}>{r.source}</div>
-            <div className="acts">
-              <span className="muted">{r.installs} 次安装</span>
-              <button className="btn small ghost" onClick={() => confirmImport(r)} disabled={importing === r.source}>
-                {importing === r.source ? '导入中…' : '导入'}
-              </button>
-            </div>
+      {seg === 'content' ? (
+        <>
+          <div className="section-label">远程订阅内容
+            <span className="hint">{skills.length} 个 · 实体/软链都可迁移到平台；导入的才有上游可更新</span>
           </div>
-        ))}
-        {results && !results.length ? <div className="muted">（没有匹配的结果）</div> : null}
-        {results === null ? <div className="muted">（输入关键词搜 skills.sh，或用 CLI：nx-rh skill hub remote import owner/repo）</div> : null}
-      </div>
+          <div className="skl-grid">
+            {visible.map((s) => (
+              <RepoRow
+                key={s.name} s={s} checked={sel.has(s.name)} busy={busy === s.name}
+                onToggle={() => patchUi((u) => {
+                  const set = new Set(u.selSkills);
+                  set.has(s.name) ? set.delete(s.name) : set.add(s.name);
+                  return { selSkills: [...set] };
+                })}
+                onUpdate={updateOne} onRemove={removeOne} onLink={linkOne}
+              />
+            ))}
+            {hub && !skills.length ? <div className="muted">（远程订阅还是空的——切到「发现导入」区段搜索，或用「＋ 添加定义」）</div> : null}
+            {hub && skills.length && !visible.length ? <div className="muted">（没有匹配过滤条件的 skill）</div> : null}
+            {!hub && !err ? <div className="muted">读取中…</div> : null}
+            {err ? <div className="dlg-msg">{err}</div> : null}
+          </div>
+        </>
+      ) : null}
+
+      {seg === 'find' ? (
+        <>
+          <div className="section-label">发现
+            <span className="hint">搜 skills.sh · 确认后导入到 Hub</span>
+          </div>
+          <div className="list" style={{ marginTop: 8 }}>
+            {(results || []).map((r) => (
+              <div key={r.slug || r.name} className="row">
+                <div className="name">{r.name}</div>
+                <div className="desc mono" title={r.source}>{r.source}</div>
+                <div className="acts">
+                  <span className="muted">{r.installs} 次安装</span>
+                  <button className="btn small ghost" onClick={() => confirmImport(r)} disabled={importing === r.source}>
+                    {importing === r.source ? '导入中…' : '导入'}
+                  </button>
+                </div>
+              </div>
+            ))}
+            {results && !results.length ? <div className="muted">（没有匹配的结果）</div> : null}
+            {results === null ? <div className="muted">（在上方工具区输入关键词搜 skills.sh，或用 CLI：nx-rh skill hub remote import owner/repo）</div> : null}
+          </div>
+        </>
+      ) : null}
+
+      {seg === 'adv' ? (
+        <>
+          <div className="section-label">定义与软链
+            <span className="hint">手写条目与双向软链 · 实体留在原地</span>
+          </div>
+          <div className="card"><div className="list">
+            <div className="row">
+              <span className="name" style={{ width: 150 }}>添加定义</span>
+              <span className="desc">remote add —— 手写一个 SKILL.md 条目放进容器（无上游，不参与 remote update）</span>
+              <span className="acts"><button className="btn small ghost" onClick={addDefinition}>＋ 添加</button></span>
+            </div>
+            <div className="row">
+              <span className="name" style={{ width: 150 }}>加软链</span>
+              <span className="desc">remote link —— 在「内容」区每个 skill 的「加软链…」里，把 Hub 内的 skill 链到别处目录</span>
+            </div>
+            <div className="row">
+              <span className="name" style={{ width: 150 }}>软链出去</span>
+              <span className="desc">remote link-out —— 端点已备（POST /api/skills/remote/link-out），Web 入口为增量提案</span>
+            </div>
+          </div></div>
+        </>
+      ) : null}
 
       <CliHints module="skills" only={['skill.hub.remote.', 'skill.hub.search', 'skill.hub.refresh']} />
       {dlgNode}

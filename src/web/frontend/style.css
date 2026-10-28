@@ -170,6 +170,17 @@ main { padding: 14px 24px 28px; max-width: none; }
   white-space: nowrap; cursor: pointer; user-select: none;
 }
 
+/* ---------- 区段页签（多区段页：工作台式切换，工具区随区段联动） ---------- */
+.seg { display: inline-flex; gap: 2px; padding: 3px; background: var(--soft); border-radius: var(--radius-pill); margin-bottom: 12px; }
+.seg .sg {
+  font: inherit; font-size: var(--fs-core); border: 0; background: transparent;
+  color: var(--mid); height: var(--btn-h); padding: 0 14px;
+  border-radius: var(--radius-pill); cursor: pointer;
+  transition: background 0.12s, color 0.12s;
+}
+.seg .sg:hover { color: var(--ink); }
+.seg .sg.on { background: var(--paper); color: var(--ink); font-weight: 600; box-shadow: var(--shadow-relief); }
+
 /* 订阅源子页：全选勾选（作用于当前过滤结果） */
 .toolbar .chk-all {
   display: inline-flex; align-items: center; gap: 6px;
