@@ -16,7 +16,7 @@ const BASE_RULES = {
 
 export default defineConfig([
   {
-    ignores: ['src/web/public/**', 'node_modules/**', '.tool/**', '.claude/**', 'assets/**'],
+    ignores: ['src/web/public/**', 'node_modules/**', '.tool/**', '.claude/**', 'assets/**', 'temp/**'],
   },
   {
     files: ['**/*.{js,mjs,jsx}'],
