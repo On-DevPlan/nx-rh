@@ -6,7 +6,7 @@ import { useToast } from '../../../web/frontend/components/ui.jsx';
 import { Copyable } from '../../../web/frontend/components/ui.jsx';
 import { Crumbs, SkillCard, useSel, makeHit, shortLabel } from './shared.jsx';
 import { SubmitIntoDialog } from './dialogs.jsx';
-import { goSkill } from './routes.js';
+import { goOverview, goSkill } from './routes.js';
 
 function useProjectSkills(tick) {
   const { ui } = useStore();
@@ -44,13 +44,15 @@ export function ProjectPage({ tick }) {
           <div style={{ fontSize: 15, fontWeight: 700 }}>项目里的 skill</div>
           <div className="sub-meta mono" title={data?.projectRoot}>{data?.projectRoot || '读取中…'}</div>
         </div>
-        <div className="acts">
-          {checkedOrphans.length ? <button className="btn" onClick={() => setSubmitNames(checkedOrphans)}>收进订阅源…</button> : null}
-        </div>
       </div>
 
-      <div className="toolbar">
-        <input className="search grow" placeholder="过滤名称 / 描述…" value={q} spellCheck="false" onChange={(e) => setQ(e.target.value)} />
+      <div className="toolzone">
+        <button className="btn small ghost" onClick={goOverview}>← 返回</button>
+        <span className="sep"></span>
+        <input className="search" placeholder="过滤名称 / 描述…" value={q} spellCheck="false" onChange={(e) => setQ(e.target.value)} />
+        <div className="tz-acts">
+          {checkedOrphans.length ? <button className="btn" onClick={() => setSubmitNames(checkedOrphans)}>收进订阅源…</button> : null}
+        </div>
       </div>
 
       {data?.dirs?.length ? (

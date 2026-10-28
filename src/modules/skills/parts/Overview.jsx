@@ -38,7 +38,13 @@ export function Overview({ data, openCreate }) {
             订阅源是唯一可信源。从平台入口查看散落在各 Agent 目录里的 skill，把不在订阅源的收敛回来；也可以从订阅源把 skill 迁移到各平台。
           </div>
         </div>
-        <div className="acts">
+      </div>
+
+      <div className="toolzone">
+        <div className="tz-filter">
+          <span className="muted">订阅源是唯一可信源 · 外部 skill 统一装进「远程订阅」容器</span>
+        </div>
+        <div className="tz-acts">
           <button className="btn ghost" onClick={() => setCheckOpen(true)}>检查订阅源…</button>
           <button className="btn ghost" onClick={() => setSettingsOpen(true)}>Skill 设置</button>
           {data?.hub?.path ? <button className="btn" onClick={openCreate}>＋ 新建</button> : null}

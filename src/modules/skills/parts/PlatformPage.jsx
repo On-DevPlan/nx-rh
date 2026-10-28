@@ -5,7 +5,7 @@ import { useStore } from '../../../web/frontend/store.jsx';
 import { useToast, useGuard, useDialog } from '../../../web/frontend/components/ui.jsx';
 import { Crumbs, SkillCard, useSkillsData, useSel, makeHit, SCOPE_SHORT } from './shared.jsx';
 import { SubmitIntoDialog } from './dialogs.jsx';
-import { goSkill } from './routes.js';
+import { goOverview, goSkill } from './routes.js';
 
 export function PlatformPage({ platformId, tick }) {
   const { data, reload } = useSkillsData({ platform: platformId }, tick);
@@ -51,14 +51,16 @@ export function PlatformPage({ platformId, tick }) {
           <div style={{ fontSize: 15, fontWeight: 700 }}>{platName}</div>
           <div className="sub-meta">{managed.length} 个已在订阅源 · {orphans.length} 个不在订阅源</div>
         </div>
-        <div className="acts">
-          {orphans.some((o) => sel.has(o.name)) ? <button className="btn" onClick={() => setSubmitNames(orphans.map((o) => o.name).filter((n) => sel.has(n)))}>收进订阅源…</button> : null}
-          <button className="btn ghost" onClick={toggleEnabled}>{enabled ? '移出启用范围' : '加入启用范围'}</button>
-        </div>
       </div>
 
-      <div className="toolbar">
-        <input className="search grow" placeholder="过滤名称 / 描述…" value={q} spellCheck="false" onChange={(e) => setQ(e.target.value)} />
+      <div className="toolzone">
+        <button className="btn small ghost" onClick={goOverview}>← 返回</button>
+        <span className="sep"></span>
+        <input className="search" placeholder="过滤名称 / 描述…" value={q} spellCheck="false" onChange={(e) => setQ(e.target.value)} />
+        <div className="tz-acts">
+          <button className="btn ghost" onClick={toggleEnabled}>{enabled ? '移出启用范围' : '加入启用范围'}</button>
+          {orphans.some((o) => sel.has(o.name)) ? <button className="btn" onClick={() => setSubmitNames(orphans.map((o) => o.name).filter((n) => sel.has(n)))}>收进订阅源…</button> : null}
+        </div>
       </div>
 
       {orphans.length ? (

@@ -273,8 +273,27 @@ export function SkillDetail({ name, tick }) {
             {d.stats?.lines ? <> · {d.stats.sections ?? 0} 节 · {d.stats.lines} 行 · {(d.files || []).length} 文件</> : null}
           </div>
         </div>
-        <div className="acts">
+      </div>
+
+      <div className="toolzone">
+        <button className="btn small ghost" onClick={goOverview}>← 返回</button>
+        <span className="sep"></span>
+        <div className="tz-filter">
+          <span className="muted">链接随订阅源实时变；实体副本是独立一份</span>
+        </div>
+        <div className="tz-acts">
           <button className="btn ghost" onClick={copySkillMd}>复制 SKILL.md</button>
+          {isOrphan
+            ? !d.broken
+              ? <button className="btn" title="收进后删除这里的实文件，并改回指向订阅源的软链接" onClick={() => setSubmitOpen(true)}>收进订阅源…</button>
+              : null
+            : <>
+                <button className="btn" onClick={() => migrateScope('project')}>迁移 → 项目</button>
+                <button className="btn ghost" onClick={() => migrateScope('user')}>迁移 → 用户</button>
+                <button className="btn ghost" onClick={openEdit}>编辑</button>
+                <button className="btn ghost" title="只从订阅源下架，保留各平台安装位置" onClick={doRemove}>从订阅源删除</button>
+              </>}
+          <button className="btn danger-quiet" title="所有安装位置 + 订阅源实文件一并删除" onClick={doPurge}>彻底删除…</button>
         </div>
       </div>
 
@@ -310,20 +329,6 @@ export function SkillDetail({ name, tick }) {
           </div>
         );
       })}
-
-      <div className="toolbar" style={{ marginTop: 14, flexWrap: 'wrap' }}>
-        {isOrphan
-          ? !d.broken
-            ? <button className="btn" title="收进后删除这里的实文件，并改回指向订阅源的软链接" onClick={() => setSubmitOpen(true)}>收进订阅源…</button>
-            : null
-          : <>
-              <button className="btn" onClick={() => migrateScope('project')}>迁移 → 项目</button>
-              <button className="btn ghost" onClick={() => migrateScope('user')}>迁移 → 用户</button>
-              <button className="btn ghost" onClick={openEdit}>编辑</button>
-              <button className="btn ghost" title="只从订阅源下架，保留各平台安装位置" onClick={doRemove}>从订阅源删除</button>
-            </>}
-        <button className="btn danger-quiet" title="所有安装位置 + 订阅源实文件一并删除" onClick={doPurge}>彻底删除…</button>
-      </div>
 
       {/* 文件预览放最后且默认折叠：页面主体先给安装状态与操作，长正文不把操作区顶下去 */}
       {!d.broken ? (

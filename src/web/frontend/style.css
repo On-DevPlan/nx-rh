@@ -971,6 +971,8 @@ textarea.dlg-input:focus { outline: none; border-color: var(--mid); box-shadow: 
 /* 收进订阅源：选源弹窗的 radio 行 */
 .src-row { cursor: pointer; }
 input[type="radio"] { height: auto; padding: 0; accent-color: var(--ink); }
+/* 复位全局 input 规则对勾选框的影响（28px 高 + 边框 + 内边距不适用于 checkbox） */
+input[type="checkbox"] { height: auto; padding: 0; accent-color: var(--ink); }
 
 /* 子页头部（平台 / 订阅源） */
 .sub-head {

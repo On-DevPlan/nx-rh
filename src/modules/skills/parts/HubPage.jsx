@@ -5,7 +5,7 @@ import { useStore } from '../../../web/frontend/store.jsx';
 import { useToast, useGuard } from '../../../web/frontend/components/ui.jsx';
 import { Crumbs, SkillCard, useSkillsData, useSel, makeHit, sourceLabel } from './shared.jsx';
 import { MigrateToDialog, BatchPurgeDialog } from './dialogs.jsx';
-import { goSkill } from './routes.js';
+import { goOverview, goSkill } from './routes.js';
 
 export function HubPage({ hubPath, tick }) {
   const { data, reload } = useSkillsData({ source: hubPath }, tick);
@@ -57,7 +57,20 @@ export function HubPage({ hubPath, tick }) {
           <div className="sub-meta mono" title={hubPath}>{hubPath}</div>
         </div>
         <div className="acts">
-          {!isCurrent ? <button className="btn ghost" onClick={makeMain}>设为主源</button> : <span className="tag strong">主源</span>}
+          {isCurrent ? <span className="tag strong">主源</span> : null}
+        </div>
+      </div>
+
+      <div className="toolzone">
+        <button className="btn small ghost" onClick={goOverview}>← 返回</button>
+        <span className="sep"></span>
+        <label className="chk-all" title="勾选当前过滤结果里的全部 skill（多选用于批量迁移）">
+          <input ref={allRef} type="checkbox" checked={allOn} disabled={!visible.length} onChange={selectAll} />
+          全选{visible.length ? `（${visible.length}）` : ''}
+        </label>
+        <input className="search" placeholder="过滤名称 / 描述…" value={q} spellCheck="false" onChange={(e) => setQ(e.target.value)} />
+        <div className="tz-acts">
+          {!isCurrent ? <button className="btn ghost" onClick={makeMain}>设为主源</button> : null}
           {checked.length ? <>
             <span className="tag strong" title={checked.join('、')}>已选 {checked.length}</span>
             <button className="btn ghost" onClick={() => patchUi({ selSkills: [] })}>清空勾选</button>
@@ -67,14 +80,6 @@ export function HubPage({ hubPath, tick }) {
               onClick={() => setPurgeOpen(true)}>彻底删除…</button>
           </> : null}
         </div>
-      </div>
-
-      <div className="toolbar">
-        <label className="chk-all" title="勾选当前过滤结果里的全部 skill（多选用于批量迁移）">
-          <input ref={allRef} type="checkbox" checked={allOn} disabled={!visible.length} onChange={selectAll} />
-          全选{visible.length ? `（${visible.length}）` : ''}
-        </label>
-        <input className="search grow" placeholder="过滤名称 / 描述…" value={q} spellCheck="false" onChange={(e) => setQ(e.target.value)} />
       </div>
 
       <div className="skl-grid">

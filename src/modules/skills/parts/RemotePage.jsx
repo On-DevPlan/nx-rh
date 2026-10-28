@@ -12,7 +12,7 @@ import { useStore } from '../../../web/frontend/store.jsx';
 import { useToast, useGuard, useDialog } from '../../../web/frontend/components/ui.jsx';
 import { CliHints } from '../../../web/frontend/components/CliHints.jsx';
 import { Crumbs, SkillCard, useSel, makeHit } from './shared.jsx';
-import { goHub, goSkill } from './routes.js';
+import { goHub, goOverview, goSkill } from './routes.js';
 
 const ago = (iso) => {
   if (!iso) return '—';
@@ -189,16 +189,24 @@ export function RemotePage({ tick }) {
           <div style={{ fontSize: 15, fontWeight: 700 }}>远程订阅</div>
           <div className="sub-meta mono">{hub?.dir || '~/.nx-rh/远程订阅/'} · 外部 skill 都在这里，版本可比可更</div>
         </div>
-        <div className="acts">
+      </div>
+
+      <div className="toolzone">
+        <button className="btn small ghost" onClick={goOverview}>← 返回</button>
+        <span className="sep"></span>
+        <div className="tz-filter">
           {/* 与本地源同构：内容浏览在订阅源页（同 #/skills/hub/<path>），
               这一页只管「从哪来」——发现、导入、容器维护 */}
+          <span className="muted">内容浏览在订阅源页，这一页管「从哪来」：发现、导入、容器维护</span>
+        </div>
+        <div className="tz-acts">
           {hub?.dir ? (
             <button className="btn ghost" onClick={() => goHub(hub.dir)}>看内容…</button>
           ) : null}
+          <button className="btn ghost" onClick={addDefinition}>＋ 添加定义</button>
           <button className="btn" onClick={updateAll} disabled={!!busy || !skills.length}>
             {busy === '*' ? '更新中…' : '全部更新'}
           </button>
-          <button className="btn ghost" onClick={addDefinition}>＋ 添加定义</button>
         </div>
       </div>
 
