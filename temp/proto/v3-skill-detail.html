@@ -9,7 +9,7 @@
 :root {
   --ink: #14161a; --paper: #fff; --soft: #f5f6f7; --soft-2: #e7e9ec;
   --mid: #6b7178; --faint: #9aa0a7;
-  --row-h: 28px; --btn-h: 32px; --fs-core: 12px;
+  --row-h: 28px; --btn-h: 28px; --fs-core: 12px;
   --radius-flat: 4px; --radius-btn: 8px; --radius-pill: 999px;
   --border: 1px solid var(--soft-2);
   --shadow-relief: -1px -1px 2px rgba(255,255,255,.85), 2px 2px 6px rgba(20,22,26,.07);
@@ -50,7 +50,7 @@ footer { color: var(--mid); font-size: 11px; padding: 14px 20px 26px; text-align
 .btn:active:not(:disabled) { box-shadow: var(--shadow-relief-press); transform: translateY(1px); }
 .btn.ghost { background: var(--soft); color: var(--ink); }
 .btn.ghost:hover:not(:disabled) { background: var(--soft-2); }
-.btn.small { height: 24px; padding: 0 9px; font-size: 11px; border-radius: 6px; }
+.btn.small { padding: 0 9px; }
 .btn:disabled { background: var(--soft); color: var(--faint); box-shadow: var(--shadow-relief-inset); cursor: not-allowed; }
 .btn.danger-quiet { background: var(--paper); color: #b3261e; border: 1px solid var(--soft-2); box-shadow: none; }
 .btn.danger-quiet:hover:not(:disabled) { background: var(--soft); box-shadow: none; }
@@ -59,6 +59,15 @@ input, select { font: inherit; font-size: var(--fs-core); color: var(--ink); bac
 input::placeholder { color: var(--faint); }
 input:focus, select:focus { outline: none; border-color: var(--mid); box-shadow: var(--shadow-relief-inset); }
 input[type="checkbox"] { height: auto; padding: 0; accent-color: var(--ink); }
+
+
+/* ─── 统一工具区：每页一条、位置固定（标题带正下方）；返回 / 过滤 / 动作同处 ─── */
+.toolzone { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; padding: 6px 10px; background: var(--soft); border-radius: var(--radius-btn); margin: 0 0 12px; }
+.toolzone .tz-filter { display: flex; gap: 8px; align-items: center; flex: 1 1 240px; min-width: 0; flex-wrap: wrap; }
+.toolzone .tz-filter[hidden] { display: none; }
+.toolzone .tz-acts { display: flex; gap: 8px; align-items: center; margin-left: auto; flex-wrap: wrap; }
+.toolzone .search { flex: 1 1 200px; max-width: 380px; }
+.toolzone .sep { width: 1px; height: 16px; background: var(--soft-2); margin: 0 2px; }
 
 .toolbar { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-bottom: 10px; }
 .search { flex: 1 1 240px; max-width: 460px; }
@@ -177,8 +186,20 @@ pre { margin: 0; font-family: ui-monospace, Consolas, monospace; font-size: 12px
         3 节 · 42 行 · 5 文件
       </div>
     </div>
-    <div class="acts">
+  </div>
+
+  <!-- 统一工具区：返回 + 本页全部动作（整页唯一实心 = 迁移 → 项目） -->
+  <div class="toolzone">
+    <button class="btn small ghost" onclick="toast('返回 Skill 总览')">← 返回</button>
+    <span class="sep"></span>
+    <div class="tz-filter"><span class="muted" id="variant-note">链接随订阅源实时变；实体副本是独立一份</span></div>
+    <div class="tz-acts" id="tz-acts">
       <button class="btn ghost" onclick="toast('已复制 SKILL.md')">复制 SKILL.md</button>
+      <button class="btn" onclick="toast('打开迁移弹窗：平台复选 + 形态')">迁移 → 项目</button>
+      <button class="btn ghost" onclick="toast('打开迁移弹窗（用户级）')">迁移 → 用户</button>
+      <button class="btn ghost" onclick="toast('打开编辑 SKILL.md')">编辑</button>
+      <button class="btn ghost" title="只从订阅源下架，保留各平台安装位置" onclick="toast('已从订阅源删除（目标侧保留）')">从订阅源删除</button>
+      <button class="btn danger-quiet" title="所有安装位置 + 订阅源实文件一并删除" onclick="toast('打开彻底删除预演（dry-run 清单）')">彻底删除…</button>
     </div>
   </div>
 
@@ -255,15 +276,6 @@ pre { margin: 0; font-family: ui-monospace, Consolas, monospace; font-size: 12px
       </div>
       <div class="row muted">（用户级没有启用的平台）</div>
     </div>
-  </div>
-
-  <!-- 操作区：整页唯一实心主按钮 = 迁移 → 项目 -->
-  <div class="toolbar" style="margin-top: 14px; flex-wrap: wrap" id="act-bar">
-    <button class="btn" onclick="toast('打开迁移弹窗：平台复选 + 形态')">迁移 → 项目</button>
-    <button class="btn ghost" onclick="toast('打开迁移弹窗（用户级）')">迁移 → 用户</button>
-    <button class="btn ghost" onclick="toast('打开编辑 SKILL.md')">编辑</button>
-    <button class="btn ghost" title="只从订阅源下架，保留各平台安装位置" onclick="toast('已从订阅源删除（目标侧保留）')">从订阅源删除</button>
-    <button class="btn danger-quiet" title="所有安装位置 + 订阅源实文件一并删除" onclick="toast('打开彻底删除预演（dry-run 清单）')">彻底删除…</button>
   </div>
 
   <!-- 文件预览：默认折叠，展开为「左树 / 正文 / 结构」三栏 -->
@@ -367,12 +379,14 @@ function setVariant(v) {
     document.getElementById('v-' + k).classList.toggle('on', k === v);
   });
   var badges = document.getElementById('variant-badges');
-  var bar = document.getElementById('act-bar');
+  var acts = document.getElementById('tz-acts');
   var title = document.getElementById('matrix-title');
   var wrap = document.getElementById('files-wrap');
+  var copyBtn = '<button class="btn ghost" onclick="toast(\'已复制 SKILL.md\')">复制 SKILL.md</button>';
   if (v === 'normal') {
     badges.innerHTML = '';
-    bar.innerHTML = '<button class="btn" onclick="toast(\'打开迁移弹窗：平台复选 + 形态\')">迁移 → 项目</button>'
+    acts.innerHTML = copyBtn
+      + '<button class="btn" onclick="toast(\'打开迁移弹窗：平台复选 + 形态\')">迁移 → 项目</button>'
       + '<button class="btn ghost" onclick="toast(\'打开迁移弹窗（用户级）\')">迁移 → 用户</button>'
       + '<button class="btn ghost" onclick="toast(\'打开编辑 SKILL.md\')">编辑</button>'
       + '<button class="btn ghost" onclick="toast(\'已从订阅源删除（目标侧保留）\')">从订阅源删除</button>'
@@ -381,13 +395,15 @@ function setVariant(v) {
     wrap.style.display = '';
   } else if (v === 'orphan') {
     badges.innerHTML = '<span class="tag bad" style="margin-bottom: 10px">不在订阅源（游离链接）</span>';
-    bar.innerHTML = '<button class="btn" title="收进后删除这里的实文件，并改回指向订阅源的软链接" onclick="toast(\'打开收进订阅源弹窗（选目标源）\')">收进订阅源…</button>'
+    acts.innerHTML = copyBtn
+      + '<button class="btn" title="收进后删除这里的实文件，并改回指向订阅源的软链接" onclick="toast(\'打开收进订阅源弹窗（选目标源）\')">收进订阅源…</button>'
       + '<button class="btn danger-quiet" onclick="toast(\'打开彻底删除预演（dry-run 清单）\')">彻底删除…</button>';
     title.textContent = '出现位置';
     wrap.style.display = '';
   } else {
     badges.innerHTML = '<div class="dlg-msg" style="margin-bottom: 10px">这是断链：目标已不存在，读不到内容。建议彻底删除。</div>';
-    bar.innerHTML = '<button class="btn danger-quiet" onclick="toast(\'打开彻底删除预演（dry-run 清单）\')">彻底删除…</button>';
+    acts.innerHTML = copyBtn
+      + '<button class="btn danger-quiet" onclick="toast(\'打开彻底删除预演（dry-run 清单）\')">彻底删除…</button>';
     title.textContent = '出现位置';
     wrap.style.display = 'none';
   }

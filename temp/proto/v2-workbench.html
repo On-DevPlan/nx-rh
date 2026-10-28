@@ -9,7 +9,7 @@
 :root {
   --ink: #14161a; --paper: #fff; --soft: #f5f6f7; --soft-2: #e7e9ec;
   --mid: #6b7178; --faint: #9aa0a7;
-  --row-h: 28px; --btn-h: 32px; --fs-core: 12px;
+  --row-h: 28px; --btn-h: 28px; --fs-core: 12px;
   --radius-flat: 4px; --radius-btn: 8px; --radius-pill: 999px;
   --border: 1px solid var(--soft-2);
   --shadow-relief: -1px -1px 2px rgba(255,255,255,.85), 2px 2px 6px rgba(20,22,26,.07);
@@ -57,7 +57,7 @@ footer { color: var(--mid); font-size: 11px; padding: 14px 20px 26px; text-align
 .btn:active:not(:disabled) { box-shadow: var(--shadow-relief-press); transform: translateY(1px); }
 .btn.ghost { background: var(--soft); color: var(--ink); }
 .btn.ghost:hover:not(:disabled) { background: var(--soft-2); }
-.btn.small { height: 24px; padding: 0 9px; font-size: 11px; border-radius: 6px; }
+.btn.small { padding: 0 9px; }
 .btn:disabled { background: var(--soft); color: var(--faint); box-shadow: var(--shadow-relief-inset); cursor: not-allowed; }
 .btn.danger { background: #b3261e; color: #fff; }
 /* 行级破坏性操作：安静化（整页只留一个主按钮色块），删除闸门在弹窗里 */
@@ -68,6 +68,15 @@ input, select { font: inherit; font-size: var(--fs-core); color: var(--ink); bac
 input::placeholder { color: var(--faint); }
 input:focus, select:focus { outline: none; border-color: var(--mid); box-shadow: var(--shadow-relief-inset); }
 input[type="checkbox"] { height: auto; padding: 0; accent-color: var(--ink); }
+
+
+/* ─── 统一工具区：每页一条、位置固定（标题带正下方）；返回 / 过滤 / 动作同处 ─── */
+.toolzone { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; padding: 6px 10px; background: var(--soft); border-radius: var(--radius-btn); margin: 0 0 12px; }
+.toolzone .tz-filter { display: flex; gap: 8px; align-items: center; flex: 1 1 240px; min-width: 0; flex-wrap: wrap; }
+.toolzone .tz-filter[hidden] { display: none; }
+.toolzone .tz-acts { display: flex; gap: 8px; align-items: center; margin-left: auto; flex-wrap: wrap; }
+.toolzone .search { flex: 1 1 200px; max-width: 380px; }
+.toolzone .sep { width: 1px; height: 16px; background: var(--soft-2); margin: 0 2px; }
 
 .toolbar { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-bottom: 10px; }
 .toolbar label { color: var(--mid); }
@@ -140,16 +149,6 @@ td.cell-name .sub-desc { color: var(--mid); font-size: 11px; margin-top: 1px; }
 /* diff 预览块 */
 .diffbox { border: var(--border); border-radius: var(--radius-flat); padding: 8px 10px; font-family: ui-monospace, Consolas, monospace; font-size: 11px; line-height: 1.6; }
 
-/* 统计行 */
-.statline { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin: 0 0 12px; }
-.statline .st { display: inline-flex; align-items: baseline; gap: 6px; background: var(--soft); border-radius: var(--radius-btn); padding: 6px 12px; }
-.statline .st b { font-size: 15px; font-weight: 800; }
-.statline .st span { color: var(--mid); font-size: 11px; }
-/* 强调统计 = 描边（审核意见：不用黑色色块） */
-.statline .st.hot { background: var(--paper); border: 1.5px solid var(--ink); }
-.statline .st.hot b { color: var(--ink); }
-.statline .st.hot span { color: var(--ink); font-weight: 600; }
-
 /* 弹窗 / toast */
 .modal { position: fixed; inset: 0; background: rgba(20,22,26,.32); display: none; align-items: flex-start; justify-content: center; padding: 48px 16px; z-index: 40; overflow: auto; }
 .modal.open { display: flex; }
@@ -205,7 +204,11 @@ td.cell-name .sub-desc { color: var(--mid); font-size: 11px; margin-top: 1px; }
       <h2>Skill</h2>
       <div class="page-desc">订阅源是唯一可信源。从平台入口查看散落在各 Agent 目录里的 skill，把不在订阅源的收敛回来；也可以从订阅源把 skill 迁移到各平台。外部 skill 统一装进「远程订阅」容器——列表最后一张卡。</div>
     </div>
-    <div class="acts">
+  </div>
+
+  <div class="toolzone">
+    <div class="tz-filter"><span class="muted">3 个订阅源 · 本地源在前，远程订阅固定最后</span></div>
+    <div class="tz-acts">
       <button class="btn ghost" onclick="toast('已开始检查订阅源健康：目录缺失 / 空源 / 嵌套 / 跨源冲突')">检查订阅源…</button>
       <button class="btn ghost" onclick="toast('打开 Skill 设置')">Skill 设置</button>
       <button class="btn" onclick="toast('打开新建 skill 弹窗')">＋ 新建</button>
@@ -293,9 +296,26 @@ td.cell-name .sub-desc { color: var(--mid); font-size: 11px; margin-top: 1px; }
       <h2>远程订阅</h2>
       <div class="page-desc">外部 skill 的唯一入口。固定容器 <span class="mono">~/.nx-rh/远程订阅</span>，与本地订阅源同级同权：搜索导入、同步更新、版本指纹与软链都在这一页。</div>
     </div>
-    <div class="acts">
+  </div>
+
+  <!-- 统一工具区：返回 / 过滤 / 动作同一处；过滤组与主按钮随区段切换 -->
+  <div class="toolzone">
+    <button class="btn small ghost" onclick="switchScreen('p-overview','b-overview')">← 返回</button>
+    <span class="sep"></span>
+    <input class="search" id="tz-search" placeholder="过滤名称 / 来源…" spellCheck="false" oninput="filterRows()">
+    <div class="tz-filter" id="tzf-ledger">
+      <label class="chk-all"><input type="checkbox" id="ck-all" onchange="toggleAll(this)"> 全选</label>
+    </div>
+    <div class="tz-filter" id="tzf-sync" hidden>
+      <label style="display:inline-flex;align-items:center;gap:6px"><input type="checkbox"> 同时清理上游已删除的条目（--prune）</label>
+    </div>
+    <div class="tz-filter" id="tzf-find" hidden>
+      <input placeholder="owner（可选，如 vercel-labs）" style="width:200px" spellCheck="false">
+      <select><option>条数 10</option><option>条数 20</option></select>
+    </div>
+    <div class="tz-acts">
       <button class="btn ghost" onclick="toast('打开手写定义弹窗（remote add）')">＋ 手写定义</button>
-      <!-- 规则：整页只允许一个主按钮色块——页头这一枚随当前区段切换行为 -->
+      <!-- 规则：整页只允许一个主按钮色块——工具区这一枚随当前区段切换行为 -->
       <button class="btn" id="pg-primary" onclick="toast('已全部更新：1 个换新（happy-coder f2c90b41），5 个无变更；上游已删除可在同步中心用 --prune 清理')">全部更新</button>
     </div>
   </div>
@@ -308,14 +328,6 @@ td.cell-name .sub-desc { color: var(--mid); font-size: 11px; margin-top: 1px; }
       <span class="tag prop" title="增量提案：需后端缓存上次比对结果">1 待更新（提案）</span>
       <span class="tag">上次同步 2026-10-26 21:40</span>
     </div>
-  </div>
-
-  <div class="statline">
-    <div class="st"><b>6</b><span>skill 总数</span></div>
-    <div class="st"><b>3</b><span>上游来源</span></div>
-    <div class="st hot" title="增量提案：需后端缓存上次比对结果，现状无此字段"><b>1</b><span>待更新（提案）</span></div>
-    <div class="st" title="按 skill 计（有至少一处安装的 skill 数）"><b>4</b><span>个 skill 已安装</span></div>
-    <div class="st"><b>2</b><span>软链 / 手写</span></div>
   </div>
 
   <div class="seg">
@@ -333,10 +345,6 @@ td.cell-name .sub-desc { color: var(--mid); font-size: 11px; margin-top: 1px; }
       <button class="btn small ghost" onclick="openModal('m-migrate')">迁移勾选 → 项目…</button>
       <button class="btn small quiet-danger" onclick="openModal('m-remove-batch')">移除勾选…</button>
       <button class="btn small ghost" onclick="clearSel()">清空勾选</button>
-    </div>
-    <div class="toolbar">
-      <label class="chk-all"><input type="checkbox" id="ck-all" onchange="toggleAll(this)"> 全选</label>
-      <input class="search" placeholder="过滤名称 / 来源…" spellCheck="false" oninput="filterRows()">
     </div>
 
     <div class="card src-group">
@@ -466,8 +474,7 @@ td.cell-name .sub-desc { color: var(--mid); font-size: 11px; margin-top: 1px; }
       </div>
       <div class="toolbar bulk">
         <span class="tag strong">已选 1</span>
-        <button class="btn small ghost" onclick="openModal('m-batch-result')">应用所选更新</button>
-        <label style="display:inline-flex;align-items:center;gap:6px"><input type="checkbox"> 同时清理上游已删除的条目（--prune）</label>
+        <span class="muted">应用走右上角工具区主按钮（--prune 在工具区勾选）</span>
       </div>
       <table>
         <thead><tr><th style="width:34px"></th><th>skill</th><th>指纹变更</th><th>变更摘要</th><th class="ops">操作</th></tr></thead>
@@ -506,15 +513,7 @@ td.cell-name .sub-desc { color: var(--mid); font-size: 11px; margin-top: 1px; }
     <div class="card">
       <div class="colhead">
         <h3>发现</h3>
-        <span class="muted">搜 skills.sh 注册表 · 先预览再导入，导入前不落盘</span>
-      </div>
-      <div style="padding:10px 12px 0">
-        <div class="toolbar" style="margin-bottom:8px">
-          <input class="search" id="q-search" placeholder="搜索 skills.sh 注册表（关键词）…" spellCheck="false" value="code review">
-          <input placeholder="owner（可选，如 vercel-labs）" style="width:200px" spellCheck="false">
-          <select><option>条数 10</option><option>条数 20</option></select>
-          <button class="btn ghost" onclick="toast('已搜索：vercel-labs 下 3 个结果')">搜索</button>
-        </div>
+        <span class="muted">搜 skills.sh 注册表 · 先预览再导入，导入前不落盘（关键词与 owner 在上方工具区）</span>
       </div>
       <table>
         <thead><tr><th>skill</th><th class="mono">source</th><th>安装量</th><th class="ops">操作</th></tr></thead>
@@ -807,16 +806,21 @@ function segTo(tabId, segId) {
   document.getElementById(tabId).classList.add('active');
   document.querySelectorAll('.seg .sg').forEach(function (s) { s.classList.remove('on'); });
   document.getElementById(segId).classList.add('on');
-  // 页头主按钮随区段切换：整页始终只有一枚实心主按钮
+  // 统一工具区随区段切换：过滤组显隐 + 搜索框占位 + 唯一实心主按钮
+  document.querySelectorAll('.tz-filter').forEach(function (f) { f.hidden = true; });
+  var tf = document.getElementById('tzf-' + tabId.slice(2));
+  if (tf) tf.hidden = false;
+  var ph = { 't-ledger': '过滤名称 / 来源…', 't-sync': '过滤（同步中心）…', 't-find': '搜索 skills.sh 注册表（关键词）…', 't-adv': '过滤（高级）…' };
+  document.getElementById('tz-search').placeholder = ph[tabId] || '';
   var p = SEG_PRIMARY[tabId];
   var b = document.getElementById('pg-primary');
   if (p && b) { b.textContent = p.label; b.setAttribute('onclick', p.act); }
 }
-/* 各区段的主动作（页头那一枚实心按钮的文案与行为） */
+/* 各区段的主动作（工具区那一枚实心按钮的文案与行为） */
 var SEG_PRIMARY = {
   't-ledger': { label: '全部更新', act: "toast('已全部更新：1 个换新（happy-coder f2c90b41），5 个无变更；上游已删除可在同步中心用 --prune 清理')" },
   't-sync':  { label: '应用所选更新', act: "openModal('m-batch-result')" },
-  't-find':  { label: '搜索', act: "document.getElementById('q-search').focus();toast('已搜索：vercel-labs 下 3 个结果')" },
+  't-find':  { label: '搜索', act: "toast('已搜索：vercel-labs 下 3 个结果')" },
   't-adv':   { label: '刷新快照', act: "toast('已刷新快照：容器 6 个 skill，台账一致')" },
 };
 function toast(msg) {
@@ -854,8 +858,7 @@ function clearSel() {
   syncBulk();
 }
 function filterRows() {
-  var inputs = document.querySelectorAll('#t-ledger input[placeholder^="过滤"]');
-  var q = inputs.length ? inputs[0].value.toLowerCase() : '';
+  var q = (document.getElementById('tz-search').value || '').toLowerCase();
   document.querySelectorAll('#t-ledger tr[data-q]').forEach(function (tr) {
     tr.style.display = !q || (tr.getAttribute('data-q') || '').indexOf(q) >= 0 ? '' : 'none';
   });

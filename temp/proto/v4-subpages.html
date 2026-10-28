@@ -8,7 +8,7 @@
 :root {
   --ink: #14161a; --paper: #fff; --soft: #f5f6f7; --soft-2: #e7e9ec;
   --mid: #6b7178; --faint: #9aa0a7;
-  --row-h: 28px; --btn-h: 32px; --fs-core: 12px;
+  --row-h: 28px; --btn-h: 28px; --fs-core: 12px;
   --radius-flat: 4px; --radius-btn: 8px; --radius-pill: 999px;
   --border: 1px solid var(--soft-2);
   --shadow-relief: -1px -1px 2px rgba(255,255,255,.85), 2px 2px 6px rgba(20,22,26,.07);
@@ -48,7 +48,7 @@ footer { color: var(--mid); font-size: 11px; padding: 14px 20px 26px; text-align
 .btn:active:not(:disabled) { box-shadow: var(--shadow-relief-press); transform: translateY(1px); }
 .btn.ghost { background: var(--soft); color: var(--ink); }
 .btn.ghost:hover:not(:disabled) { background: var(--soft-2); }
-.btn.small { height: 24px; padding: 0 9px; font-size: 11px; border-radius: 6px; }
+.btn.small { padding: 0 9px; }
 .btn:disabled { background: var(--soft); color: var(--faint); box-shadow: var(--shadow-relief-inset); cursor: not-allowed; }
 .btn.danger-quiet { background: var(--paper); color: #b3261e; border: 1px solid var(--soft-2); box-shadow: none; }
 .btn.danger-quiet:hover:not(:disabled) { background: var(--soft); box-shadow: none; }
@@ -57,6 +57,15 @@ input, select { font: inherit; font-size: var(--fs-core); color: var(--ink); bac
 input::placeholder { color: var(--faint); }
 input:focus, select:focus { outline: none; border-color: var(--mid); box-shadow: var(--shadow-relief-inset); }
 input[type="checkbox"] { height: auto; padding: 0; accent-color: var(--ink); }
+
+
+/* ─── 统一工具区：每页一条、位置固定（标题带正下方）；返回 / 过滤 / 动作同处 ─── */
+.toolzone { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; padding: 6px 10px; background: var(--soft); border-radius: var(--radius-btn); margin: 0 0 12px; }
+.toolzone .tz-filter { display: flex; gap: 8px; align-items: center; flex: 1 1 240px; min-width: 0; flex-wrap: wrap; }
+.toolzone .tz-filter[hidden] { display: none; }
+.toolzone .tz-acts { display: flex; gap: 8px; align-items: center; margin-left: auto; flex-wrap: wrap; }
+.toolzone .search { flex: 1 1 200px; max-width: 380px; }
+.toolzone .sep { width: 1px; height: 16px; background: var(--soft-2); margin: 0 2px; }
 
 .toolbar { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-bottom: 10px; }
 .toolbar label { color: var(--mid); }
@@ -139,14 +148,17 @@ input[type="checkbox"] { height: auto; padding: 0; accent-color: var(--ink); }
       <div style="font-size: 15px; font-weight: 700">Claude Code</div>
       <div class="sub-meta">15 个已在订阅源 · 6 个不在订阅源</div>
     </div>
-    <div class="acts">
-      <button class="btn" onclick="toast('打开收进订阅源弹窗（选目标源）')">收进订阅源…</button>
-      <button class="btn ghost" onclick="toast('已移出启用范围（至少保留一个）')">移出启用范围</button>
-    </div>
   </div>
 
-  <div class="toolbar">
-    <input class="search grow" placeholder="过滤名称 / 描述…" spellCheck="false">
+  <!-- 统一工具区：返回 / 过滤 / 动作同一处 -->
+  <div class="toolzone">
+    <button class="btn small ghost" onclick="toast('返回 Skill 总览')">← 返回</button>
+    <span class="sep"></span>
+    <input class="search" placeholder="过滤名称 / 描述…" spellCheck="false">
+    <div class="tz-acts">
+      <button class="btn ghost" onclick="toast('已移出启用范围（至少保留一个）')">移出启用范围</button>
+      <button class="btn" onclick="toast('打开收进订阅源弹窗（选目标源）')">收进订阅源…</button>
+    </div>
   </div>
 
   <div class="section-label">不在订阅源
@@ -238,13 +250,16 @@ input[type="checkbox"] { height: auto; padding: 0; accent-color: var(--ink); }
       <div style="font-size: 15px; font-weight: 700">项目里的 skill</div>
       <div class="sub-meta mono" title="D:\DevProjects\my\github\nx-rh">D:\DevProjects\my\github\nx-rh</div>
     </div>
-    <div class="acts">
-      <button class="btn" onclick="toast('打开收进订阅源弹窗（选目标源）')">收进订阅源…</button>
-    </div>
   </div>
 
-  <div class="toolbar">
-    <input class="search grow" placeholder="过滤名称 / 描述…" spellCheck="false">
+  <!-- 统一工具区：返回 / 过滤 / 动作同一处 -->
+  <div class="toolzone">
+    <button class="btn small ghost" onclick="toast('返回 Skill 总览')">← 返回</button>
+    <span class="sep"></span>
+    <input class="search" placeholder="过滤名称 / 描述…" spellCheck="false">
+    <div class="tz-acts">
+      <button class="btn" onclick="toast('打开收进订阅源弹窗（选目标源）')">收进订阅源…</button>
+    </div>
   </div>
 
   <div class="section-label">项目目录
@@ -329,17 +344,19 @@ input[type="checkbox"] { height: auto; padding: 0; accent-color: var(--ink); }
     </div>
   </div>
 
-  <div class="toolbar">
+  <!-- 统一工具区：返回 / 过滤 / 批量动作同一处（批量动作在勾选后出现） -->
+  <div class="toolzone">
+    <button class="btn small ghost" onclick="toast('返回 Skill 总览')">← 返回</button>
+    <span class="sep"></span>
     <label class="chk-all"><input type="checkbox" checked> 全选（3）</label>
-    <input class="search grow" placeholder="过滤名称 / 描述…" spellCheck="false">
-  </div>
-
-  <div class="toolbar bulk">
-    <span class="tag strong">已选 3</span>
-    <button class="btn ghost" onclick="toast('已清空勾选')">清空勾选</button>
-    <button class="btn" onclick="toast('打开迁移弹窗（平台复选 + 形态）')">迁移勾选 → 项目…</button>
-    <button class="btn ghost" onclick="toast('打开迁移弹窗（用户级）')">迁移勾选 → 用户…</button>
-    <button class="btn danger-quiet" title="连各平台安装位置与订阅源实文件一起删，不可恢复（先预演再确认）" onclick="toast('打开彻底删除预演（dry-run 清单）')">彻底删除…</button>
+    <input class="search" placeholder="过滤名称 / 描述…" spellCheck="false">
+    <div class="tz-acts">
+      <span class="tag strong">已选 3</span>
+      <button class="btn ghost" onclick="toast('已清空勾选')">清空勾选</button>
+      <button class="btn" onclick="toast('打开迁移弹窗（平台复选 + 形态）')">迁移勾选 → 项目…</button>
+      <button class="btn ghost" onclick="toast('打开迁移弹窗（用户级）')">迁移勾选 → 用户…</button>
+      <button class="btn danger-quiet" title="连各平台安装位置与订阅源实文件一起删，不可恢复（先预演再确认）" onclick="toast('打开彻底删除预演（dry-run 清单）')">彻底删除…</button>
+    </div>
   </div>
 
   <div class="skl-grid">
