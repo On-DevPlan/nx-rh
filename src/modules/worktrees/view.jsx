@@ -124,7 +124,16 @@ export default function WorktreesView() {
           被 .gitignore 忽略的本地工具/文档登记为扩展文件（只读参考），需要内容时 agent 自行复制。
         </div>
       </div>
-      <div className="acts">
+    </div>
+  );
+
+  // 统一工具区：本页全部页级动作（非 git 时全部禁用）
+  const toolzone = (
+    <div className="toolzone">
+      <div className="tz-filter">
+        <span className="muted">真相现查 git worktree list · 扩展文件只登记提醒，不复制内容</span>
+      </div>
+      <div className="tz-acts">
         <button className="btn ghost" onClick={openContext} disabled={!data.git}>主项目上下文</button>
         <button className="btn ghost" onClick={openFanout} disabled={!data.git}>Fanout</button>
         <button className="btn ghost" onClick={() => setModal({ kind: 'config' })} disabled={!data.git}>配置</button>
@@ -137,6 +146,7 @@ export default function WorktreesView() {
     return (
       <>
         {head}
+        {toolzone}
         <div className="card" style={{ padding: 18 }}>
           <div className="colhead"><h3>当前目录不是 git 仓库</h3></div>
           <pre style={{ padding: '10px 0' }}>{data.project}</pre>
@@ -153,6 +163,7 @@ export default function WorktreesView() {
   return (
     <>
       {head}
+      {toolzone}
 
       {/* 主仓库信息条 */}
       <div className="card" style={{ padding: 14 }}>

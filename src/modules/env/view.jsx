@@ -269,15 +269,12 @@ export default function EnvView() {
             四象限看板：用户级 / 系统级变量与 PATH 分开承载。所有写入都会先给你看 diff，确认后才落盘。
           </div>
         </div>
-        <div className="acts">
-          <button className="btn" disabled={busy || !supported} onClick={() => openEdit('user')}>新增变量</button>
-        </div>
       </div>
 
-      {/* 状态 + 搜索一行 */}
-      <div className="toolbar">
+      {/* 统一工具区：过滤 + 写入能力状态 + 页级动作 */}
+      <div className="toolzone">
         <input
-          className="search grow"
+          className="search"
           placeholder="过滤名称 / 路径…"
           value={q}
           spellCheck="false"
@@ -288,6 +285,9 @@ export default function EnvView() {
             : sysWritable ? '用户级 / 系统级 均可写'
               : '用户级可写 · 系统级只读（需管理员）'}
         </span>
+        <div className="tz-acts">
+          <button className="btn" disabled={busy || !supported} onClick={() => openEdit('user')}>新增变量</button>
+        </div>
       </div>
 
       {/* 四象限看板 */}
