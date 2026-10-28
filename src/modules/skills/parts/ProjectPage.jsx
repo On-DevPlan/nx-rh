@@ -39,10 +39,10 @@ export function ProjectPage({ tick }) {
   return (
     <>
       <Crumbs trail={[{ label: '当前项目' }]} />
-      <div className="sub-head">
-        <div>
-          <div style={{ fontSize: 15, fontWeight: 700 }}>项目里的 skill</div>
-          <div className="sub-meta mono" title={data?.projectRoot}>{data?.projectRoot || '读取中…'}</div>
+      <div className="page-head" style={{ marginBottom: 10 }}>
+        <div className="title-block">
+          <h2>项目里的 skill</h2>
+          <div className="sub-meta mono" style={{ marginTop: 2 }} title={data?.projectRoot}>{data?.projectRoot || '读取中…'}</div>
         </div>
       </div>
 

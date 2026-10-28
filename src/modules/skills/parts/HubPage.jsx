@@ -51,13 +51,13 @@ export function HubPage({ hubPath, tick }) {
   return (
     <>
       <Crumbs trail={[{ label: sourceLabel(hubPath, srcPaths) }]} />
-      <div className="sub-head">
-        <div>
-          <div style={{ fontSize: 15, fontWeight: 700 }}>{sourceLabel(hubPath, srcPaths)}</div>
-          <div className="sub-meta mono" title={hubPath}>{hubPath}</div>
-        </div>
-        <div className="acts">
-          {isCurrent ? <span className="tag strong">主源</span> : null}
+      <div className="page-head" style={{ marginBottom: 10 }}>
+        <div className="title-block">
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            <h2>{sourceLabel(hubPath, srcPaths)}</h2>
+            {isCurrent ? <span className="tag strong">主源</span> : null}
+          </div>
+          <div className="sub-meta mono" style={{ marginTop: 2 }} title={hubPath}>{hubPath}</div>
         </div>
       </div>
 

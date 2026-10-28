@@ -313,7 +313,7 @@ export function SkillDetail({ name, tick }) {
             <div
               style={{
                 display: 'flex', alignItems: 'center', gap: 10,
-                padding: '8px 12px', borderBottom: '1px solid var(--border, #e5e7eb)',
+                padding: '8px 12px', borderBottom: 'var(--border)',
               }}
             >
               <strong style={{ fontSize: 13 }}>{title}</strong>

@@ -69,7 +69,7 @@ export function Overview({ data, openCreate }) {
                 卡片上给一个直达入口，不在顶栏另开一个同目标的按钮 */}
             {s.remote ? (
               <div
-                style={{ display: 'flex', gap: 5, marginTop: 8, paddingTop: 8, borderTop: '1px solid var(--line,#e5e5ee)' }}
+                style={{ display: 'flex', gap: 5, marginTop: 8, paddingTop: 8, borderTop: 'var(--border)' }}
                 onClick={(e) => e.stopPropagation()}
               >
                 <button className="btn small ghost" onClick={goRemote}>管理…</button>

@@ -58,7 +58,6 @@ body {
 .page-head .title-block { min-width: 0; }
 .page-head h2 { font-size: 16px; font-weight: 700; margin: 0; letter-spacing: 0.2px; }
 .page-head .page-desc { color: var(--mid); font-size: 12px; margin-top: 3px; max-width: 760px; }
-.page-head .acts { display: flex; gap: 8px; flex-shrink: 0; align-items: center; }
 
 /* ---------- 顶栏（唯一保留视觉重量的容器） ---------- */
 header {
@@ -697,8 +696,6 @@ textarea.dlg-input:focus { outline: none; border-color: var(--mid); box-shadow: 
   header .meta { max-width: 38vw; font-size: 11px; }
 
   .page-head { flex-direction: column; gap: 10px; margin-bottom: 12px; }
-  .page-head .acts { width: 100%; }
-  .page-head .acts .btn { flex: 1; }
 
 
   /* skill 文件树转纵向 */
@@ -882,17 +879,12 @@ input[type="radio"] { height: auto; padding: 0; accent-color: var(--ink); }
 input[type="checkbox"] { height: auto; padding: 0; accent-color: var(--ink); }
 
 /* 子页头部（平台 / 订阅源） */
-.sub-head {
-  display: flex; flex-wrap: wrap; align-items: center; gap: 10px;
-  margin-bottom: 10px;
-}
-.sub-head .sub-meta { font-size: 11px; color: var(--mid); }
-.sub-head .acts { margin-left: auto; display: flex; gap: 8px; flex-wrap: wrap; }
+/* 页头副信息行（路径 / 统计）：标题带内独立使用（.sub-head 已随统一规范退役） */
+.sub-meta { font-size: 11px; color: var(--mid); }
 
 /* 详情页落点矩阵在全页下的容器 */
 .detail-cells { margin-top: 4px; }
 
 @media (max-width: 720px) {
   .entry-grid, .skl-grid { grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 8px; }
-  .sub-head .acts { margin-left: 0; width: 100%; }
 }

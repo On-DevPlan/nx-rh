@@ -46,10 +46,10 @@ export function PlatformPage({ platformId, tick }) {
   return (
     <>
       <Crumbs trail={[{ label: platName }]} />
-      <div className="sub-head">
-        <div>
-          <div style={{ fontSize: 15, fontWeight: 700 }}>{platName}</div>
-          <div className="sub-meta">{managed.length} 个已在订阅源 · {orphans.length} 个不在订阅源</div>
+      <div className="page-head" style={{ marginBottom: 10 }}>
+        <div className="title-block">
+          <h2>{platName}</h2>
+          <div className="sub-meta" style={{ marginTop: 2 }}>{managed.length} 个已在订阅源 · {orphans.length} 个不在订阅源</div>
         </div>
       </div>
 

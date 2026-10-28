@@ -233,10 +233,10 @@ export function RemotePage({ tick }) {
   return (
     <>
       <Crumbs trail={[{ label: '远程订阅' }]} />
-      <div className="sub-head">
-        <div>
-          <div style={{ fontSize: 15, fontWeight: 700 }}>远程订阅</div>
-          <div className="sub-meta mono">{hub?.dir || '~/.nx-rh/远程订阅/'} · 外部 skill 都在这里，版本可比可更</div>
+      <div className="page-head" style={{ marginBottom: 10 }}>
+        <div className="title-block">
+          <h2>远程订阅</h2>
+          <div className="sub-meta mono" style={{ marginTop: 2 }}>{hub?.dir || '~/.nx-rh/远程订阅/'} · 外部 skill 都在这里，版本可比可更</div>
         </div>
       </div>
 
@@ -364,8 +364,7 @@ export function RemotePage({ tick }) {
           <div className="card"><div className="list">
             <div className="row">
               <span className="name" style={{ width: 150 }}>添加定义</span>
-              <span className="desc">remote add —— 手写一个 SKILL.md 条目放进容器（无上游，不参与 remote update）</span>
-              <span className="acts"><button className="btn small ghost" onClick={addDefinition}>＋ 添加</button></span>
+              <span className="desc">remote add —— 手写一个 SKILL.md 条目放进容器（无上游，不参与 remote update）。入口在本页工具区「＋ 添加定义」</span>
             </div>
             <div className="row">
               <span className="name" style={{ width: 150 }}>加软链</span>
