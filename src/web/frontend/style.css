@@ -17,7 +17,7 @@
 
   /* 密度 */
   --row-h: 28px;
-  --btn-h: 32px;
+  --btn-h: 28px;
   --fs-core: 12px;
 
   /* 圆角 */
@@ -153,6 +153,22 @@ main { padding: 14px 24px 28px; max-width: none; }
 .sep { width: 1px; height: 16px; background: var(--soft-2); margin: 0 4px; }
 .grow { flex: 1 1 220px; max-width: 340px; min-width: 160px; }
 .toolbar .search { flex: 1 1 240px; max-width: 460px; }
+
+/* ---------- 统一工具区：每页一条、位置固定（标题带正下方） ----------
+   骨架：crumbs（仅子页）→ 标题带（不放按钮）→ .toolzone → 内容。
+   左起：← 返回（子页）· 分隔线 · 过滤/搜索/全选；右侧动作组，唯一实心主按钮最右。
+   多区段页的过滤组与主按钮随区段切换（位置不动内容换）。
+   过渡期与旧 .toolbar 共存（R2 起 JSX 逐步迁入，迁完后再评估移除旧类）。 */
+.toolzone { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; padding: 6px 10px; background: var(--soft); border-radius: var(--radius-btn); margin: 0 0 12px; }
+.toolzone .tz-filter { display: flex; gap: 8px; align-items: center; flex: 1 1 240px; min-width: 0; flex-wrap: wrap; }
+.toolzone .tz-filter[hidden] { display: none; }
+.toolzone .tz-acts { display: flex; gap: 8px; align-items: center; margin-left: auto; flex-wrap: wrap; }
+.toolzone .search { flex: 1 1 200px; max-width: 380px; }
+.toolzone .sep { width: 1px; height: 16px; background: var(--soft-2); margin: 0 2px; }
+.toolzone .chk-all {
+  display: inline-flex; align-items: center; gap: 6px;
+  white-space: nowrap; cursor: pointer; user-select: none;
+}
 
 /* 订阅源子页：全选勾选（作用于当前过滤结果） */
 .toolbar .chk-all {
@@ -347,7 +363,7 @@ input:focus, select:focus {
 }
 .btn.ghost { background: var(--soft); color: var(--ink); }
 .btn.ghost:hover:not(:disabled) { background: var(--soft-2); }
-.btn.small { height: 24px; padding: 0 9px; font-size: 11px; border-radius: 6px; }
+.btn.small { padding: 0 9px; }
 .btn:disabled {
   background: var(--soft);
   color: var(--faint);

@@ -12,9 +12,18 @@
   `remote update` 按来源重拉、指纹变了才换；`remote add` 手写定义、`remote link / link-out` 软链、
   `remote remove` 移除。新增 `skill hub search` 搜 skills.sh 注册表。导入落位、版本追踪、软链、
   归档解包等纯逻辑**移植自 [vercel-labs/skills](https://github.com/vercel-labs/skills)，MIT**。
+- **统一工具区体系（.toolzone）**：每页一条、位置固定（标题带正下方）的工具带——
+  左起返回键（子页）· 分隔线 · 过滤/搜索/全选，右侧动作组，唯一实心主按钮最右。
+  含多区段页所需的过滤组显隐（`.tz-filter[hidden]`）。JSX 迁移随后续轮次进行。
 
 ### Changed
 
+- **按钮规格统一 28px 高 / 12px 字**：`--btn-h` 32px → 28px；`.btn.small` 取消独立高度
+  （24px）与字号（11px），与标准按钮同高同字号、只保留紧凑内边距。顶栏页签、弹窗标题、
+  toast 等引用 `--btn-h` 的位置随之对齐。
+- 标签不填黑：`.tag.strong` / `.pill.on` 改为描边（实线=确定、虚线=软链）；
+  新增 `.btn.danger-quiet`（白底红字）用于行级破坏性操作，删除闸门留在弹窗里；
+  面板内容满宽（`main` 去 max-width 居中）。
 - **`skill hub subscribe` 只收本地目录**：远程规格会提示改用 `skill hub remote import`
   （此前两条路都能导远程，语义重叠）。
 - **submit 落入远程订阅写台账**：`skill submit --into <远程订阅>` 收进的 skill 现在登记进
