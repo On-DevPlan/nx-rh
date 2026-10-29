@@ -170,6 +170,11 @@ jobs:
     needs: build
     if: github.event_name == 'push' || inputs.publish == true
     runs-on: ubuntu-latest
+    # 同一时间只跑一个发布流水线。npm 对账号的发布有速率限制，
+    # 两次发布叠在一起会让后一轮整轮被 spam detection 拦下。
+    concurrency:
+      group: npm-publish-nx-rh-rs
+      cancel-in-progress: false
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -297,6 +302,9 @@ jobs:
               continue
             fi
             echo "publishing $name@$version"
+            # 包与包之间留间隔。npm 的「一次发布 N 个包」限制是按窗口算的，
+            # 连续贴脸发会撞上 spam detection（403 Package name triggered spam detection）。
+            sleep 20
             # npm 对新账号的连续发布会触发 spam detection（403 Forbidden）。
             # 退避重试而不是直接失败 —— 前面几个包已经发出去了，中途失败会让
             # 「半个版本」留在 registry 上（版本号被占，重跑补发时要换版本号）。
