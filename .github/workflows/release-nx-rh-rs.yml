@@ -27,10 +27,6 @@ on:
         required: false
         default: false
         type: boolean
-      name_test:
-        description: "诊断：空壳发布某个包名（测名��是否被标记），留空则跳过"
-        required: false
-        type: string
   push:
     tags:
       - "nx-rh-rs-v*"
@@ -300,7 +296,10 @@ jobs:
             [ -f "$d/package.json" ] || { echo "跳过（无 package.json）: $d"; continue; }
             name=$(node -p "require('./$d/package.json').name")
             version=$(node -p "require('./$d/package.json').version")
-            if npm view "$name@$version" version >/dev/null 2>&1; then
+            # 已发布（含 npm 的 staged 占位版本）就跳过。
+            # 注意：npm 刚发布时会先挂一个 0.0.0-stage 的占位版本，
+            # 真正的版本号稍后才出现 —— 所以不能只看 dist-tags.latest。
+            if npm view "$name" versions --json 2>/dev/null | grep -q -- ""$version""; then
               echo "skip $name@$version (已发布)"
               count=$((count+1))
               continue
@@ -371,10 +370,6 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
-      - uses: actions/setup-node@v4
-        with:
-          node-version: "24"
-          registry-url: "https://registry.npmjs.org"
       - uses: Swatinem/rust-cache@v2
         with:
           workspaces: ${{ env.CRATE_DIR }} -> target
@@ -386,32 +381,3 @@ jobs:
           ./target/release/nx-rh-rs version
           ./target/release/nx-rh-rs help --json | head -5
           ./target/release/nx-rh-rs routes --json | head -5
-      # 诊断用：把某个包名以「空壳」发一次（无二进制）。
-      # 用来区分两种失败：
-      #   空壳也 403 → 包名/账号被标记（不是内容问题）
-      #   空壳能发   → 是二进制内容/体积触发了检测
-      # 用法：workflow_dispatch 加输入 name_test=nx-rh-rs-win32-x64-msvc
-      - name: Name test (stub publish)
-        if: inputs.name_test != ''
-        shell: bash
-        env:
-          NAME_TEST: ${{ inputs.name_test }}
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
-        run: |
-          set -uo pipefail
-          rm -rf nametest && mkdir -p nametest/bin
-          cd nametest
-          cat > package.json <<JSON
-          {
-            "name": "$NAME_TEST",
-            "version": "0.0.0-nametest",
-            "description": "name availability probe",
-            "os": ["win32"], "cpu": ["x64"],
-            "bin": { "nx-rh-rs": "bin/nx-rh-rs.exe" },
-            "files": ["bin/"],
-            "license": "MIT"
-          }
-          JSON
-          echo "stub" > bin/nx-rh-rs.exe
-          npm publish --access public --tag nametest 2>&1 | tail -6
-
