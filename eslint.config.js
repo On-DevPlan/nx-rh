@@ -16,7 +16,18 @@ const BASE_RULES = {
 
 export default defineConfig([
   {
-    ignores: ['src/web/public/**', 'node_modules/**', '.tool/**', '.claude/**', 'assets/**', 'temp/**'],
+    ignores: [
+      'src/web/public/**',
+      'node_modules/**',
+      '.tool/**',
+      '.claude/**',
+      'assets/**',
+      'temp/**',
+      // Rust 试验版目录：frontend/ 是 vite 压缩产物（构建产物不是源码），
+      // npm/assets/ 是 assets/ 的打包副本 —— 两者都不该被 lint。
+      'prev/**/frontend/**',
+      'prev/**/npm/assets/**',
+    ],
   },
   {
     files: ['**/*.{js,mjs,jsx}'],

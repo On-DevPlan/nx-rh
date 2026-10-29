@@ -13,6 +13,22 @@ pub fn is_supported() -> bool {
     cfg!(windows)
 }
 
+/// 与 Node 的 `process.platform` 同名的平台标识。
+/// Rust 的 `PLATFORM` 是 "windows"/"linux"/"macos"，
+/// 而 JS 版与前端都按 "win32"/"darwin"/"linux" 读——这里给对齐值，
+/// 免得 --json 输出与 JS 版对不上。
+pub const PLATFORM: &str = if cfg!(windows) {
+    "win32"
+} else if cfg!(target_os = "macos") {
+    "darwin"
+} else if cfg!(target_os = "freebsd") {
+    "freebsd"
+} else if cfg!(target_os = "openbsd") {
+    "openbsd"
+} else {
+    "linux"
+};
+
 fn assert_scope(scope: &str) -> Res<()> {
     if !SCOPES.contains(&scope) {
         return Err(bad_input(format!("scope 只能是 user | system，收到: {}", scope)));
@@ -154,7 +170,7 @@ pub fn classify_driver_error(type_name: &str, detail: &str) -> AppError {
 fn posix_driver() -> AppError {
     blocked(format!(
         "环境变量模块目前只支持 Windows（当前平台: {}）。macOS 的 launchctl 与 Linux 的 shell rc 语义差异很大，留待后续单独实现，以免做出「看似支持实则不生效」的假实现。",
-        std::env::consts::OS
+        PLATFORM
     ))
 }
 

@@ -330,15 +330,23 @@ fn read_snapshot(id: &str) -> Res<Value> {
 
 pub fn status() -> Res<Value> {
     let p = driver::probe();
-    Ok(json!({
-        "platform": std::env::consts::OS,
-        "supported": p.supported,
-        "elevated": p.elevated,
-        "user": p.user,
-        "scopeWritable": p.writable,
-        "snapshotDir": env_snapshot_dir().to_string_lossy(),
-        "note": "写入的是注册表里的持久化值，新开的终端/应用会读到；已经启动的进程（含本机已开的终端）不会自动跟变。",
-    }))
+    // user / reason 是「有才有」的字段：JS 版 probe 在不支持的平台返回的对象里
+    // 根本没有这两个键，JSON.stringify 会直接省略。Rust 侧显式跳过，
+    // 否则 --json 形状会多出 "user": null / "reason": null，与 JS 版对不上。
+    let mut out = serde_json::Map::new();
+    out.insert("platform".into(), json!(driver::PLATFORM));
+    out.insert("supported".into(), json!(p.supported));
+    out.insert("elevated".into(), json!(p.elevated));
+    if let Some(u) = &p.user {
+        out.insert("user".into(), json!(u));
+    }
+    out.insert("scopeWritable".into(), json!(p.writable));
+    if let Some(r) = &p.reason {
+        out.insert("reason".into(), json!(r));
+    }
+    out.insert("snapshotDir".into(), json!(env_snapshot_dir().to_string_lossy()));
+    out.insert("note".into(), json!("写入的是注册表里的持久化值，新开的终端/应用会读到；已经启动的进程（含本机已开的终端）不会自动跟变。"));
+    Ok(Value::Object(out))
 }
 
 pub fn list(scope: &str) -> Res<Value> {
