@@ -299,7 +299,8 @@ jobs:
           done
           # 平台包数量对不上就报错：主包已经声明了 6 个 optionalDependencies，
           # 少发任何一个 → 用户装主包时那个平台装不上二进制 → npx 直接跑不起来。
-          expected=$(node -p "Object.keys(require('$CRATE_DIR/npm/package.json').optionalDependencies||{}).length")
+          # require() 需要绝对路径或 ./ 前缀，裸相对路径会被当成模块名
+          expected=$(node -p "Object.keys(require('./$CRATE_DIR/npm/package.json').optionalDependencies||{}).length")
           if [ "$count" -ne "$expected" ]; then
             echo "平台包数量不对：发了 $count 个，应为 $expected 个"
             exit 1
