@@ -188,6 +188,43 @@ jobs:
           path: dist
           merge-multiple: true
 
+      # merge-multiple 把各 artifact 的内容平铺到 dist/ 下，
+      # 但每个 artifact 内部的第一层目录名**保留**（artifact 名 = nx-rh-rs-<os>-<arch>）。
+      # 于是产物是 dist/nx-rh-rs-<os>-<arch>/package.json ——
+      # 上面那层 dist/nx-rh-rs-<os>-<arch>/ 才是包根，package.json 在它里面。
+      # （第一版写成 dist/nx-rh-rs-*/package.json，循环里 [ -f ... ] 恒假，
+      #  于是 6 个平台包一个都没发出去，而工作流照样绿 —— 这就是静默失效。）
+      - name: Flatten platform bundles
+        shell: bash
+        run: |
+          set -euo pipefail
+          shopt -s nullglob
+          for d in dist/nx-rh-rs-*/; do
+            [ -d "$d" ] || continue
+            name=$(basename "$d")
+            if [ -f "$d/package.json" ]; then
+              echo "  $name: 已是包根"
+              continue
+            fi
+            # artifact 内多包了一层同名目录：把它提上来
+            inner="$d$name"
+            if [ -f "$inner/package.json" ]; then
+              mv "$inner"/* "$d"/ 2>/dev/null || true
+              mv "$inner"/.[!.]* "$d"/ 2>/dev/null || true
+              rmdir "$inner" 2>/dev/null || true
+              echo "  $name: 提层后是包根"
+            else
+              echo "  $name: 找不到 package.json —— artifact 布局异常"
+              find "$d" -maxdepth 3 | head -10
+              exit 1
+            fi
+          done
+          echo "--- 最终包根 ---"
+          ls -d dist/nx-rh-rs-*/
+          for f in dist/nx-rh-rs-*/package.json; do
+            echo "  $f"
+          done
+
       - name: Resolve version
         id: v
         shell: bash
@@ -242,19 +279,32 @@ jobs:
         shell: bash
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+          CRATE_DIR: ${{ env.CRATE_DIR }}
         run: |
           set -euo pipefail
+          shopt -s nullglob
+          count=0
           for d in dist/nx-rh-rs-*/; do
-            [ -f "$d/package.json" ] || continue
+            [ -f "$d/package.json" ] || { echo "跳过（无 package.json）: $d"; continue; }
             name=$(node -p "require('./$d/package.json').name")
             version=$(node -p "require('./$d/package.json').version")
             if npm view "$name@$version" version >/dev/null 2>&1; then
               echo "skip $name@$version (已发布)"
+              count=$((count+1))
               continue
             fi
             echo "publishing $name@$version"
             (cd "$d" && npm publish --provenance --access public)
+            count=$((count+1))
           done
+          # 平台包数量对不上就报错：主包已经声明了 6 个 optionalDependencies，
+          # 少发任何一个 → 用户装主包时那个平台装不上二进制 → npx 直接跑不起来。
+          expected=$(node -p "Object.keys(require('$CRATE_DIR/npm/package.json').optionalDependencies||{}).length")
+          if [ "$count" -ne "$expected" ]; then
+            echo "平台包数量不对：发了 $count 个，应为 $expected 个"
+            exit 1
+          fi
+          echo "已处理 $count 个平台包（期望 $expected 个）"
 
       - name: Publish main package
         working-directory: ${{ env.CRATE_DIR }}/npm
