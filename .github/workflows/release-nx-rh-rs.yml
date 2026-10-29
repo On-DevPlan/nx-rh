@@ -27,6 +27,10 @@ on:
         required: false
         default: false
         type: boolean
+      name_test:
+        description: "诊断：空壳发布某个包名（测名��是否被标记），留空则跳过"
+        required: false
+        type: string
   push:
     tags:
       - "nx-rh-rs-v*"
@@ -281,6 +285,35 @@ jobs:
           # 只校验「这个 secret 还能认证」，不发任何东西。
           # 过期 token 在普通 push 上完全静默——版本已发布 → 跳过 publish，工作流照样绿。
           npm whoami
+
+      # 诊断用：把某个包名以「空壳」发一次（无二进制）。
+      # 用来区分两种失败：
+      #   空壳也 403 → 包名/账号被标记（不是内容问题）
+      #   空壳能发   → 是二进制内容/体积触发了检测
+      # 用法：workflow_dispatch 加输入 name_test=nx-rh-rs-win32-x64-msvc
+      - name: Name test (stub publish)
+        if: inputs.name_test != ''
+        shell: bash
+        env:
+          NAME_TEST: ${{ inputs.name_test }}
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+        run: |
+          set -uo pipefail
+          rm -rf nametest && mkdir -p nametest/bin
+          cd nametest
+          cat > package.json <<JSON
+          {
+            "name": "$NAME_TEST",
+            "version": "0.0.0-nametest",
+            "description": "name availability probe",
+            "os": ["win32"], "cpu": ["x64"],
+            "bin": { "nx-rh-rs": "bin/nx-rh-rs.exe" },
+            "files": ["bin/"],
+            "license": "MIT"
+          }
+          JSON
+          echo "stub" > bin/nx-rh-rs.exe
+          npm publish --access public 2>&1 | tail -6
 
       - name: Publish platform packages
         shell: bash
