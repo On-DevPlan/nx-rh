@@ -65,7 +65,7 @@ pub fn default_config(main_path: &str) -> Value {
             .join("worktrees")
             .join(slug(&Path::new(main_path).file_name().map(|n| n.to_string_lossy()).unwrap_or_default()))
             .to_string_lossy()
-            .replace('/', "\\")
+            .native()
     })
 }
 
