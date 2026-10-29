@@ -283,9 +283,10 @@ jobs:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
           CRATE_DIR: ${{ env.CRATE_DIR }}
         run: |
-          set -euo pipefail
+          set -uo pipefail
           shopt -s nullglob
           count=0
+          failed=""
           for d in dist/nx-rh-rs-*/; do
             [ -f "$d/package.json" ] || { echo "跳过（无 package.json）: $d"; continue; }
             name=$(node -p "require('./$d/package.json').name")
@@ -296,18 +297,35 @@ jobs:
               continue
             fi
             echo "publishing $name@$version"
-            (cd "$d" && npm publish --provenance --access public)
-            count=$((count+1))
+            # npm 对新账号的连续发布会触发 spam detection（403 Forbidden）。
+            # 退避重试而不是直接失败 —— 前面几个包已经发出去了，中途失败会让
+            # 「半个版本」留在 registry 上（版本号被占，重跑补发时要换版本号）。
+            ok=0
+            for attempt in 1 2 3 4 5; do
+              if (cd "$d" && npm publish --provenance --access public); then
+                ok=1
+                break
+              fi
+              wait=$((attempt * 45))
+              echo "  第 $attempt 次发布失败，退避 ${wait}s 后重试"
+              sleep "$wait"
+            done
+            if [ "$ok" -eq 1 ]; then
+              count=$((count+1))
+            else
+              echo "  $name 发布失败（已重试 5 次）"
+              failed="$failed $name"
+            fi
           done
           # 平台包数量对不上就报错：主包已经声明了 6 个 optionalDependencies，
           # 少发任何一个 → 用户装主包时那个平台装不上二进制 → npx 直接跑不起来。
           # require() 需要绝对路径或 ./ 前缀，裸相对路径会被当成模块名
           expected=$(node -p "Object.keys(require('./$CRATE_DIR/npm/package.json').optionalDependencies||{}).length")
+          echo "已处理 $count 个平台包（期望 $expected 个）"
           if [ "$count" -ne "$expected" ]; then
-            echo "平台包数量不对：发了 $count 个，应为 $expected 个"
+            echo "平台包数量不对：处理了 $count 个，应为 $expected 个。未发布:$failed"
             exit 1
           fi
-          echo "已处理 $count 个平台包（期望 $expected 个）"
 
       - name: Publish main package
         working-directory: ${{ env.CRATE_DIR }}/npm
