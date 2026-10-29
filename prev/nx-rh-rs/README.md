@@ -154,6 +154,9 @@ gh workflow run release-nx-rh-rs.yml -f version=0.19.0 -f publish=true
 
 发布用 `NPM_TOKEN`（secret）+ `--provenance`（OIDC 签名）。
 
+GitHub Release 的附件按平台命名（`nx-rh-rs-linux-x64-musl`、`nx-rh-rs-win32-x64-msvc.exe` …），
+不按原名堆上去 —— 六个产物同名时后一个会覆盖前一个，下载到哪个平台全靠运气。
+
 ## 与 JS 版的差异（刻意为之）
 
 | 项 | 差异 | 原因 |

@@ -463,6 +463,27 @@ jobs:
           fi
           npm publish --provenance --access public
 
+      # Release 的附件必须按平台改名再上传。
+      # 直接把 dist/*/bin/nx-rh-rs 丢给 action-gh-release 会踩坑：6 个产物同名，
+      # 后一个覆盖前一个，最后只剩一个 `nx-rh-rs` —— 用户下载到的是哪个平台全靠运气。
+      - name: Collect release binaries
+        shell: bash
+        run: |
+          set -euo pipefail
+          shopt -s nullglob
+          mkdir -p dist/release
+          for d in dist/nx-rh-rs-*/; do
+            key=${d#dist/nx-rh-rs-}
+            key=${key%/}
+            cp "$d/bin/nx-rh-rs" "dist/release/nx-rh-rs-$key"
+          done
+          for d in dist/embedded-*/; do
+            key=${d#dist/embedded-}
+            key=${key%/}
+            cp "$d/bin/nx-rh-rs.exe" "dist/release/nx-rh-rs-$key.exe"
+          done
+          ls -la dist/release/
+
       - name: Create GitHub Release (binaries)
         if: env.DRY != 'true'
         uses: softprops/action-gh-release@v2
@@ -470,9 +491,7 @@ jobs:
           tag_name: nx-rh-rs-v${{ steps.v.outputs.version }}
           name: nx-rh-rs v${{ steps.v.outputs.version }}
           generate_release_notes: true
-          files: |
-            dist/nx-rh-rs-*/bin/nx-rh-rs
-            dist/embedded-*/bin/nx-rh-rs.exe
+          files: dist/release/*
 
   # ── 3. 校验（不发布）：构建 + 测试 + 冒烟 ─────────────────────────
   verify:
