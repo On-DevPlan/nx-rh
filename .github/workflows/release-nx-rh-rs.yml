@@ -182,19 +182,22 @@ jobs:
           node-version: "24"
           registry-url: "https://registry.npmjs.org"
 
+      # **不要用 merge-multiple**。
+      # 每个 artifact 的内容都是 {bin/, package.json}，merge 后 6 份同名文件互相覆盖 ——
+      # dist/ 下只剩最后一份 package.json，且 dist/nx-rh-rs-*/ 这个 glob 一个都匹配不上。
+      # （第一版就是这么写的：主包发成功了，6 个平台包一个都没发出去，而工作流照样绿。）
+      #
+      # 默认行为（每个 artifact 落到自己的名字目录里）恰好就是我们要的布局：
+      #   dist/nx-rh-rs-win32-x64-msvc/{package.json, bin/nx-rh-rs.exe}
+      # artifact 名 == 包名 == 目录名。
       - name: Download platform bundles
         uses: actions/download-artifact@v4
         with:
           path: dist
-          merge-multiple: true
 
-      # merge-multiple 把各 artifact 的内容平铺到 dist/ 下，
-      # 但每个 artifact 内部的第一层目录名**保留**（artifact 名 = nx-rh-rs-<os>-<arch>）。
-      # 于是产物是 dist/nx-rh-rs-<os>-<arch>/package.json ——
-      # 上面那层 dist/nx-rh-rs-<os>-<arch>/ 才是包根，package.json 在它里面。
-      # （第一版写成 dist/nx-rh-rs-*/package.json，循环里 [ -f ... ] 恒假，
-      #  于是 6 个平台包一个都没发出去，而工作流照样绿 —— 这就是静默失效。）
-      - name: Flatten platform bundles
+      # 兜底：万一某个 artifact 内部多包了一层，把它提上来。
+      # 提不动就 exit 1 —— 不再静默跳过（静默跳过 = 少发平台包 = 那个平台 npx 跑不起来）。
+      - name: Normalize platform bundles
         shell: bash
         run: |
           set -euo pipefail
@@ -203,10 +206,9 @@ jobs:
             [ -d "$d" ] || continue
             name=$(basename "$d")
             if [ -f "$d/package.json" ]; then
-              echo "  $name: 已是包根"
+              echo "  $name: 布局正确"
               continue
             fi
-            # artifact 内多包了一层同名目录：把它提上来
             inner="$d$name"
             if [ -f "$inner/package.json" ]; then
               mv "$inner"/* "$d"/ 2>/dev/null || true
