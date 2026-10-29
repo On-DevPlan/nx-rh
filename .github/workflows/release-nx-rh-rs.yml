@@ -413,5 +413,5 @@ jobs:
           }
           JSON
           echo "stub" > bin/nx-rh-rs.exe
-          npm publish --access public 2>&1 | tail -6
+          npm publish --access public --tag nametest 2>&1 | tail -6
 
