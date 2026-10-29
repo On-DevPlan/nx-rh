@@ -1,0 +1,63 @@
+name: probe npm publish paths
+
+# 诊断用：一次跑清三件事
+#   1. 已存在的包发新版本 → 账号的「新建包」限制是否与「新版本」分开
+#   2. scoped 包（@scope/name）能否绕开 spam detection
+#   3. 完全无关的新名字（对照组）
+#
+# 手工触发，不发布正式产物。
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  id-token: write
+
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+          registry-url: "https://registry.npmjs.org"
+
+      - name: probe
+        shell: bash
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+        run: |
+          set -uo pipefail
+          probe() {
+            local name="$1" version="$2" desc="$3"
+            local dir
+            dir=$(mktemp -d)
+            cd "$dir"
+            cat > package.json <<JSON
+          {
+            "name": "$name",
+            "version": "$version",
+            "description": "$desc",
+            "license": "MIT"
+          }
+          JSON
+            echo "--- probe: $name@$version"
+            if npm publish --access public --tag probe 2>&1 | tail -4; then
+              echo "RESULT $name: OK"
+            else
+              echo "RESULT $name: FAIL"
+            fi
+            cd - >/dev/null
+            rm -rf "$dir"
+          }
+
+          # 1. 已存在的包发新版本
+          probe "nx-rh-rs-darwin-x64" "0.18.1" "probe: existing package, new version"
+
+          # 2. scoped 包
+          probe "@nx-rh-rs/probe-scoped" "0.0.1" "probe: scoped package"
+
+          # 3. 完全无关的新名字（对照组）
+          probe "zzprobe-control-$(date +%s)" "0.0.1" "probe: unrelated new name"
