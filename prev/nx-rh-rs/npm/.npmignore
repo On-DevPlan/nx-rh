@@ -1,4 +1,7 @@
-# 只发布 bin/ 与 assets/（package.json 的 files 字段已限定，这里是双保险）
+# 只发布 bin/（JS 壳）与 binaries/（随包内嵌的 win32 二进制）。
+# package.json 的 files 字段已限定，这里是双保险。
+# assets/ 不在发布物里：内置 skill 已经用 include_dir 编进二进制，
+# 主包里再放一份只会与 crate 里那份漂移。
 *
 !bin/
-!assets/
+!binaries/

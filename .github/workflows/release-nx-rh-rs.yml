@@ -4,12 +4,19 @@ name: Release nx-rh-rs (Rust)
 # 两个包名不同（nx-rh / nx-rh-rs），互不影响，可以同一次 push 各自发版。
 #
 # 产物形态与 esbuild / biome / turbo 同款：
-#   主包 nx-rh-rs                 —— 只有 JS 壳 + assets/（内置 skill），几十 KB
-#   平台包 nx-rh-rs-<os>-<arch>   —— 各带一个原生二进制
-# npm 按 os/cpu 自动装对应的那一个。**二进制不随主包走**。
+#   主包 nx-rh-rs                 —— 只有 JS 壳（几十行）+ win32 的两个二进制
+#   平台包 nx-rh-rs-<os>-<arch>   —— 各带一个原生二进制（darwin / linux）
+# npm 按 os/cpu 自动装对应的那一个。
+#
+# 为什么 win32 不单独发平台包：
+#   npm 账号被 spam detection 封了「新建包」通道（已存在的包发新版本不受影响），
+#   nx-rh-rs-win32-x64-msvc / -gnu 这两个新包名发不出去。于是 win32 二进制随主包
+#   binaries/<key>/ 内嵌（壳里本来就有这条兜底路径），darwin/linux 继续走平台子包
+#   （那 4 个包已存在，新版本随时能发）。等账号解禁，把矩阵里的 embedded 改回 false
+#   并把两个 pkg 改回 nx-rh-rs-win32-* 即可，发布链路不用动。
 #
 # 触发方式：
-#   workflow_dispatch            —— 手动触发（可只验证不发版）
+#   workflow_dispatch            —— 手动触发（publish=false 只构建 + 冒烟）
 #   push: tags: nx-rh-rs-v*      —— 打 tag 直发
 #
 # 「主动触发，不是一个版本一个提交」：版本号在 workflow_dispatch 的输入里给，
@@ -27,6 +34,11 @@ on:
         required: false
         default: false
         type: boolean
+      dry_run:
+        description: "预演：构建 + 打包 + npm publish --dry-run，不发版"
+        required: false
+        default: false
+        type: boolean
   push:
     tags:
       - "nx-rh-rs-v*"
@@ -38,6 +50,10 @@ permissions:
 env:
   CARGO_TERM_COLOR: always
   CRATE_DIR: prev/nx-rh-rs
+  # 预演开关：候选版 tag（`nx-rh-rs-v0.19.0-rc1`）或 dispatch 的 dry_run。
+  # 预演会跑完整条链路（构建矩阵 → 打包 → 摊内嵌二进制 → npm publish --dry-run），
+  # 只是不真的发版 —— 这样能先验证流水线通不通，不用拿一个版本号去试错。
+  DRY: ${{ (github.event_name == 'push' && contains(github.ref_name, '-rc')) || inputs.dry_run == true }}
 
 jobs:
   # ── 1. 构建矩阵：每个平台一个二进制 ──────────────────────────────
@@ -48,46 +64,75 @@ jobs:
       fail-fast: false
       matrix:
         include:
+          # artifact 名 = download 后的目录名。embedded-* 是「随主包走」的那两个，
+          # 命名刻意不带 nx-rh-rs- 前缀，好让后面「平台包」的 glob 不会误捞。
           - target: x86_64-pc-windows-msvc
             os: windows-latest
-            npm_os: win32
-            npm_cpu: x64
-            pkg: nx-rh-rs-win32-x64-msvc
+            key: win32-x64-msvc
+            pkg: embedded-win32-x64-msvc
+            embedded: true
             ext: .exe
           - target: x86_64-pc-windows-gnu
             os: windows-latest
-            npm_os: win32
-            npm_cpu: x64
-            pkg: nx-rh-rs-win32-x64-gnu
+            key: win32-x64-gnu
+            pkg: embedded-win32-x64-gnu
+            embedded: true
             ext: .exe
           - target: x86_64-apple-darwin
             os: macos-latest
-            npm_os: darwin
-            npm_cpu: x64
+            key: darwin-x64
             pkg: nx-rh-rs-darwin-x64
+            embedded: false
             ext: ""
           - target: aarch64-apple-darwin
             os: macos-latest
-            npm_os: darwin
-            npm_cpu: arm64
+            key: darwin-arm64
             pkg: nx-rh-rs-darwin-arm64
+            embedded: false
             ext: ""
           - target: x86_64-unknown-linux-gnu
             os: ubuntu-latest
-            npm_os: linux
-            npm_cpu: x64
+            key: linux-x64-gnu
             pkg: nx-rh-rs-linux-x64-gnu
+            embedded: false
             ext: ""
           - target: x86_64-unknown-linux-musl
             os: ubuntu-latest
-            npm_os: linux
-            npm_cpu: x64
+            key: linux-x64-musl
             pkg: nx-rh-rs-linux-x64-musl
+            embedded: false
             ext: ""
 
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+
+      # 面板不是源码，是 `vite build` 的产物（仓库里 gitignore 掉了）。
+      # 这里现构建一次再拷进 crate —— 二进制里嵌的面板才会是本版本的，
+      # 而不是某个提交里残留的旧产物。
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+          cache: pnpm
+
+      - name: Build panel
+        run: |
+          pnpm install --frozen-lockfile
+          pnpm run build
+
+      - name: Sync panel into crate
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -rf "$CRATE_DIR/frontend"
+          mkdir -p "$CRATE_DIR/frontend"
+          cp -r src/web/public/. "$CRATE_DIR/frontend/"
+          test -f "$CRATE_DIR/frontend/index.html"
+          echo "面板文件数: $(find "$CRATE_DIR/frontend" -type f | wc -l)"
 
       - name: Setup Rust
         uses: dtolnay/rust-toolchain@stable
@@ -98,6 +143,13 @@ jobs:
         uses: Swatinem/rust-cache@v2
         with:
           workspaces: ${{ env.CRATE_DIR }} -> target
+
+      # musl 目标要一个 musl 链接器；纯静态依赖（miniz_oxide / sha2 / serde）不需要别的。
+      - name: Install musl tools
+        if: contains(matrix.target, 'musl')
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y musl-tools
 
       - name: Build binary
         working-directory: ${{ env.CRATE_DIR }}
@@ -123,19 +175,22 @@ jobs:
           BIN="$(pwd)/target/${{ matrix.target }}/release/nx-rh-rs${{ matrix.ext }}"
           NX_RH_RS_BIN="$BIN" node npm/bin/nx-rh-rs.mjs version
 
-      - name: Package platform bundle
+      # 打包：两种形态，产物布局必须让 publish 那边一眼能认出是哪种
+      #   embedded → dist/embedded-<key>/bin/nx-rh-rs[.exe]        （塞进主包 binaries/<key>/）
+      #   platform → dist/nx-rh-rs-<os>-<arch>/{package.json,bin/}
+      - name: Package bundle
         shell: bash
         env:
           VERSION: ${{ inputs.version }}
           TARGET: ${{ matrix.target }}
+          KEY: ${{ matrix.key }}
           PKG: ${{ matrix.pkg }}
-          NPM_OS: ${{ matrix.npm_os }}
-          NPM_CPU: ${{ matrix.npm_cpu }}
+          EMBEDDED: ${{ matrix.embedded }}
           EXT: ${{ matrix.ext }}
           CRATE_DIR: ${{ env.CRATE_DIR }}
         run: |
           set -euo pipefail
-          if [ -z "$VERSION" ]; then
+          if [ -z "${VERSION:-}" ]; then
             VERSION=$(grep -m1 '^version' "$CRATE_DIR/Cargo.toml" | sed -E 's/.*"(.*)"/\1/')
           fi
           BIN="$CRATE_DIR/target/$TARGET/release/nx-rh-rs$EXT"
@@ -143,6 +198,23 @@ jobs:
           mkdir -p "$OUT/bin"
           cp "$BIN" "$OUT/bin/nx-rh-rs$EXT"
           chmod +x "$OUT/bin/nx-rh-rs$EXT"
+
+          if [ "$EMBEDDED" = "true" ]; then
+            echo "内嵌形态（随主包 binaries/$KEY/ 走，不单独发平台包）"
+            ls -la "$OUT/bin/"
+            exit 0
+          fi
+
+          # os/cpu 从 key 反推：win32-x64-msvc / darwin-arm64 / linux-x64-musl
+          case "$KEY" in
+            darwin-*) NPM_OS=darwin ;;
+            linux-*)  NPM_OS=linux ;;
+            win32-*)  NPM_OS=win32 ;;
+            *) echo "未知平台键: $KEY"; exit 1 ;;
+          esac
+          NPM_CPU=${KEY#*-}
+          NPM_CPU=${NPM_CPU%%-*}
+
           cat > "$OUT/package.json" <<JSON
           {
             "name": "$PKG",
@@ -158,7 +230,7 @@ jobs:
           JSON
           ls -la "$OUT/bin/"
 
-      - name: Upload platform bundle
+      - name: Upload bundle
         uses: actions/upload-artifact@v4
         with:
           name: ${{ matrix.pkg }}
@@ -188,14 +260,14 @@ jobs:
           registry-url: "https://registry.npmjs.org"
 
       # **不要用 merge-multiple**。
-      # 每个 artifact 的内容都是 {bin/, package.json}，merge 后 6 份同名文件互相覆盖 ——
+      # 每个 artifact 的内容都是 {bin/, package.json}，merge 后多份同名文件互相覆盖 ——
       # dist/ 下只剩最后一份 package.json，且 dist/nx-rh-rs-*/ 这个 glob 一个都匹配不上。
       # （第一版就是这么写的：主包发成功了，6 个平台包一个都没发出去，而工作流照样绿。）
       #
       # 默认行为（每个 artifact 落到自己的名字目录里）恰好就是我们要的布局：
-      #   dist/nx-rh-rs-win32-x64-msvc/{package.json, bin/nx-rh-rs.exe}
-      # artifact 名 == 包名 == 目录名。
-      - name: Download platform bundles
+      #   dist/nx-rh-rs-darwin-arm64/{package.json, bin/nx-rh-rs}
+      #   dist/embedded-win32-x64-msvc/bin/nx-rh-rs.exe
+      - name: Download bundles
         uses: actions/download-artifact@v4
         with:
           path: dist
@@ -226,17 +298,14 @@ jobs:
               exit 1
             fi
           done
-          echo "--- 最终包根 ---"
-          ls -d dist/nx-rh-rs-*/
-          for f in dist/nx-rh-rs-*/package.json; do
-            echo "  $f"
-          done
+          echo "--- 平台包根 ---"
+          ls -d dist/nx-rh-rs-*/ 2>/dev/null || true
+          echo "--- 内嵌二进制 ---"
+          ls -d dist/embedded-*/ 2>/dev/null || true
 
       - name: Resolve version
         id: v
         shell: bash
-        env:
-          CRATE_DIR: ${{ env.CRATE_DIR }}
         run: |
           VERSION="${{ inputs.version }}"
           if [ -z "$VERSION" ]; then
@@ -249,7 +318,6 @@ jobs:
         shell: bash
         env:
           VERSION: ${{ steps.v.outputs.version }}
-          CRATE_DIR: ${{ env.CRATE_DIR }}
         run: |
           set -euo pipefail
           # 主包：版本 + 平台包版本同步
@@ -273,7 +341,38 @@ jobs:
             " "$d/package.json"
           done
 
+      # 主包里只有壳，但 win32 的两个二进制要随包走（见文件头的说明）。
+      # 这一层就是把 build 出来的 embedded-* 摊进 npm/binaries/<key>/，
+      # 布局必须与 npm/bin/nx-rh-rs.mjs 里 binaryKeys() 的取值一一对应。
+      - name: Stage main package (shell + embedded binaries)
+        shell: bash
+        run: |
+          set -euo pipefail
+          shopt -s nullglob
+          PKG_DIR="$CRATE_DIR/npm"
+          rm -rf "$PKG_DIR/binaries"
+          n=0
+          for d in dist/embedded-*/; do
+            [ -d "$d" ] || continue
+            key=${d#dist/embedded-}
+            key=${key%/}
+            mkdir -p "$PKG_DIR/binaries/$key"
+            cp "$d"/bin/* "$PKG_DIR/binaries/$key/"
+            n=$((n+1))
+            echo "  内嵌 ${key}: $(ls "$PKG_DIR/binaries/$key")"
+          done
+          if [ "$n" -eq 0 ]; then
+            echo "没有任何内嵌二进制 —— win32 用户装上会跑不起来，直接失败"
+            exit 1
+          fi
+          # 壳的断言：bin/ 里的入口必须在，且必须能列出 binaries 的键
+          test -f "$PKG_DIR/bin/nx-rh-rs.mjs"
+          echo "--- 主包内容 ---"
+          ls -la "$PKG_DIR"
+          du -sh "$PKG_DIR"
+
       - name: Verify npm token
+        if: env.DRY != 'true'
         shell: bash
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
@@ -286,37 +385,45 @@ jobs:
         shell: bash
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
-          CRATE_DIR: ${{ env.CRATE_DIR }}
         run: |
           set -uo pipefail
           shopt -s nullglob
+          # 预演只打包不发布：npm publish --dry-run 会真的 npm pack 一遍，
+          # 能验出「files 字段漏了 / 包体积异常 / package.json 写坏」这类问题。
+          if [ "${DRY:-false}" = "true" ]; then
+            echo "预演模式：只 npm pack，不发布"
+          fi
           count=0
           failed=""
           for d in dist/nx-rh-rs-*/; do
             [ -f "$d/package.json" ] || { echo "跳过（无 package.json）: $d"; continue; }
             name=$(node -p "require('./$d/package.json').name")
             version=$(node -p "require('./$d/package.json').version")
-            # 已发布（含 npm 的 staged 占位版本）就跳过。
-            # 注意：npm 刚发布时会先挂一个 0.0.0-stage 的占位版本，
-            # 真正的版本号稍后才出现 —— 所以不能只看 dist-tags.latest。
-            if npm view "$name" versions --json 2>/dev/null | grep -q -- ""$version""; then
-              echo "skip $name@$version (已发布)"
-              count=$((count+1))
-              continue
+            if [ "${DRY:-false}" != "true" ]; then
+              # 已发布（含 npm 的 staged 占位版本）就跳过。
+              # 注意：npm 刚发布时会先挂一个 0.0.0-stage 的占位版本，
+              # 真正的版本号稍后才出现 —— 所以不能只看 dist-tags.latest。
+              if npm view "$name" versions --json 2>/dev/null | grep -q -- ""$version""; then
+                echo "skip $name@$version (已发布)"
+                count=$((count+1))
+                continue
+              fi
+              echo "publishing $name@$version"
+              # 包与包之间留间隔。npm 的「一次发布 N 个包」限制是按窗口算的，
+              # 连续贴脸发会撞上 spam detection（403 Package name triggered spam detection）。
+              sleep 20
             fi
-            echo "publishing $name@$version"
-            # 包与包之间留间隔。npm 的「一次发布 N 个包」限制是按窗口算的，
-            # 连续贴脸发会撞上 spam detection（403 Package name triggered spam detection）。
-            sleep 20
             # npm 对新账号的连续发布会触发 spam detection（403 Forbidden）。
             # 退避重试而不是直接失败 —— 前面几个包已经发出去了，中途失败会让
             # 「半个版本」留在 registry 上（版本号被占，重跑补发时要换版本号）。
             ok=0
             for attempt in 1 2 3 4 5; do
-              if (cd "$d" && npm publish --provenance --access public); then
-                ok=1
-                break
+              if [ "${DRY:-false}" = "true" ]; then
+                (cd "$d" && npm publish --dry-run) && ok=1
+              else
+                (cd "$d" && npm publish --provenance --access public) && ok=1
               fi
+              [ "$ok" -eq 1 ] && break
               wait=$((attempt * 45))
               echo "  第 $attempt 次发布失败，退避 ${wait}s 后重试"
               sleep "$wait"
@@ -328,9 +435,8 @@ jobs:
               failed="$failed $name"
             fi
           done
-          # 平台包数量对不上就报错：主包已经声明了 6 个 optionalDependencies，
+          # 平台包数量对不上就报错：主包已经声明了 4 个 optionalDependencies，
           # 少发任何一个 → 用户装主包时那个平台装不上二进制 → npx 直接跑不起来。
-          # require() 需要绝对路径或 ./ 前缀，裸相对路径会被当成模块名
           expected=$(node -p "Object.keys(require('./$CRATE_DIR/npm/package.json').optionalDependencies||{}).length")
           echo "已处理 $count 个平台包（期望 $expected 个）"
           if [ "$count" -ne "$expected" ]; then
@@ -346,6 +452,11 @@ jobs:
         run: |
           name=$(node -p "require('./package.json').name")
           version=$(node -p "require('./package.json').version")
+          if [ "${DRY:-false}" = "true" ]; then
+            echo "预演模式：npm publish --dry-run（$name@$version）"
+            npm publish --dry-run
+            exit 0
+          fi
           if npm view "$name@$version" version >/dev/null 2>&1; then
             echo "skip $name@$version (已发布)"
             exit 0
@@ -353,6 +464,7 @@ jobs:
           npm publish --provenance --access public
 
       - name: Create GitHub Release (binaries)
+        if: env.DRY != 'true'
         uses: softprops/action-gh-release@v2
         with:
           tag_name: nx-rh-rs-v${{ steps.v.outputs.version }}
@@ -360,7 +472,7 @@ jobs:
           generate_release_notes: true
           files: |
             dist/nx-rh-rs-*/bin/nx-rh-rs
-            dist/nx-rh-rs-*/bin/nx-rh-rs.exe
+            dist/embedded-*/bin/nx-rh-rs.exe
 
   # ── 3. 校验（不发布）：构建 + 测试 + 冒烟 ─────────────────────────
   verify:

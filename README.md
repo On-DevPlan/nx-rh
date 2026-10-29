@@ -511,12 +511,31 @@ DoubaoWork（豆包办公，桌面端）与「豆包」是同族不同产品：�
 - [typicode/json-server](https://github.com/typicode/json-server) —— npx + JSON 文件 + REST 的最小参考
 - [javimosch/adminer-node](https://github.com/javimosch/adminer-node) —— node:http 零框架 + 路由注册表 + 用户目录 config 的面板模式
 
+## Rust 原生版：nx-rh-rs（试验）
+
+`prev/nx-rh-rs/` 是同一套规范的原生实现，用来验证「三端同源 + 分层 + status 语义」
+能不能整体平移到 Rust，并用 npm 平台二进制分发（esbuild / biome 那种形状）。
+
+- 命令面与功能逐条一致：79 条 action / 71 条 HTTP 路由 / 别名 / `--json` 形状 / help 版面
+  全部对齐，差异只有三处刻意项（命令名、配置目录 `~/.nx-rh-rs`、端口 7801）
+- 关系是**并列的两份实现**，不是替代：JS 版继续演进，Rust 版由
+  `prev/nx-rh-rs/tests/compare.cjs` 与 `cargo test` 钉住对齐
+- 发版走独立工作流 `.github/workflows/release-nx-rh-rs.yml`，发 `nx-rh-rs` 包
+
+```bash
+cd prev/nx-rh-rs && cargo build --release
+./target/release/nx-rh-rs serve      # :7801，可与 JS 版同时跑
+```
+
+细节见 [`prev/nx-rh-rs/README.md`](prev/nx-rh-rs/README.md)。
+
 ## 路线图
 
 - 订阅源的增量索引缓存（当前每次列表全量扫描，源多时会有重复 stat）
 - 上次迁移快照缓存，让 skill 侧也能走真正的三方合并
 - 把 `modules/` 的注册从显式列表改为目录扫描（当前保留显式是为了可 grep、可断点，
   且前端受打包约束做不到同等自动）
+- Rust 版跟齐每个新域（先加 JS，再补 Rust，`compare.cjs` 会指出漏了哪条）
 
 ## License
 

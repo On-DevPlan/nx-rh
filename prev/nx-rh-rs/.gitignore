@@ -8,3 +8,6 @@
 
 # npm 打包暂存（发布时由 workflow 生成）
 /dist/
+
+# 随主包内嵌的平台二进制：由 workflow 从构建产物摊进来，不入库
+/npm/binaries/

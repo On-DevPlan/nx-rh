@@ -2,7 +2,7 @@
 
 [package]
 name = "nx-rh-rs"
-version = "0.18.0"
+version = "0.19.0"
 edition = "2021"
 description = "npx-repo-hub (Rust 试验版) — 与 nx-rh 命令/功能完全一致，配置文件用 nx-rh-rs，端口 7801"
 license = "MIT"
