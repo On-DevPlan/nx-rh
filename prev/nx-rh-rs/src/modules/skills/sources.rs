@@ -1,5 +1,6 @@
 // 订阅源（Skill Hub）的登记与列举 —— 与 skills/svc/sources.js 对齐。
 
+use crate::core::paths::CowStrExt;
 use std::path::Path;
 
 use serde_json::{json, Value};
@@ -18,7 +19,7 @@ pub fn list_sources() -> Res<Value> {
     let current = if current_raw.is_empty() {
         String::new()
     } else {
-        absolutize(Path::new(current_raw)).to_string_lossy().replace('/', "\\")
+        absolutize(Path::new(current_raw)).to_string_lossy().native()
     };
     let hub_dir = load_store()
         .pointer("/remoteRepo/dir")
@@ -29,13 +30,13 @@ pub fn list_sources() -> Res<Value> {
     let sources_raw = crate::core::store::to_array_setting(&s["skillHubSources"]);
     let mut out: Vec<Value> = Vec::new();
     for p in &sources_raw {
-        let abs = absolutize(Path::new(p)).to_string_lossy().replace('/', "\\");
+        let abs = absolutize(Path::new(p)).to_string_lossy().native();
         let root = resolve_skills_root(Path::new(&abs));
         let skills = scan_skills_root(&root, None, true);
         let is_remote = !hub_dir.is_empty() && abs.eq_ignore_ascii_case(&hub_dir);
         out.push(json!({
             "path": abs,
-            "root": root.to_string_lossy().replace('/', "\\"),
+            "root": root.to_string_lossy().native(),
             "exists": path_exists(Path::new(&abs)),
             "count": skills.len(),
             "current": abs.eq_ignore_ascii_case(&current),
@@ -82,7 +83,7 @@ pub fn hub_info() -> Value {
     let count = scan_skills_root(&root, None, true).len();
     json!({
         "path": p,
-        "root": root.to_string_lossy().replace('/', "\\"),
+        "root": root.to_string_lossy().native(),
         "exists": path_exists(Path::new(&p)),
         "count": count
     })

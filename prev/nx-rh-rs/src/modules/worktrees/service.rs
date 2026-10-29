@@ -1,6 +1,7 @@
 // 工作树模块 service：git 原语之上的业务 —— 与 worktrees/svc/* 对齐。
 // 工作树清单以 git 为准；store 只登记 git 不知道的东西（扩展文件 + 配置）。
 
+use crate::core::paths::CowStrExt;
 use std::path::{Path, PathBuf};
 
 use serde_json::{json, Value};
@@ -450,8 +451,8 @@ pub fn add_worktree(input: &Value) -> Res<Value> {
     Ok(json!({
         "status": "ok", "name": session,
         "branch": if branch.is_empty() { Value::Null } else { json!(branch) },
-        "path": target.to_string_lossy().replace('/', "\\"),
-        "cd": target.to_string_lossy().replace('/', "\\")
+        "path": target.to_string_lossy().native(),
+        "cd": target.to_string_lossy().native()
     }))
 }
 
@@ -491,8 +492,8 @@ pub fn checkout_worktree(input: &Value) -> Res<Value> {
     git::git(Path::new(&bucket.main.path), &arg_refs, false)?;
     Ok(json!({
         "status": "ok", "name": session, "branch": branch,
-        "path": target.to_string_lossy().replace('/', "\\"),
-        "cd": target.to_string_lossy().replace('/', "\\")
+        "path": target.to_string_lossy().native(),
+        "cd": target.to_string_lossy().native()
     }))
 }
 

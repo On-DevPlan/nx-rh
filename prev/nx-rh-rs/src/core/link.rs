@@ -1,6 +1,7 @@
 // 目录链接的创建与识别 —— 与 core/link.js 对齐。
 // Windows 用 junction（不需要开发者模式/管理员）；POSIX 用相对 symlink。
 
+use super::paths::CowStrExt;
 use std::path::{Path, PathBuf};
 
 use super::paths::absolutize;
@@ -10,8 +11,8 @@ pub fn same_path(a: &str, b: &str) -> bool {
     if a.is_empty() || b.is_empty() {
         return false;
     }
-    let na = absolutize(Path::new(a)).to_string_lossy().replace('/', "\\");
-    let nb = absolutize(Path::new(b)).to_string_lossy().replace('/', "\\");
+    let na = absolutize(Path::new(a)).to_string_lossy().native();
+    let nb = absolutize(Path::new(b)).to_string_lossy().native();
     if cfg!(windows) {
         na.eq_ignore_ascii_case(&nb)
     } else {
@@ -31,8 +32,8 @@ pub fn same_real_path(a: &str, b: &str) -> bool {
     }
     let ra = realpath_lossy(Path::new(a));
     let rb = realpath_lossy(Path::new(b));
-    let sa = ra.to_string_lossy().replace('/', "\\");
-    let sb = rb.to_string_lossy().replace('/', "\\");
+    let sa = ra.to_string_lossy().native();
+    let sb = rb.to_string_lossy().native();
     if cfg!(windows) {
         sa.eq_ignore_ascii_case(&sb)
     } else {
@@ -66,8 +67,8 @@ pub fn detect_link_type(p: &Path) -> String {
     if cfg!(windows) && lm.is_dir() {
         if let (Some(meta), Ok(real)) = (p.file_name(), std::fs::canonicalize(p)) {
             let _ = meta;
-            let self_norm = absolutize(p).to_string_lossy().replace('/', "\\").to_lowercase();
-            let real_norm = real.to_string_lossy().replace('/', "\\").to_lowercase();
+            let self_norm = absolutize(p).to_string_lossy().native().to_lowercase();
+            let real_norm = real.to_string_lossy().native().to_lowercase();
             if self_norm != real_norm {
                 return "junction".into();
             }

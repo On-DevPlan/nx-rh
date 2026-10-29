@@ -1,13 +1,16 @@
-// 一次性排查脚本：比对两版每条 action 声明的「全部 CLI 路径（含别名）」。
+// 别名比对：两版每条 action 声明的「全部 CLI 路径」（含别名）。
 // help --json 只暴露主路径，别名不在里面 —— 而别名也是对外契约
 // （`bundled list` / `skill scan` / `skill adapt` 这些老名字必须照样能敲）。
 //
-// 用法：node prev/nx-rh-rs/tests/_alias-diff.mjs   （在仓库根跑）
+// 用法（任意目录均可，路径按脚本位置算）：
+//   node prev/nx-rh-rs/tests/alias-diff.mjs
 import fs from 'node:fs';
 import path from 'node:path';
-import { pathToFileURL } from 'node:url';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 
-const SRC = 'prev/nx-rh-rs/src';
+// 仓库根 = 本文件所在目录的 ../../..
+const REPO = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../..');
+const SRC = path.join(REPO, 'prev/nx-rh-rs/src');
 
 function rsCliPaths() {
   const files = [];
@@ -49,12 +52,20 @@ function rsCliPaths() {
   return out;
 }
 
-const { ACTIONS } = await import(pathToFileURL(path.resolve('src/runtime/registry.js')).href);
+const { ACTIONS } = await import(
+  pathToFileURL(path.join(REPO, 'src/runtime/registry.js')).href
+);
 const js = {};
 for (const a of ACTIONS) js[a.id] = Array.isArray(a.cli[0]) ? a.cli : [a.cli];
 
 const rs = rsCliPaths();
 let bad = 0;
+// CI 上同时打 annotation：Actions 日志要登录，annotations 走公开 API 就能读。
+const annotate = (msg) => {
+  if (process.env.GITHUB_ACTIONS === 'true') {
+    console.log(`::error title=别名不一致::${String(msg).replace(/%/g, '%25').replace(/\r?\n/g, '%0A')}`);
+  }
+};
 for (const [id, paths] of Object.entries(js)) {
   const r = rs[id];
   if (!r) {
@@ -66,6 +77,7 @@ for (const [id, paths] of Object.entries(js)) {
   const B = JSON.stringify(r);
   if (A !== B) {
     console.log(`  别名不一致 ${id}\n    js ${A}\n    rs ${B}`);
+    annotate(`${id}: js ${A} / rs ${B}`);
     bad++;
   }
 }
@@ -75,6 +87,7 @@ for (const id of Object.keys(rs)) {
   if (['serve', 'help', 'version'].includes(id)) continue;
   if (!js[id]) {
     console.log(`  rs 多出: ${id}`);
+    annotate(`rs 多出 action: ${id}`);
     bad++;
   }
 }

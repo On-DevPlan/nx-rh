@@ -1,6 +1,7 @@
 // skill 目录的扫描与读取 —— 与 skills/svc/scan.js 对齐。
 // 来源只认**实文件**，目标侧照常识别链接形态。
 
+use crate::core::paths::CowStrExt;
 use std::collections::BTreeMap;
 use std::path::Path;
 
@@ -34,7 +35,7 @@ pub fn read_skill(dir: &Path) -> Option<Value> {
     Some(json!({
         "name": name,
         "description": description,
-        "dir": dir.to_string_lossy().replace('/', "\\"),
+        "dir": dir.to_string_lossy().native(),
         "md5": md5_of(raw.as_bytes()),
         "lastModified": last_modified,
         "linkType": detect_link_type(dir),
@@ -176,7 +177,7 @@ pub fn scan_skills_root(root: &Path, source: Option<&str>, real_only: bool) -> V
                     out.push(json!({
                         "name": name,
                         "description": "(链接目标缺失，可清理)",
-                        "dir": dir.to_string_lossy().replace('/', "\\"),
+                        "dir": dir.to_string_lossy().native(),
                         "md5": "",
                         "lastModified": "",
                         "linkType": lt,

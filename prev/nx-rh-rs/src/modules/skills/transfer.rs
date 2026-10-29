@@ -1,5 +1,6 @@
 // 迁移（source → target）与提交（target → source）—— 与 skills/svc/transfer.js 对齐。
 
+use crate::core::paths::CowStrExt;
 use std::path::{Path, PathBuf};
 
 use serde_json::{json, Value};
@@ -82,7 +83,7 @@ pub fn migrate_skill(input: &MigrateInput) -> Res<Value> {
                         "platform": t["platform"],
                         "platformName": t["platformName"],
                         "scope": t["scope"],
-                        "dir": Path::new(t["dir"].as_str().unwrap_or("")).join(&sk_name).to_string_lossy().replace('/', "\\"),
+                        "dir": Path::new(t["dir"].as_str().unwrap_or("")).join(&sk_name).to_string_lossy().native(),
                         "status": "blocked",
                         "reason": "同名 skill 在多个订阅源且内容不同",
                         "sources": entries.iter().map(|e| json!({"source": e["source"], "md5": e["md5"]})).collect::<Vec<_>>()
@@ -170,7 +171,7 @@ pub fn unmigrate_skill(input: &MigrateInput) -> Res<Value> {
                 "platform": t["platform"],
                 "platformName": t["platformName"],
                 "scope": t["scope"],
-                "path": dst.to_string_lossy().replace('/', "\\"),
+                "path": dst.to_string_lossy().native(),
                 "linkType": lt
             });
             if input.dry_run {
@@ -232,7 +233,7 @@ pub fn materialize_skill(name: &str, to: &str, platform: &str, project: &str) ->
         copy_dir_dereference(Path::new(&abs_t), &dst)?;
         done.push(json!({
             "platform": t["platform"], "scope": t["scope"],
-            "path": dst.to_string_lossy().replace('/', "\\"), "source": abs_t
+            "path": dst.to_string_lossy().native(), "source": abs_t
         }));
     }
     Ok(json!({ "converted": !done.is_empty(), "results": done }))
@@ -267,7 +268,7 @@ fn submit_one(name: &str, opts: &SubmitOpts) -> Res<Value> {
         if better {
             picked = Some(json!({
                 "platform": t["platform"], "platformName": t["platformName"], "scope": t["scope"],
-                "path": dst.to_string_lossy().replace('/', "\\"), "linkType": lt
+                "path": dst.to_string_lossy().native(), "linkType": lt
             }));
         }
     }
@@ -292,14 +293,14 @@ fn submit_one(name: &str, opts: &SubmitOpts) -> Res<Value> {
         if !conflict_files.is_empty() && !opts.force {
             return Ok(json!({
                 "status": "conflict", "name": name, "files": conflict_files,
-                "path": dst.to_string_lossy().replace('/', "\\"), "target": picked["path"]
+                "path": dst.to_string_lossy().native(), "target": picked["path"]
             }));
         }
     }
     if opts.dry_run {
         return Ok(json!({
             "status": "ok", "name": name, "dryRun": true,
-            "sourceDir": dst.to_string_lossy().replace('/', "\\"),
+            "sourceDir": dst.to_string_lossy().native(),
             "target": picked["path"],
             "wouldRelink": !opts.keep_target
         }));
@@ -331,7 +332,7 @@ fn submit_one(name: &str, opts: &SubmitOpts) -> Res<Value> {
     }
     Ok(json!({
         "status": "ok", "name": name,
-        "sourceDir": dst.to_string_lossy().replace('/', "\\"),
+        "sourceDir": dst.to_string_lossy().native(),
         "target": picked["path"],
         "relinked": relinked,
         "keepTarget": opts.keep_target
@@ -392,7 +393,7 @@ pub fn submit_skill(input: &SubmitInput) -> Res<Value> {
     }
 
     let targets = resolve_targets(input.to, input.platform, input.project)?;
-    let hub_root = resolve_skills_root(Path::new(&hub)).to_string_lossy().replace('/', "\\");
+    let hub_root = resolve_skills_root(Path::new(&hub)).to_string_lossy().native();
     let wanted = name_list(&Value::Array(input.names.iter().map(|n| json!(n)).collect()));
 
     let list: Vec<Value> = if !wanted.is_empty() {

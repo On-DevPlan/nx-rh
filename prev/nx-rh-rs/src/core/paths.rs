@@ -98,10 +98,31 @@ pub fn project_root() -> PathBuf {
     std::env::current_dir().unwrap_or_else(|_| PathBuf::from("."))
 }
 
+/// 把 `to_string_lossy()` 的结果归一成本平台的分隔符。
+///
+/// 为什么需要：JS 用 `path.resolve/join`，Windows 下给 `\\`、POSIX 下给 `/`；
+/// 而 Rust 的 `PathBuf::from("a/b")` 会**原样保留** `/`，于是同一条路径在 JSON 里
+/// 可能长成两种形状。Windows 侧把 `/` 归一成 `\\` 才能与 Node 对齐；
+/// POSIX 侧必须原样返回 —— 早先这里无条件转成 `\\`，结果 Linux/macOS 上所有路径
+/// 都变成 `\\home\\runner\\...`，CI 的「与 JS 版对齐校验」直接红。
+pub trait CowStrExt {
+    fn native(&self) -> String;
+}
+
+impl CowStrExt for std::borrow::Cow<'_, str> {
+    fn native(&self) -> String {
+        if cfg!(windows) {
+            self.replace('/', "\\")
+        } else {
+            self.to_string()
+        }
+    }
+}
+
 /// 路径的跨平台归一形式（桶键）：Windows 折叠大小写，分隔符统一为 `\`。
 pub fn cwd_scope(dir: Option<&Path>) -> String {
     let abs = absolutize(dir.unwrap_or(&project_root()));
-    let s = abs.to_string_lossy().replace('/', "\\");
+    let s = abs.to_string_lossy().native();
     if cfg!(windows) { s.to_lowercase() } else { s }
 }
 

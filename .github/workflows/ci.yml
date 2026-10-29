@@ -69,8 +69,9 @@ jobs:
           ./target/release/nx-rh-rs help --json | head -3
           ./target/release/nx-rh-rs routes --json | head -3
 
-      # 两版命令面逐条对齐：action 表 / 路由表 / --json 输出形状 / 错误契约。
-      # 这是「Rust 版完全一致」这条要求的机器化验收。
+      # 两版命令面逐条对齐：action 表 / 路由表 / usage 串 / help 版面 /
+      # --json 形状 / 人读输出 / 错误契约。这是「Rust 版完全一致」的机器化验收。
+      # 失败时会打  ::error::  annotation，公开 API 就能读到原因（日志要登录）。
       - name: 与 JS 版对齐校验
         working-directory: prev/nx-rh-rs
         env:
@@ -78,3 +79,10 @@ jobs:
           NX_RH_STORE: ${{ github.workspace }}/.ci-store.json
         run: |
           node tests/compare.cjs
+
+      # 别名（全部 CLI 路径）单独比：help --json 只暴露主路径，
+      # `bundled list` / `skill scan` / `skill adapt` 这些老名字不在里面。
+      - name: 别名集合校验
+        working-directory: .
+        run: |
+          node prev/nx-rh-rs/tests/alias-diff.mjs

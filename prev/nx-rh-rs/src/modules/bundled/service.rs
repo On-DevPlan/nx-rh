@@ -1,6 +1,7 @@
 // 内置 skill 包：随包发布的 assets/<name>/（SKILL.md + references/…）的列装与安装。
 // 与 modules/bundled/service.js 对齐。assets 通过 include_dir 嵌入二进制。
 
+use crate::core::paths::CowStrExt;
 use std::path::{Path, PathBuf};
 
 use serde_json::{json, Value};
@@ -265,11 +266,11 @@ fn install_one(name: &str, to: &str, force: bool) -> Res<Value> {
     let files = diff_trees(&assets_dir().join(&name), &dst);
 
     if files.is_empty() {
-        return Ok(json!({ "status": "ok", "skipped": true, "name": name, "path": dst.to_string_lossy().replace('/', "\\"), "files": 0, "group": Value::Null }));
+        return Ok(json!({ "status": "ok", "skipped": true, "name": name, "path": dst.to_string_lossy().native(), "files": 0, "group": Value::Null }));
     }
     let exists_dst = path_exists(&dst);
     if exists_dst && !force {
-        return Ok(json!({ "status": "conflict", "name": name, "path": dst.to_string_lossy().replace('/', "\\"), "files": files, "count": files.len(), "group": Value::Null }));
+        return Ok(json!({ "status": "conflict", "name": name, "path": dst.to_string_lossy().native(), "files": files, "count": files.len(), "group": Value::Null }));
     }
     if exists_dst {
         crate::core::fstree::rm_force(&dst);
@@ -282,7 +283,7 @@ fn install_one(name: &str, to: &str, force: bool) -> Res<Value> {
         "installed": !exists_dst,
         "replaced": exists_dst,
         "name": name,
-        "path": dst.to_string_lossy().replace('/', "\\"),
+        "path": dst.to_string_lossy().native(),
         "files": files.len(),
         "group": Value::Null
     }))

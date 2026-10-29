@@ -1,6 +1,7 @@
 // 远程订阅仓库：唯一一个装着「外部 skill」的容器 —— 与 skills/svc/remote-repo.js 对齐。
 // 目录布局 <repo>/<name>/SKILL.md；实体 + 软链；每个实体带来源与版本元数据。
 
+use crate::core::paths::CowStrExt;
 use std::path::{Path, PathBuf};
 
 use serde_json::{json, Value};
@@ -91,7 +92,7 @@ pub fn remote_contents() -> Res<Value> {
         skills.push(json!({
             "name": name,
             "description": info["description"],
-            "dir": path.to_string_lossy().replace('/', "\\"),
+            "dir": path.to_string_lossy().native(),
             "linkType": link_type,
             "hash": hash,
             "spec": meta["spec"].as_str().unwrap_or(""),
@@ -102,7 +103,7 @@ pub fn remote_contents() -> Res<Value> {
             "manual": meta["spec"].as_str().map(|s| s.is_empty()).unwrap_or(true),
         }));
     }
-    Ok(json!({ "dir": dir.to_string_lossy().replace('/', "\\"), "skills": skills }))
+    Ok(json!({ "dir": dir.to_string_lossy().native(), "skills": skills }))
 }
 
 pub fn json_pointer_escape(s: &str) -> String {
@@ -126,7 +127,7 @@ pub fn remote_contents_with_cells(project: &str) -> Res<Value> {
                 "platform": t["platform"],
                 "platformName": t["platformName"],
                 "scope": t["scope"],
-                "dir": p.to_string_lossy().replace('/', "\\"),
+                "dir": p.to_string_lossy().native(),
                 "on": on,
                 "linkType": if on { detect_link_type(&p) } else { String::new() },
             }));
@@ -328,7 +329,7 @@ pub fn link_from_remote(name: &str, target: &str) -> Res<Value> {
     }
     let lt = detect_link_type(Path::new(target));
     Ok(json!({
-        "name": safe, "from": src.to_string_lossy().replace('/', "\\"),
+        "name": safe, "from": src.to_string_lossy().native(),
         "to": target, "linkType": if lt.is_empty() { "symlink".to_string() } else { lt }
     }))
 }
@@ -481,7 +482,7 @@ pub fn remove_from_remote(names: &[String]) -> Res<Value> {
         });
         removed.push(name.clone());
     }
-    Ok(json!({ "dir": dir.to_string_lossy().replace('/', "\\"), "removed": removed }))
+    Ok(json!({ "dir": dir.to_string_lossy().native(), "removed": removed }))
 }
 
 /// 同步「远程订阅仓库」的元数据：磁盘上的实体被删 / 变成链接时跟着改。

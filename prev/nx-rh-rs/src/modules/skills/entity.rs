@@ -1,5 +1,6 @@
 // skill 实体的增改删（只动订阅源里那份实文件）—— 与 skills/svc/entity.js 对齐。
 
+use crate::core::paths::CowStrExt;
 use std::path::{Path, PathBuf};
 
 use serde_json::{json, Value};
@@ -62,8 +63,8 @@ pub fn add_skill(name: &str, description: &str, content: &str) -> Res<Value> {
     let md_path = dir.join("SKILL.md");
     Ok(json!({
         "status": "ok", "name": name,
-        "dir": dir.to_string_lossy().replace('/', "\\"),
-        "path": md_path.to_string_lossy().replace('/', "\\")
+        "dir": dir.to_string_lossy().native(),
+        "path": md_path.to_string_lossy().native()
     }))
 }
 
@@ -95,7 +96,7 @@ pub fn update_skill(name: &str, content: &str) -> Res<Value> {
     std::fs::write(dir.join("SKILL.md"), content).map_err(crate::core::errors::io_err)?;
     Ok(json!({
         "status": "ok", "name": name,
-        "dir": dir.to_string_lossy().replace('/', "\\"),
+        "dir": dir.to_string_lossy().native(),
         "source": found["source"]
     }))
 }
@@ -122,7 +123,7 @@ pub fn remove_skill(name: &str, force: bool, project: &str) -> Res<Value> {
                 "platform": t["platform"],
                 "platformName": t["platformName"],
                 "scope": t["scope"],
-                "path": p.to_string_lossy().replace('/', "\\"),
+                "path": p.to_string_lossy().native(),
                 "linkType": detect_link_type(&p),
             }));
         }
@@ -156,7 +157,7 @@ pub fn purge_skill(name: &str, project: &str, force: bool, dry_run: bool) -> Res
             "platform": t["platform"],
             "platformName": t["platformName"],
             "scope": t["scope"],
-            "path": p.to_string_lossy().replace('/', "\\"),
+            "path": p.to_string_lossy().native(),
             "linkType": detect_link_type(&p),
         }));
     }
@@ -435,7 +436,7 @@ pub fn place_at(src_dir: &Path, name: &str, target: &Value, mode: &str, dry_run:
     let tdir = target["dir"].as_str().unwrap_or("");
     let dst = Path::new(tdir).join(name);
     let mut base = target.clone();
-    base["path"] = json!(dst.to_string_lossy().replace('/', "\\"));
+    base["path"] = json!(dst.to_string_lossy().native());
     let lt = detect_link_type(&dst);
     if !lt.is_empty() {
         if let Ok(t) = std::fs::read_link(&dst) {

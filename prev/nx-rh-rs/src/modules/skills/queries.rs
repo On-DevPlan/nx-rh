@@ -1,5 +1,6 @@
 // 列表 / 详情 / 内容读取 —— 与 skills/svc/queries.js 对齐。
 
+use crate::core::paths::CowStrExt;
 use std::collections::BTreeMap;
 use std::path::Path;
 
@@ -208,7 +209,7 @@ pub fn list_all_skills(project: &str, source: &str, platform: &str) -> Res<Value
                 "platform": t["platform"],
                 "platformName": t["platformName"],
                 "scope": t["scope"],
-                "dir": p.to_string_lossy().replace('/', "\\"),
+                "dir": p.to_string_lossy().native(),
                 "on": on,
                 "linkType": if on { detect_link_type(&p) } else { String::new() },
             }));
@@ -246,7 +247,7 @@ pub fn list_all_skills(project: &str, source: &str, platform: &str) -> Res<Value
                 "platform": t["platform"],
                 "platformName": t["platformName"],
                 "scope": t["scope"],
-                "dir": Path::new(tdir).join(sk["name"].as_str().unwrap_or("")).to_string_lossy().replace('/', "\\"),
+                "dir": Path::new(tdir).join(sk["name"].as_str().unwrap_or("")).to_string_lossy().native(),
                 "on": true,
                 "linkType": sk["linkType"],
             }));
@@ -425,7 +426,7 @@ pub fn resolve_skill_dir(name: &str, project: &str) -> Res<Value> {
         let link_type = detect_link_type(&p);
         let mut place = json!({
             "name": name,
-            "dir": p.to_string_lossy().replace('/', "\\"),
+            "dir": p.to_string_lossy().native(),
             "origin": if link_type.is_empty() { "target" } else { "link" },
             "source": "",
             "platform": t["platform"],
@@ -527,7 +528,7 @@ pub fn skill_info(name: &str, project: &str) -> Res<Value> {
             "platform": t["platform"],
             "platformName": t["platformName"],
             "scope": t["scope"],
-            "dir": p.to_string_lossy().replace('/', "\\"),
+            "dir": p.to_string_lossy().native(),
             "on": on,
             "linkType": if on { detect_link_type(&p) } else { String::new() },
         }));

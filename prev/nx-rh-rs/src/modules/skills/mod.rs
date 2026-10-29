@@ -21,7 +21,7 @@ use serde_json::{json, Value};
 
 use crate::core::diff::merge3;
 use crate::core::errors::{bad_input, Res};
-use crate::core::paths::{assert_safe_name, project_root};
+use crate::core::paths::{assert_safe_name, project_root, CowStrExt};
 use crate::runtime::spec::{Action, ArgSpec, FlagSpec};
 use renders::*;
 
@@ -553,7 +553,11 @@ pub fn actions() -> &'static Vec<Action> {
         flags: vec![FlagSpec { name: "content", kind: "string", required: true, default: None, enum_values: None, hint: "" }],
         module: "skills",
         run: |ctx, _| entity::update_skill(ctx["name"].as_str().unwrap_or(""), ctx["content"].as_str().unwrap_or("")),
-        render: Some(|d, _ctx| format!("已保存: {}\\SKILL.md", d["dir"].as_str().unwrap_or(""))),
+        // 分隔符不能用字面量 `\`：那样 POSIX 上会打出 dir\SKILL.md。
+        render: Some(|d, _ctx| {
+            let dir = std::path::Path::new(d["dir"].as_str().unwrap_or(""));
+            format!("已保存: {}", dir.join("SKILL.md").to_string_lossy().native())
+        }),
     },
     Action {
         id: "skill.remove",

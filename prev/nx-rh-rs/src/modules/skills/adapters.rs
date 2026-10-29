@@ -1,6 +1,7 @@
 // 平台适配器表：各 AI 编码工具读取 skill 的目录约定 —— 与 skills/adapters.js 对齐。
 // 这张表是唯一真相源。
 
+use crate::core::paths::CowStrExt;
 use std::path::PathBuf;
 
 
@@ -90,8 +91,8 @@ pub fn platform_names() -> Vec<&'static str> {
 pub fn target_dir_for(adapter_id: &str, scope: &str, project_root: &str) -> Option<String> {
     let a = adapter_by_id(adapter_id)?;
     Some(if scope == "user" {
-        home_dir().join(a.global_dir).to_string_lossy().replace('/', "\\")
+        home_dir().join(a.global_dir).to_string_lossy().native()
     } else {
-        PathBuf::from(project_root).join(a.dir).to_string_lossy().replace('/', "\\")
+        PathBuf::from(project_root).join(a.dir).to_string_lossy().native()
     })
 }

@@ -29,7 +29,10 @@ const RS = process.argv[3] || RS_DIR + '/target/release/nx-rh-rs' + RS_EXT;
 const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'nx-rh-cmp-'));
 const sharedStore = path.join(tmpDir, 'store.json');
 const realStore = path.join(os.homedir(), '.nx-rh', 'store.json');
-if (fs.existsSync(realStore)) {
+// NX_CMP_SEED=0 强制用最小种子（CI 就是这样：干净机器上没有真实 store）。
+// 想复现 CI 的失败，本地加这个环境变量跑一遍即可。
+const useRealSeed = process.env.NX_CMP_SEED !== '0' && fs.existsSync(realStore);
+if (useRealSeed) {
   fs.copyFileSync(realStore, sharedStore);
 } else {
   fs.writeFileSync(
@@ -71,6 +74,12 @@ function check(name, ok, detail) {
   } else {
     failures++;
     console.log(`  FAIL  ${name}${detail ? '  → ' + detail : ''}`);
+    // CI 上把失败打成 annotation：Actions 的日志要登录才能看，
+    // 但 annotations 走公开 API 就能读到 —— 失败原因不必靠猜。
+    if (process.env.GITHUB_ACTIONS === 'true') {
+      const one = String(detail || '').replace(/%/g, '%25').replace(/\r?\n/g, '%0A');
+      console.log(`::error title=${name}::${one}`);
+    }
   }
 }
 
