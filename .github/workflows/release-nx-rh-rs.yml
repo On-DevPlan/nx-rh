@@ -1,0 +1,301 @@
+name: Release nx-rh-rs (Rust)
+
+# 与 nx-rh 的 npm-publish.yml 分开：那条是 JS 版，这条是 Rust 原生版。
+# 两个包名不同（nx-rh / nx-rh-rs），互不影响，可以同一次 push 各自发版。
+#
+# 产物形态与 esbuild / biome / turbo 同款：
+#   主包 nx-rh-rs                 —— 只有 JS 壳 + assets/（内置 skill），几十 KB
+#   平台包 nx-rh-rs-<os>-<arch>   —— 各带一个原生二进制
+# npm 按 os/cpu 自动装对应的那一个。**二进制不随主包走**。
+#
+# 触发方式：
+#   workflow_dispatch            —— 手动触发（可只验证不发版）
+#   push: tags: nx-rh-rs-v*      —— 打 tag 直发
+#
+# 「主动触发，不是一个版本一个提交」：版本号在 workflow_dispatch 的输入里给，
+# 或留空读 Cargo.toml —— 改版本不必先提交一次。
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "版本号（如 0.18.0；留空则读 Cargo.toml）"
+        required: false
+        type: string
+      publish:
+        description: "是否发布到 npm"
+        required: false
+        default: false
+        type: boolean
+  push:
+    tags:
+      - "nx-rh-rs-v*"
+
+permissions:
+  contents: write # 打 tag / 建 Release
+  id-token: write # npm --provenance 的 OIDC 签名
+
+env:
+  CARGO_TERM_COLOR: always
+  CRATE_DIR: prev/nx-rh-rs
+
+jobs:
+  # ── 1. 构建矩阵：每个平台一个二进制 ──────────────────────────────
+  build:
+    name: build ${{ matrix.target }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - target: x86_64-pc-windows-msvc
+            os: windows-latest
+            npm_os: win32
+            npm_cpu: x64
+            pkg: nx-rh-rs-win32-x64-msvc
+            ext: .exe
+          - target: x86_64-pc-windows-gnu
+            os: windows-latest
+            npm_os: win32
+            npm_cpu: x64
+            pkg: nx-rh-rs-win32-x64-gnu
+            ext: .exe
+          - target: x86_64-apple-darwin
+            os: macos-latest
+            npm_os: darwin
+            npm_cpu: x64
+            pkg: nx-rh-rs-darwin-x64
+            ext: ""
+          - target: aarch64-apple-darwin
+            os: macos-latest
+            npm_os: darwin
+            npm_cpu: arm64
+            pkg: nx-rh-rs-darwin-arm64
+            ext: ""
+          - target: x86_64-unknown-linux-gnu
+            os: ubuntu-latest
+            npm_os: linux
+            npm_cpu: x64
+            pkg: nx-rh-rs-linux-x64-gnu
+            ext: ""
+          - target: x86_64-unknown-linux-musl
+            os: ubuntu-latest
+            npm_os: linux
+            npm_cpu: x64
+            pkg: nx-rh-rs-linux-x64-musl
+            ext: ""
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+
+      - name: Cache cargo
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: ${{ env.CRATE_DIR }} -> target
+
+      - name: Build binary
+        working-directory: ${{ env.CRATE_DIR }}
+        run: cargo build --release --locked --target ${{ matrix.target }}
+
+      # 三层冒烟：一层都不能省
+      #   1. 二进制本体活着
+      #   2. action 表可派生（help --json 是合法 JSON）
+      #   3. JS 壳能定位到刚编译的产物（npx 直启路径解析是独立的出错面）
+      - name: Smoke (binary)
+        working-directory: ${{ env.CRATE_DIR }}
+        shell: bash
+        run: |
+          BIN="target/${{ matrix.target }}/release/nx-rh-rs${{ matrix.ext }}"
+          "$BIN" version
+          "$BIN" help --json | head -3
+          "$BIN" health --json | head -3
+
+      - name: Smoke (JS resolver)
+        working-directory: ${{ env.CRATE_DIR }}
+        shell: bash
+        run: |
+          BIN="$(pwd)/target/${{ matrix.target }}/release/nx-rh-rs${{ matrix.ext }}"
+          NX_RH_RS_BIN="$BIN" node npm/bin/nx-rh-rs.mjs version
+
+      - name: Package platform bundle
+        shell: bash
+        env:
+          VERSION: ${{ inputs.version }}
+          TARGET: ${{ matrix.target }}
+          PKG: ${{ matrix.pkg }}
+          NPM_OS: ${{ matrix.npm_os }}
+          NPM_CPU: ${{ matrix.npm_cpu }}
+          EXT: ${{ matrix.ext }}
+          CRATE_DIR: ${{ env.CRATE_DIR }}
+        run: |
+          set -euo pipefail
+          if [ -z "$VERSION" ]; then
+            VERSION=$(grep -m1 '^version' "$CRATE_DIR/Cargo.toml" | sed -E 's/.*"(.*)"/\1/')
+          fi
+          BIN="$CRATE_DIR/target/$TARGET/release/nx-rh-rs$EXT"
+          OUT="dist/$PKG"
+          mkdir -p "$OUT/bin"
+          cp "$BIN" "$OUT/bin/nx-rh-rs$EXT"
+          chmod +x "$OUT/bin/nx-rh-rs$EXT"
+          cat > "$OUT/package.json" <<JSON
+          {
+            "name": "$PKG",
+            "version": "$VERSION",
+            "description": "nx-rh-rs 的 $TARGET 原生二进制",
+            "os": ["$NPM_OS"],
+            "cpu": ["$NPM_CPU"],
+            "bin": { "nx-rh-rs": "bin/nx-rh-rs$EXT" },
+            "files": ["bin/"],
+            "license": "MIT",
+            "repository": { "type": "git", "url": "git+https://github.com/On-DevPlan/nx-rh.git" }
+          }
+          JSON
+          ls -la "$OUT/bin/"
+
+      - name: Upload platform bundle
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.pkg }}
+          path: dist/${{ matrix.pkg }}
+          if-no-files-found: error
+
+  # ── 2. 发布：平台包 → 主包 → GitHub Release ────────────────────────
+  publish:
+    needs: build
+    if: github.event_name == 'push' || inputs.publish == true
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+          registry-url: "https://registry.npmjs.org"
+
+      - name: Download platform bundles
+        uses: actions/download-artifact@v4
+        with:
+          path: dist
+          merge-multiple: true
+
+      - name: Resolve version
+        id: v
+        shell: bash
+        env:
+          CRATE_DIR: ${{ env.CRATE_DIR }}
+        run: |
+          VERSION="${{ inputs.version }}"
+          if [ -z "$VERSION" ]; then
+            VERSION=$(grep -m1 '^version' "$CRATE_DIR/Cargo.toml" | sed -E 's/.*"(.*)"/\1/')
+          fi
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "resolved version: $VERSION"
+
+      - name: Stamp versions
+        shell: bash
+        env:
+          VERSION: ${{ steps.v.outputs.version }}
+          CRATE_DIR: ${{ env.CRATE_DIR }}
+        run: |
+          set -euo pipefail
+          # 主包：版本 + 平台包版本同步
+          node -e "
+            const fs=require('fs');
+            const p=process.env.CRATE_DIR + '/npm/package.json';
+            const j=JSON.parse(fs.readFileSync(p,'utf8'));
+            j.version=process.env.VERSION;
+            for (const k of Object.keys(j.optionalDependencies||{})) j.optionalDependencies[k]=process.env.VERSION;
+            fs.writeFileSync(p, JSON.stringify(j,null,2)+'\n');
+          "
+          # 平台包
+          for d in dist/nx-rh-rs-*/; do
+            [ -f "$d/package.json" ] || continue
+            node -e "
+              const fs=require('fs');
+              const p=process.argv[1];
+              const j=JSON.parse(fs.readFileSync(p,'utf8'));
+              j.version=process.env.VERSION;
+              fs.writeFileSync(p, JSON.stringify(j,null,2)+'\n');
+            " "$d/package.json"
+          done
+
+      - name: Verify npm token
+        shell: bash
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+        run: |
+          # 只校验「这个 secret 还能认证」，不发任何东西。
+          # 过期 token 在普通 push 上完全静默——版本已发布 → 跳过 publish，工作流照样绿。
+          npm whoami
+
+      - name: Publish platform packages
+        shell: bash
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+        run: |
+          set -euo pipefail
+          for d in dist/nx-rh-rs-*/; do
+            [ -f "$d/package.json" ] || continue
+            name=$(node -p "require('./$d/package.json').name")
+            version=$(node -p "require('./$d/package.json').version")
+            if npm view "$name@$version" version >/dev/null 2>&1; then
+              echo "skip $name@$version (已发布)"
+              continue
+            fi
+            echo "publishing $name@$version"
+            (cd "$d" && npm publish --provenance --access public)
+          done
+
+      - name: Publish main package
+        working-directory: ${{ env.CRATE_DIR }}/npm
+        shell: bash
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+        run: |
+          name=$(node -p "require('./package.json').name")
+          version=$(node -p "require('./package.json').version")
+          if npm view "$name@$version" version >/dev/null 2>&1; then
+            echo "skip $name@$version (已发布)"
+            exit 0
+          fi
+          npm publish --provenance --access public
+
+      - name: Create GitHub Release (binaries)
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: nx-rh-rs-v${{ steps.v.outputs.version }}
+          name: nx-rh-rs v${{ steps.v.outputs.version }}
+          generate_release_notes: true
+          files: |
+            dist/nx-rh-rs-*/bin/nx-rh-rs
+            dist/nx-rh-rs-*/bin/nx-rh-rs.exe
+
+  # ── 3. 校验（不发布）：构建 + 测试 + 冒烟 ─────────────────────────
+  verify:
+    name: verify (no publish)
+    if: github.event_name == 'workflow_dispatch' && inputs.publish != true
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: ${{ env.CRATE_DIR }} -> target
+      - name: Build & test
+        working-directory: ${{ env.CRATE_DIR }}
+        run: |
+          cargo build --release --locked
+          cargo test --release --locked
+          ./target/release/nx-rh-rs version
+          ./target/release/nx-rh-rs help --json | head -5
+          ./target/release/nx-rh-rs routes --json | head -5

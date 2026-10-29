@@ -1,0 +1,4 @@
+# 只发布 bin/ 与 assets/（package.json 的 files 字段已限定，这里是双保险）
+*
+!bin/
+!assets/

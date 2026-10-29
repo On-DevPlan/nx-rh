@@ -1,0 +1,30 @@
+[workspace]
+
+[package]
+name = "nx-rh-rs"
+version = "0.18.0"
+edition = "2021"
+description = "npx-repo-hub (Rust 试验版) — 与 nx-rh 命令/功能完全一致，配置文件用 nx-rh-rs，端口 7801"
+license = "MIT"
+
+[[bin]]
+name = "nx-rh-rs"
+path = "bin/main.rs"
+
+[dependencies]
+serde = { version = "1", features = ["derive"] }
+serde_json = { version = "1", features = ["preserve_order"] }
+once_cell = "1"
+include_dir = "0.7"
+flate2 = "1"
+miniz_oxide = "0.8"
+sha2 = "0.10"
+md-5 = "0.10"
+hex = "0.4"
+chrono = { version = "0.4", default-features = false, features = ["clock"] }
+open = "5"
+url = "2"
+
+[profile.release]
+opt-level = 2
+lto = false

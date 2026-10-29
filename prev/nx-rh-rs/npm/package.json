@@ -1,0 +1,28 @@
+{
+  "name": "nx-rh-rs",
+  "version": "0.18.0",
+  "description": "npx-repo-hub (Rust) — 与 nx-rh 命令/功能完全一致的原生实现；配置文件 ~/.nx-rh-rs，面板端口 7801",
+  "type": "module",
+  "bin": {
+    "nx-rh-rs": "bin/nx-rh-rs.mjs"
+  },
+  "files": [
+    "bin/",
+    "assets/"
+  ],
+  "optionalDependencies": {
+    "nx-rh-rs-darwin-arm64": "0.18.0",
+    "nx-rh-rs-darwin-x64": "0.18.0",
+    "nx-rh-rs-linux-x64-gnu": "0.18.0",
+    "nx-rh-rs-linux-x64-musl": "0.18.0",
+    "nx-rh-rs-win32-x64-msvc": "0.18.0",
+    "nx-rh-rs-win32-x64-gnu": "0.18.0"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/On-DevPlan/nx-rh.git",
+    "directory": "prev/nx-rh-rs"
+  },
+  "keywords": ["cli", "web-panel", "repo-manager", "agent-tools", "skills", "rust", "npx"],
+  "license": "MIT"
+}

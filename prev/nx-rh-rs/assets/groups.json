@@ -1,0 +1,18 @@
+{
+  "version": 1,
+  "$comment": "group 名 → skill 名列表的别名表。路径恒由 assets/<skills[i]>/ 推导——本文件只做聚合，不是第二条事实源。",
+  "groups": {
+    "nx-rh": {
+      "skills": ["nx-rh"],
+      "summary": "本项目主 skill（默认 install 装的就是这个）：Skill 订阅/迁移/提交 + 工作树 + 环境变量（仓库登记已迁 nx-kv）"
+    },
+    "rh-worktree": {
+      "skills": ["rh-worktree"],
+      "summary": "自动适配主仓库/工作树，规范创建工作树并只读提醒被 ignore 的关注项（nx-rh 不代复制）"
+    },
+    "rh-gitsync": {
+      "skills": ["rh-gitsync"],
+      "summary": "批量检查登记仓库与远端同步状态；干净且单向的差异自动推拉，脏工作区/双向分叉留给 agent 问过用户再动"
+    }
+  }
+}

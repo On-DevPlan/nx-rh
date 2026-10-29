@@ -37,3 +37,44 @@ jobs:
 
       - name: 端到端冒烟
         run: pnpm run test:smoke
+
+  # Rust 版（prev/nx-rh-rs）的校验。与 JS 版互不依赖，可以并行。
+  # 断言涵盖：action 表唯一性 / CLI 路径唯一 / 路由唯一 / 参数校验 / 错误契约。
+  verify-rust:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache cargo
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: prev/nx-rh-rs -> target
+
+      - name: 构建
+        working-directory: prev/nx-rh-rs
+        run: cargo build --release --locked
+
+      - name: 单元测试与一致性断言
+        working-directory: prev/nx-rh-rs
+        run: cargo test --release --locked
+
+      - name: 冒烟
+        working-directory: prev/nx-rh-rs
+        run: |
+          ./target/release/nx-rh-rs version
+          ./target/release/nx-rh-rs help --json | head -3
+          ./target/release/nx-rh-rs routes --json | head -3
+
+      # 两版命令面逐条对齐：action 表 / 路由表 / --json 输出形状 / 错误契约。
+      # 这是「Rust 版完全一致」这条要求的机器化验收。
+      - name: 与 JS 版对齐校验
+        working-directory: prev/nx-rh-rs
+        env:
+          NX_RH_ROOT: ${{ github.workspace }}
+          NX_RH_STORE: ${{ github.workspace }}/.ci-store.json
+        run: |
+          node tests/compare.cjs
