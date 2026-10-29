@@ -219,6 +219,12 @@ macro_rules! flag {
             name: $name, kind: "boolean", required: false, default: None, enum_values: None, hint: "",
         }
     };
+    // 带 hint 的字符串 flag：hint 就是 usage 里 `--flag <hint>` 的占位符。
+    ($name:expr, string, $hint:expr) => {
+        crate::runtime::spec::FlagSpec {
+            name: $name, kind: "string", required: false, default: None, enum_values: None, hint: $hint,
+        }
+    };
 }
 
 use once_cell::sync::Lazy;
@@ -230,7 +236,9 @@ pub fn actions() -> &'static Vec<crate::runtime::spec::Action> {
         id: "system.bootstrap",
         cli: vec![vec!["bootstrap"]],
         http: Some(("GET", "/api/bootstrap")),
-        summary: "聚合上下文：版本 / 存储路径 / 设置 / 适配器 / 工作树",
+        // 文案照抄 JS 版（含「仓库」这个历史用词）：summary 是 help 的一部分，
+        // 两版必须逐字相同，措辞好坏不是这里能改的。
+        summary: "聚合上下文：版本 / 存储路径 / 设置 / 适配器 / 仓库",
         args: vec![],
         flags: vec![],
         module: "system",
@@ -323,7 +331,10 @@ pub fn actions() -> &'static Vec<crate::runtime::spec::Action> {
         http: None,
         summary: "命令 ↔ 路由对照表（--module 过滤；--http 反查命令）",
         args: vec![],
-        flags: vec![flag!("module", string), flag!("http", string)],
+        flags: vec![
+            flag!("module", string, "模块名"),
+            flag!("http", string, "METHOD /api/path"),
+        ],
         module: "system",
         run: routes_action,
         render: Some(routes_render),

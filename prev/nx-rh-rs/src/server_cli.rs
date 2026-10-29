@@ -42,7 +42,7 @@ pub fn serve(ctx: &Value) -> super::core::errors::Res<Value> {
                     .and_then(|d| d.get("cwdScope"))
                     .and_then(|c| c.as_str())
                     .map(|s| s.to_string());
-                println!("nx-rh-rs · npx-repo-hub(rust) v{}", VERSION);
+                println!("nx-rh-rs · npx-repo-hub v{}", VERSION);
                 println!(
                     "已在运行的面板: {}{}",
                     addr,
@@ -74,7 +74,7 @@ pub fn serve(ctx: &Value) -> super::core::errors::Res<Value> {
     let port = listener.local_addr().map(|a| a.port()).unwrap_or(desired_port);
     let addr = format!("http://{}:{}", host, port);
 
-    println!("nx-rh-rs · npx-repo-hub(rust) v{}", VERSION);
+    println!("nx-rh-rs · npx-repo-hub v{}", VERSION);
     println!("面板:   {}", addr);
     println!("项目:   {}", paths::project_root().display());
     println!("作用域: {}", paths::cwd_scope(None));

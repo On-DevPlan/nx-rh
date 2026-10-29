@@ -37,39 +37,25 @@ fn regex_lite_escape(s: &str) -> String {
     out
 }
 
+/// 匹配 `^literal(.*literal)*$` 这种形状（match_name 只会生成这一种）。
+///
+/// `\.` 是转义后的字面点，`.` 是通配（由 `split('*').join(".*")` 产生）。
+/// 逐字符回溯；模式都很短，不需要上正则引擎。
 fn regex_lite_match(pattern: &str, text: &str) -> bool {
-    // 仅支持 ^...$ 与 . 通配 —— 覆盖 match_name 生成的形状
     let body = pattern.trim_start_matches('^').trim_end_matches('$');
-    regex_here(body, text)
-}
+    let p: Vec<char> = body.chars().collect();
+    let t: Vec<char> = text.chars().collect();
 
-fn regex_here(pat: &str, text: &str) -> bool {
-    fn inner(p: &[char], t: &[char]) -> bool {
-        if p.is_empty() {
-            return t.is_empty();
-        }
-        match p[0] {
-            '\\' if p.len() >= 2 => {
-                t.len() >= 1 && t[0] == p[1] && inner(&p[2..], &t[1..])
-            }
-            '.' => t.len() >= 1 && inner(&p[1..], &t[1..]),
-            '*' => {
-                // 前一个字符的 Kleene star：把 p 重排为 (seg*.*) 形式不存在——我们的生成器只产生 `.*`
-                false
-            }
-            _ => t.len() >= 1 && t[0] == p[0] && inner(&p[1..], &t[1..]),
-        }
-    }
-    // 处理 `.*`（字面 dot 后跟 star）
-    let pi = 0usize;
-    let chars_p: Vec<char> = pat.chars().collect();
-    let chars_t: Vec<char> = text.chars().collect();
     fn go(p: &[char], pi: usize, t: &[char], ti: usize) -> bool {
         if pi >= p.len() {
             return ti >= t.len();
         }
+        // `\x`：转义后的字面字符（名字里带 `.` `+` 这些时才不会被当成通配）
+        if p[pi] == '\\' && pi + 1 < p.len() {
+            return ti < t.len() && p[pi + 1] == t[ti] && go(p, pi + 2, t, ti + 1);
+        }
+        // `x*`：吃掉任意多个 x（`.` 表示任意字符）
         if pi + 1 < p.len() && p[pi + 1] == '*' {
-            // star over p[pi]
             let mut k = ti;
             loop {
                 if go(p, pi + 2, t, k) {
@@ -89,7 +75,7 @@ fn regex_here(pat: &str, text: &str) -> bool {
         }
         false
     }
-    go(&chars_p, pi, &chars_t, 0)
+    go(&p, 0, &t, 0)
 }
 
 /// 名称入参归一：CLI 的 rest 位置参数是数组，HTTP body 是单个字符串。

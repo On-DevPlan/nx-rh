@@ -6,7 +6,6 @@ use serde_json::{json, Value};
 
 use crate::core::errors::{bad_input, not_found, Res};
 use crate::core::fstree::path_exists;
-use crate::core::link::same_path;
 use crate::core::paths::absolutize;
 use crate::core::store::load_store;
 use crate::modules::settings::service as settings;
@@ -161,7 +160,3 @@ pub fn find_source_skill(name: &str) -> Res<Option<Value>> {
     Ok(Some(hit))
 }
 
-/// 比较两个订阅源路径是否同一（same_path 包装）
-pub fn source_matches(a: &str, b: &str) -> bool {
-    same_path(a, b)
-}

@@ -9,7 +9,7 @@ use std::path::Path;
 use serde_json::{json, Value};
 
 use super::registry;
-use super::spec::{apply_spec, compile_route, route_specificity, Action, RouteSeg};
+use super::spec::{apply_spec, compile_route, match_segments, route_specificity, Action, RouteSeg};
 use crate::core::errors::{http_status_of, to_error_payload, BLOCKED};
 use crate::core::paths::{clear_scope, set_scope};
 
@@ -85,7 +85,7 @@ fn send_static(stream: &mut TcpStream, root: &include_dir::Dir, pathname: &str) 
     // 越界校验：路径里出现 `..` 段一律拒绝（嵌入树按字面量查，本来也逃不出去，
     // 但显式挡住——这是对外契约的一部分）。
     if rel.split(['/', '\\']).any(|seg| seg == "..") {
-        let _ = stream.write_all(b"HTTP/1.1 403 Forbidden\r\ncontent-type: text/plain\r\ncontent-length: 9\r\n\r\nForbidden");
+        send_plain(stream, 403, "Forbidden");
         return;
     }
     match root.get_file(&rel) {
@@ -103,10 +103,29 @@ fn send_static(stream: &mut TcpStream, root: &include_dir::Dir, pathname: &str) 
             let _ = stream.write_all(resp.as_bytes());
             let _ = stream.write_all(buf);
         }
-        None => {
-            let _ = stream.write_all(b"HTTP/1.1 404 Not Found\r\ncontent-type: text/plain\r\ncontent-length: 8\r\n\r\nNot Found");
-        }
+        None => send_plain(stream, 404, "Not Found"),
     }
+}
+
+/// 纯文本应答（静态资源的 403/404）。
+///
+/// content-length 必须**算**出来，不能写死：早先这里硬编码成 8，而 "Not Found"
+/// 是 9 个字节 —— 浏览器只收到 "Not Foun"，curl 报 transfer closed。
+/// content-type 也照 Node 的 `res.end('Not Found')` 带上 charset，别让两版分叉。
+fn send_plain(stream: &mut TcpStream, status: u16, text: &str) {
+    let reason = match status {
+        403 => "Forbidden",
+        404 => "Not Found",
+        _ => "OK",
+    };
+    let resp = format!(
+        "HTTP/1.1 {} {}\r\ncontent-type: text/plain; charset=utf-8\r\ncontent-length: {}\r\n\r\n{}",
+        status,
+        reason,
+        text.len(),
+        text
+    );
+    let _ = stream.write_all(resp.as_bytes());
 }
 
 fn read_request(stream: &mut TcpStream) -> Option<(String, String, Vec<(String, String)>, Vec<u8>)> {
@@ -282,26 +301,6 @@ fn handle_api(stream: &mut TcpStream, method: &str, path: &str, headers: &[(Stri
         );
     }
     clear_scope();
-}
-
-fn match_segments(segments: &[RouteSeg], path_segs: &[&str]) -> Option<Vec<(String, String)>> {
-    if segments.len() != path_segs.len() {
-        return None;
-    }
-    let mut params = Vec::new();
-    for (seg, p) in segments.iter().zip(path_segs) {
-        match seg {
-            RouteSeg::Literal(l) => {
-                if l != p {
-                    return None;
-                }
-            }
-            RouteSeg::Param(name) => {
-                params.push((name.clone(), super::spec::percent_decode(p)));
-            }
-        }
-    }
-    Some(params)
 }
 
 /// 起服务（阻塞）。返回实际监听的地址错误给调用方（EADDRINUSE 判定用）。

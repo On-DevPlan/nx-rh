@@ -74,7 +74,7 @@ fn help_entries(topic: Option<&str>) -> crate::core::errors::Res<Vec<registry::C
 fn render_help(entries: &[registry::CommandEntry], topic: Option<&str>) -> String {
     let mut lines: Vec<String> = Vec::new();
     if topic.is_none() {
-        lines.push(format!("nx-rh-rs · npx-repo-hub(rust) v{}", VERSION));
+        lines.push(format!("nx-rh-rs · npx-repo-hub v{}", VERSION));
         lines.push("本机仓库与 Agent Skill 管理中枢。CLI 与 Web 面板共享同一 action 声明。".to_string());
         lines.push(format!(
             "存储: {}    （环境变量 NX_RH_STORE 或 --store 覆盖）",
@@ -83,7 +83,10 @@ fn render_help(entries: &[registry::CommandEntry], topic: Option<&str>) -> Strin
         lines.push(String::new());
     }
 
-    // 分组（保持模块顺序）
+    // 分组：按 entries 的**出现顺序**，不做二次排序。
+    // JS 版就是插入序（平台命令在最前，其后按模块注册序）；
+    // 早期这里按 MODULE_ORDER 重排过一次，结果「平台命令」被挤到最后，
+    // help 版面从第 5 行起就和 JS 分叉了。
     let mut groups: Vec<(String, Vec<&registry::CommandEntry>)> = Vec::new();
     for e in entries {
         match groups.iter_mut().find(|(m, _)| *m == e.module) {
@@ -91,13 +94,6 @@ fn render_help(entries: &[registry::CommandEntry], topic: Option<&str>) -> Strin
             None => groups.push((e.module.clone(), vec![e])),
         }
     }
-    // 按模块序排
-    groups.sort_by_key(|(m, _)| {
-        registry::MODULE_ORDER
-            .iter()
-            .position(|x| x == m)
-            .unwrap_or(99)
-    });
 
     for (module, list) in &groups {
         let title = registry::module_title(module);

@@ -125,6 +125,9 @@ fn file_name_of(p: &str) -> String {
 
 pub struct Bucket {
     pub main: MainRepo,
+    /// 这份状态在 store 里的键（= cwdScope 归一后的路径）。
+    /// 目前读侧都直接用局部变量算 key，字段留着是为了让 Bucket 自描述、便于排障。
+    #[allow(dead_code)]
     pub key: String,
     pub config: Value,
     pub extensions: Vec<Value>,

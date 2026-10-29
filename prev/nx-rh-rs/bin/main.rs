@@ -2,7 +2,10 @@
 // 设计约定：Web 面板上每个按钮，都对应这里的一条 CLI 命令——二者由同一份
 // action 声明派生（见 src/modules/*/mod.rs），不是靠人维护两份清单。
 
-pub const VERSION: &str = "0.18.0";
+// 版本号只有一个来源：Cargo.toml 的 [package].version。
+// 别在代码里再抄一份 —— 抄了就会漏改（旧版这里硬编码 "0.18.0"，
+// 而 Cargo.toml 已经走到别的版本，`version` 与发布出去的包对不上）。
+pub const VERSION: &str = env!("CARGO_PKG_VERSION");
 
 // 模块根在 src/ 下（bin/ 只是入口文件），用 #[path] 显式指路。
 #[path = "../src/core/mod.rs"]

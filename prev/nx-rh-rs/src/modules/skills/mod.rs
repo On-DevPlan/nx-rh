@@ -126,7 +126,7 @@ pub fn actions() -> &'static Vec<Action> {
     // ══ 远程订阅（actions.remote.js）══
     Action {
         id: "skill.hub.remote.list",
-        cli: vec![vec!["skill", "hub", "remote", "list"]],
+        cli: vec![vec!["skill", "hub", "remote", "list"], vec!["skill", "remote", "list"]],
         http: Some(("GET", "/api/skills/remote")),
         summary: "远程订阅内容：skill 及其来源 / 版本指纹 / 安装状态 / 导入与更新时间",
         args: vec![],
@@ -137,7 +137,7 @@ pub fn actions() -> &'static Vec<Action> {
     },
     Action {
         id: "skill.hub.remote.import",
-        cli: vec![vec!["skill", "hub", "remote", "import"]],
+        cli: vec![vec!["skill", "hub", "remote", "import"], vec!["skill", "remote", "import"]],
         http: Some(("POST", "/api/skills/remote/import")),
         summary: "从远程规格导入到远程订阅（owner/repo、git URL、归档 URL；--name 只导一个；--dry-run 只列清单）",
         args: vec![aarg("spec")],
@@ -188,7 +188,7 @@ pub fn actions() -> &'static Vec<Action> {
     },
     Action {
         id: "skill.hub.remote.add",
-        cli: vec![vec!["skill", "hub", "remote", "add"]],
+        cli: vec![vec!["skill", "hub", "remote", "add"], vec!["skill", "remote", "add"]],
         http: Some(("POST", "/api/skills/remote")),
         summary: "在远程订阅里添加一个手写定义（--description / --content）",
         args: vec![aarg("name")],
@@ -211,7 +211,7 @@ pub fn actions() -> &'static Vec<Action> {
     },
     Action {
         id: "skill.hub.remote.link",
-        cli: vec![vec!["skill", "hub", "remote", "link"]],
+        cli: vec![vec!["skill", "hub", "remote", "link"], vec!["skill", "remote", "link"]],
         http: Some(("POST", "/api/skills/remote/link")),
         summary: "在远程订阅里放一个软链（<name> <目标目录>：链到别处已有的 skill，同一份源码多处可用）",
         args: vec![aarg("name"), aarg("target")],
@@ -251,7 +251,7 @@ pub fn actions() -> &'static Vec<Action> {
     },
     Action {
         id: "skill.hub.remote.update",
-        cli: vec![vec!["skill", "hub", "remote", "update"]],
+        cli: vec![vec!["skill", "hub", "remote", "update"], vec!["skill", "remote", "update"]],
         http: Some(("POST", "/api/skills/remote/update")),
         summary: "按来源重拉更新远程订阅（指纹变了才换；<name...> 只更新指定；--prune 连上游已删的一起清）",
         args: vec![rest_arg("name", false)],
@@ -264,7 +264,7 @@ pub fn actions() -> &'static Vec<Action> {
     },
     Action {
         id: "skill.hub.remote.remove",
-        cli: vec![vec!["skill", "hub", "remote", "remove"]],
+        cli: vec![vec!["skill", "hub", "remote", "remove"], vec!["skill", "remote", "remove"]],
         http: Some(("POST", "/api/skills/remote/remove")),
         summary: "从远程订阅里移除 skill（<name...> 批量；平台侧副本另行 purge）",
         args: vec![rest_arg("name", true)],
@@ -285,7 +285,7 @@ pub fn actions() -> &'static Vec<Action> {
     // ══ 平台适配器 ══
     Action {
         id: "skill.adapters",
-        cli: vec![vec!["skill", "hub", "adapters"]],
+        cli: vec![vec!["skill", "hub", "adapters"], vec!["skill", "adapters"]],
         http: Some(("GET", "/api/skills/adapters")),
         summary: "平台适配器清单（每平台的项目级 / 用户级绝对安装位置）",
         args: vec![],
@@ -298,7 +298,7 @@ pub fn actions() -> &'static Vec<Action> {
     // ══ 订阅源（Skill Hub）══
     Action {
         id: "skill.sources",
-        cli: vec![vec!["skill", "hub", "sources"]],
+        cli: vec![vec!["skill", "hub", "sources"], vec!["skill", "sources"]],
         http: Some(("GET", "/api/skills/sources")),
         summary: "订阅源清单（* 为当前主源）",
         args: vec![],
@@ -352,7 +352,7 @@ pub fn actions() -> &'static Vec<Action> {
     },
     Action {
         id: "skill.hub",
-        cli: vec![vec!["skill", "hub", "main"]],
+        cli: vec![vec!["skill", "hub", "main"], vec!["skill", "hub"]],
         http: None,
         summary: "查看 / 设置当前主订阅源",
         args: vec![oarg("path")],
@@ -431,7 +431,7 @@ pub fn actions() -> &'static Vec<Action> {
     },
     Action {
         id: "skill.hub.refresh",
-        cli: vec![vec!["skill", "hub", "refresh"]],
+        cli: vec![vec!["skill", "hub", "refresh"], vec!["skill", "refresh"]],
         http: Some(("POST", "/api/skills/refresh")),
         summary: "扫描订阅源并与上次快照对比，报告 +新增/-移除/~变更（[source]=路径，缺省全部；首次只建基准）",
         args: vec![oarg("source")],
@@ -444,7 +444,7 @@ pub fn actions() -> &'static Vec<Action> {
     // ══ 列表 / 详情 / 上下文 ══
     Action {
         id: "skill.list",
-        cli: vec![vec!["skill", "hub", "list"]],
+        cli: vec![vec!["skill", "hub", "list"], vec!["skill", "scan"]],
         http: Some(("GET", "/api/skills")),
         summary: "列出订阅源 skill（名称 / 来源目录 / 描述 + 各目标迁移状态）",
         args: vec![],
@@ -466,7 +466,7 @@ pub fn actions() -> &'static Vec<Action> {
     },
     Action {
         id: "skill.show",
-        cli: vec![vec!["skill", "hub", "show"]],
+        cli: vec![vec!["skill", "hub", "show"], vec!["skill", "show"], vec!["skill", "describe"]],
         http: Some(("GET", "/api/skills/detail")),
         summary: "查看单个 skill：完整描述 + 来源目录 + 各平台安装状态与当前形态",
         args: vec![aarg("name")],
@@ -477,7 +477,7 @@ pub fn actions() -> &'static Vec<Action> {
     },
     Action {
         id: "skill.cat",
-        cli: vec![vec!["skill", "hub", "cat"]],
+        cli: vec![vec!["skill", "hub", "cat"], vec!["skill", "cat"]],
         http: Some(("GET", "/api/skills/content")),
         summary: "输出 skill 全文（SKILL.md 或 --ref <相对路径>），订阅源与不在订阅源的平台副本都能读",
         args: vec![aarg("name")],
@@ -529,7 +529,7 @@ pub fn actions() -> &'static Vec<Action> {
     // ══ skill 实体的增改删 ══
     Action {
         id: "skill.add",
-        cli: vec![vec!["skill", "hub", "add"]],
+        cli: vec![vec!["skill", "hub", "add"], vec!["skill", "add"]],
         http: Some(("POST", "/api/skills")),
         summary: "在订阅源新建一个 skill（已存在同名则报冲突）",
         args: vec![aarg("name")],
@@ -546,7 +546,7 @@ pub fn actions() -> &'static Vec<Action> {
     },
     Action {
         id: "skill.update",
-        cli: vec![vec!["skill", "hub", "update"]],
+        cli: vec![vec!["skill", "hub", "update"], vec!["skill", "update"]],
         http: Some(("PATCH", "/api/skills/:name")),
         summary: "改写订阅源 skill 的 SKILL.md 全文（须含 name/description frontmatter）",
         args: vec![aarg("name")],
@@ -557,7 +557,7 @@ pub fn actions() -> &'static Vec<Action> {
     },
     Action {
         id: "skill.remove",
-        cli: vec![vec!["skill", "hub", "remove"]],
+        cli: vec![vec!["skill", "hub", "remove"], vec!["skill", "remove"]],
         http: Some(("DELETE", "/api/skills/:name")),
         summary: "从订阅源删除 skill（目标侧还有引用时返回 blocked，--force 继续）",
         args: vec![aarg("name")],
@@ -606,10 +606,10 @@ pub fn actions() -> &'static Vec<Action> {
     },
     Action {
         id: "skill.purge",
-        cli: vec![vec!["skill", "hub", "purge"]],
+        cli: vec![vec!["skill", "hub", "purge"], vec!["skill", "purge"]],
         http: Some(("POST", "/api/skills/purge")),
         summary: "彻底删除 skill：所有平台安装位置 + 订阅源里的实文件（<name...> 可批量；--dry-run 先看清单）",
-        args: vec![rest_arg("name", false)],
+        args: vec![rest_arg("name", true)],
         flags: vec![
             FlagSpec { name: "force", kind: "boolean", required: false, default: None, enum_values: None, hint: "安装位置里有实体副本时必须加（可能含本地改动）" },
             project_flag(),
@@ -633,7 +633,7 @@ pub fn actions() -> &'static Vec<Action> {
     },
     Action {
         id: "skill.hub.search",
-        cli: vec![vec!["skill", "hub", "search"]],
+        cli: vec![vec!["skill", "hub", "search"], vec!["skill", "search"]],
         http: Some(("GET", "/api/skills/search")),
         summary: "搜 skills.sh 注册表（[--owner <o>] 限定组织/用户；结果含来源与安装量，可直接 subscribe）",
         args: vec![rest_arg("query", false)],
@@ -719,7 +719,7 @@ pub fn actions() -> &'static Vec<Action> {
     // ══ 迁移 / 撤销 / 提交 / 物化 ══
     Action {
         id: "skill.migrate",
-        cli: vec![vec!["skill", "hub", "migrate"]],
+        cli: vec![vec!["skill", "hub", "migrate"], vec!["skill", "migrate"], vec!["skill", "adapt"]],
         http: Some(("POST", "/api/skills/migrate")),
         summary: "订阅源 → 平台目录（<name...> | --all | --include；--exclude/--match 精筛；--dry-run 预演）",
         args: vec![rest_arg("name", false)],
@@ -762,7 +762,7 @@ pub fn actions() -> &'static Vec<Action> {
     },
     Action {
         id: "skill.unmigrate",
-        cli: vec![vec!["skill", "hub", "unmigrate"]],
+        cli: vec![vec!["skill", "hub", "unmigrate"], vec!["skill", "unmigrate"]],
         http: Some(("POST", "/api/skills/unmigrate")),
         summary: "撤销迁移（<name...> | --all | --include；--exclude/--match 精筛；--dry-run 预演）",
         args: vec![rest_arg("name", false)],
@@ -799,7 +799,7 @@ pub fn actions() -> &'static Vec<Action> {
     },
     Action {
         id: "skill.submit",
-        cli: vec![vec!["skill", "hub", "submit"]],
+        cli: vec![vec!["skill", "hub", "submit"], vec!["skill", "submit"]],
         http: Some(("POST", "/api/skills/submit")),
         summary: "平台副本 → 订阅源（<name...> | --all 取「不在订阅源」那批；提交后删除目标实文件）",
         args: vec![rest_arg("name", false)],
@@ -842,7 +842,7 @@ pub fn actions() -> &'static Vec<Action> {
     },
     Action {
         id: "skill.materialize",
-        cli: vec![vec!["skill", "hub", "materialize"]],
+        cli: vec![vec!["skill", "hub", "materialize"], vec!["skill", "materialize"]],
         http: Some(("POST", "/api/skills/materialize")),
         summary: "把目标侧的链接转换为实体副本",
         args: vec![aarg("name")],
@@ -875,7 +875,7 @@ pub fn actions() -> &'static Vec<Action> {
     // ══ 设置：平台范围 / 项目目录 ══
     Action {
         id: "setting.platforms",
-        cli: vec![vec!["skill", "hub", "platform"]],
+        cli: vec![vec!["skill", "hub", "platform"], vec!["skill", "platform"]],
         http: None,
         summary: "查看 / 设置启用的平台（首个为默认平台）",
         args: vec![rest_arg("platforms", false)],
@@ -915,7 +915,7 @@ pub fn actions() -> &'static Vec<Action> {
     },
     Action {
         id: "skill.project.list",
-        cli: vec![vec!["skill", "hub", "project", "list"]],
+        cli: vec![vec!["skill", "hub", "project", "list"], vec!["skill", "project", "list"], vec!["skill", "project"]],
         http: None,
         summary: "项目目录候选清单",
         args: vec![],
@@ -932,7 +932,7 @@ pub fn actions() -> &'static Vec<Action> {
     },
     Action {
         id: "skill.project.skills",
-        cli: vec![vec!["skill", "hub", "project", "skills"]],
+        cli: vec![vec!["skill", "hub", "project", "skills"], vec!["skill", "project", "skills"]],
         http: Some(("GET", "/api/skills/project-skills")),
         summary: "当前项目目录里的 skill（扫全部适配器项目级目录，标注是否已在订阅源）",
         args: vec![],
@@ -943,7 +943,7 @@ pub fn actions() -> &'static Vec<Action> {
     },
     Action {
         id: "skill.project.add",
-        cli: vec![vec!["skill", "hub", "project", "add"]],
+        cli: vec![vec!["skill", "hub", "project", "add"], vec!["skill", "project", "add"]],
         http: Some(("POST", "/api/skills/project")),
         summary: "添加项目目录候选",
         args: vec![aarg("path")],
@@ -964,7 +964,7 @@ pub fn actions() -> &'static Vec<Action> {
     },
     Action {
         id: "skill.project.remove",
-        cli: vec![vec!["skill", "hub", "project", "remove"]],
+        cli: vec![vec!["skill", "hub", "project", "remove"], vec!["skill", "project", "remove"]],
         http: Some(("DELETE", "/api/skills/project")),
         summary: "从候选移除项目目录（不动磁盘）",
         args: vec![aarg("path")],
@@ -984,7 +984,7 @@ pub fn actions() -> &'static Vec<Action> {
     // ══ 通用：三方合并 ══
     Action {
         id: "skill.merge",
-        cli: vec![vec!["skill", "hub", "merge"]],
+        cli: vec![vec!["skill", "hub", "merge"], vec!["skill", "merge"]],
         http: Some(("POST", "/api/util/merge")),
         summary: "diff3-lite 三方合并原语（CLI 传文件路径，HTTP 传文本）",
         args: vec![],

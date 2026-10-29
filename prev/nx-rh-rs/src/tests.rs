@@ -11,7 +11,7 @@ use crate::core::gitignore::parse_gitignore;
 use crate::core::mdoutline::md_outline;
 use crate::core::paths::assert_safe_name;
 use crate::runtime::registry;
-use crate::runtime::spec::{apply_spec, cli_paths_of, compile_route, usage_of, RouteSeg};
+use crate::runtime::spec::{apply_spec, cli_paths_of, compile_route, match_segments, usage_of, RouteSeg};
 
 // ─── action 表 ───────────────────────────────────────────────────────
 
@@ -80,7 +80,7 @@ fn usage_includes_path_and_required_args() {
 fn route_matches_literal_and_param() {
     let r = compile_route("/api/env/:name");
     let segs: Vec<&str> = "api/env/TEMP".split('/').collect();
-    let params = r.match_path(&segs);
+    let params = match_segments(&r.segments, &segs);
     assert!(params.is_some(), "参数路由没匹配上");
     assert_eq!(params.unwrap()[0].1, "TEMP");
 }
@@ -89,7 +89,7 @@ fn route_matches_literal_and_param() {
 fn route_rejects_wrong_segment_count() {
     let r = compile_route("/api/env/:name");
     let segs: Vec<&str> = "api/env/TEMP/extra".split('/').collect();
-    assert!(r.match_path(&segs).is_none(), "段数不该匹配");
+    assert!(match_segments(&r.segments, &segs).is_none(), "段数不该匹配");
 }
 
 #[test]
@@ -232,4 +232,97 @@ fn app_error_carries_details() {
     let p = to_error_payload(&e);
     assert_eq!(p.code, CONFLICT);
     assert!(p.details.is_some());
+}
+
+// ─── usage 串的形状（与 JS 的 usageOf 逐字对齐）──────────────────────
+
+fn action_by_id(id: &str) -> &'static crate::runtime::spec::Action {
+    registry::actions()
+        .iter()
+        .find(|a| a.id == id)
+        .unwrap_or_else(|| panic!("找不到 action: {}", id))
+}
+
+#[test]
+fn optional_boolean_flag_gets_brackets() {
+    // `[--force]` 不是 `--force`：非必填的布尔 flag 也要加方括号，
+    // 否则 help 里看上去像必填（历史上就是这么错的）。
+    let u = usage_of(action_by_id("wt.add"));
+    assert!(u.contains("[--force]"), "{}", u);
+    assert!(!u.contains(" --force]") || u.contains("[--force]"));
+}
+
+#[test]
+fn flag_hint_placeholder_comes_from_hint_then_name() {
+    // enum → `--as <link|delete>`；显式 hint → `--base <基础分支>`；
+    // 都没有 → 回落到 flag 名本身（`--port <port>`，不是类型名 number）。
+    assert!(usage_of(action_by_id("skill.hub.dedupe")).contains("[--as <link|delete>]"));
+    assert!(usage_of(action_by_id("wt.rebase")).contains("[--base <基础分支>]"));
+}
+
+#[test]
+fn optional_positional_arg_uses_square_brackets() {
+    // wt rebase 的 ref 是可选的：`[ref]`。/ 必填则 `<ref>`。
+    assert!(usage_of(action_by_id("wt.rebase")).contains("[ref]"));
+    assert!(usage_of(action_by_id("wt.get")).contains("<ref>"));
+}
+
+// ─── 别名（cli 路径集合）─────────────────────────────────────────────
+
+#[test]
+fn aliases_are_preserved() {
+    // 老命令名是对外契约：agent 手册里写着的 `bundled list` / `skill scan`
+    // 必须照样能敲。改 action 时把别名删掉，这条会红。
+    let paths = |id: &str| -> Vec<String> {
+        cli_paths_of(action_by_id(id)).iter().map(|p| p.join(" ")).collect()
+    };
+    assert_eq!(paths("bundled.list"), vec!["skill list", "skill install --list", "bundled list"]);
+    assert_eq!(paths("bundled.groups"), vec!["skill groups", "bundled groups"]);
+    assert_eq!(paths("skill.list"), vec!["skill hub list", "skill scan"]);
+    assert_eq!(
+        paths("skill.show"),
+        vec!["skill hub show", "skill show", "skill describe"]
+    );
+    assert_eq!(
+        paths("skill.migrate"),
+        vec!["skill hub migrate", "skill migrate", "skill adapt"]
+    );
+}
+
+#[test]
+fn builtin_usage_matches_js() {
+    // 平台命令的 usage 是手写的（不经 FlagSpec 派生），最容易和 JS 漂移。
+    let entries = registry::builtin_command_entries();
+    let usage = |id: &str| entries.iter().find(|e| e.id == id).unwrap().usage.clone();
+    assert_eq!(usage("serve"), "nx-rh-rs serve [dir] [--port <port>] [--no-open]");
+    assert_eq!(usage("help"), "nx-rh-rs help [topic]");
+    assert_eq!(usage("version"), "nx-rh-rs version");
+}
+
+// ─── 名称模式（--include / --exclude）────────────────────────────────
+
+#[test]
+fn match_name_follows_js_semantics() {
+    use crate::modules::skills::select::match_name;
+    // 无 * → 子串、大小写不敏感
+    assert!(match_name("Rh-GitSync", "gitsync"));
+    assert!(!match_name("rh-gitsync", "zzz"));
+    // 空模式永不命中（与 JS 的 !p 分支一致）
+    assert!(!match_name("anything", ""));
+    assert!(!match_name("anything", "   "));
+    // 有 * → 锚定的 glob（^a.*b$）
+    assert!(match_name("rh-gitsync", "rh*"));
+    assert!(match_name("rh-gitsync", "*sync"));
+    assert!(match_name("rh-gitsync", "rh*sync"));
+    assert!(match_name("rh-gitsync", "*git*"));
+    assert!(!match_name("rh-gitsync", "git*"));
+    // `*` 两端都空 = 匹配任意
+    assert!(match_name("x", "*"));
+    // 模式里的正则元字符按字面处理（名字里带 . 也能匹配）
+    assert!(match_name("a.b", "a.*"));
+    assert!(match_name("a.b", "a.b"));
+    assert!(!match_name("axb", "a.b"));
+    // 转义分支：`a.b*` 里的点必须是字面点，不能当通配
+    assert!(match_name("a.bc", "a.b*"));
+    assert!(!match_name("axbc", "a.b*"));
 }

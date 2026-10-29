@@ -66,7 +66,7 @@ pub fn actions() -> &'static Vec<Action> {
     static ACTIONS: Lazy<Vec<Action>> = Lazy::new(|| vec![
     Action {
         id: "bundled.list",
-        cli: vec![vec!["skill", "list"]],
+        cli: vec![vec!["skill", "list"], vec!["skill", "install", "--list"], vec!["bundled", "list"]],
         http: Some(("GET", "/api/bundled")),
         summary: "列出包内自带 skill（含文件数与描述）+ 默认装哪个 + 有哪些 group",
         args: vec![],
@@ -94,11 +94,19 @@ pub fn actions() -> &'static Vec<Action> {
                 .filter_map(|x| x.as_str().map(|s| s.to_string()))
                 .collect();
             let default_group = d["defaultGroup"].as_str().unwrap_or("");
+            // 默认组装哪些 skill：取 groupSkills[defaultGroup]（JS 用 def.includes(s) 判定），
+            // 不是「名字等于组名」——组名可以包含多个 skill。
+            let default_skills: Vec<String> = d
+                .pointer(&format!("/groupSkills/{}", default_group))
+                .and_then(|v| v.as_array())
+                .map(|a| a.iter().filter_map(|x| x.as_str().map(|s| s.to_string())).collect())
+                .unwrap_or_default();
             let w = skills.iter().map(|s| s.len()).max().unwrap_or(0);
             let mut lines: Vec<String> = vec!["可装的 skill:".into()];
             for s in &skills {
-                if !default_group.is_empty() && skills.contains(&default_group.to_string()) && s == default_group {
-                    lines.push(format!("  * {:<w$}  （默认 install）", s, w = w + 2));
+                // padEnd(w) 后再补两个空格 —— w 不能加，加了列宽就多两格（与 JS 对不上）。
+                if default_skills.contains(s) {
+                    lines.push(format!("  * {:<w$}  （默认 install）", s));
                 } else {
                     lines.push(format!("  * {}", s));
                 }
@@ -117,7 +125,7 @@ pub fn actions() -> &'static Vec<Action> {
                     .and_then(|s| s.as_str())
                     .unwrap_or("");
                 if !summary.is_empty() {
-                    lines.push(format!("  * {:<w$}  {}", g, summary, w = w + 2));
+                    lines.push(format!("  * {:<w$}  {}", g, summary));
                 } else {
                     lines.push(format!("  * {}", g));
                 }
@@ -131,7 +139,7 @@ pub fn actions() -> &'static Vec<Action> {
     },
     Action {
         id: "bundled.groups",
-        cli: vec![vec!["skill", "groups"]],
+        cli: vec![vec!["skill", "groups"], vec!["bundled", "groups"]],
         http: Some(("GET", "/api/bundled/groups")),
         summary: "列出可装的 group（groups.json 的组名 → 它包含哪些 skill）",
         args: vec![],

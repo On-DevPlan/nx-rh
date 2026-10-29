@@ -28,6 +28,9 @@ pub struct Builtin {
     pub id: &'static str,
     pub cli: Vec<Vec<&'static str>>,
     pub summary: &'static str,
+    /// usage 串：平台命令的 flag 不走 FlagSpec（serve 的 --port 有默认值但不进 action 表），
+    /// 所以这里显式写一份，且与 JS 的 usageOf 输出逐字一致（由单测钉住）。
+    pub usage: &'static str,
 }
 
 pub fn builtins() -> Vec<Builtin> {
@@ -36,16 +39,19 @@ pub fn builtins() -> Vec<Builtin> {
             id: "serve",
             cli: vec![vec!["serve"]],
             summary: "启动 Web 面板（默认 :7801；可跟项目目录；--port N 改端口；--no-open 不开浏览器；端口上已有本面板则直接打开它，否则顺延到下一个空闲端口；NX_SERVE_NO_OPEN=1 全局不开浏览器）",
+            usage: "nx-rh-rs serve [dir] [--port <port>] [--no-open]",
         },
         Builtin {
             id: "help",
             cli: vec![vec!["help"]],
-            summary: "显示帮助（可跟模块名或命令组，如 nx-rh-rs help skills）",
+            summary: "显示帮助（可跟模块名或命令组，如 nx-rh-rs help repo）",
+            usage: "nx-rh-rs help [topic]",
         },
         Builtin {
             id: "version",
             cli: vec![vec!["version"]],
             summary: "显示版本",
+            usage: "nx-rh-rs version",
         },
     ]
 }
@@ -106,33 +112,19 @@ pub fn command_entry_of_action(a: &Action) -> CommandEntry {
 }
 
 pub fn builtin_command_entries() -> Vec<CommandEntry> {
-    let _version = crate::VERSION;
-    vec![
-        CommandEntry {
-            id: "serve".into(),
+    // 从 builtins() 派生，不再手抄一遍命令名与 usage ——
+    // 手抄的那份曾经把 `--port <port>` 写成 `--port <number>`，与 JS 分叉。
+    builtins()
+        .into_iter()
+        .map(|b| CommandEntry {
+            command: format!("nx-rh-rs {}", b.cli.first().cloned().unwrap_or_default().join(" ")),
+            id: b.id.to_string(),
             module: "platform".into(),
-            command: "nx-rh-rs serve".into(),
-            usage: "nx-rh-rs serve [dir] [--port <number>] [--no-open]".into(),
+            usage: b.usage.to_string(),
             http: None,
-            summary: builtins()[0].summary.to_string(),
-        },
-        CommandEntry {
-            id: "help".into(),
-            module: "platform".into(),
-            command: "nx-rh-rs help".into(),
-            usage: "nx-rh-rs help [topic]".into(),
-            http: None,
-            summary: builtins()[1].summary.to_string(),
-        },
-        CommandEntry {
-            id: "version".into(),
-            module: "platform".into(),
-            command: "nx-rh-rs version".into(),
-            usage: "nx-rh-rs version".into(),
-            http: None,
-            summary: builtins()[2].summary.to_string(),
-        },
-    ]
+            summary: b.summary.to_string(),
+        })
+        .collect()
 }
 
 /// 模块元数据（help 分组标题用）

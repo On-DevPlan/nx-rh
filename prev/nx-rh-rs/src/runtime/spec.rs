@@ -180,6 +180,8 @@ pub fn usage_of(action: &Action) -> String {
         parts.push(if a.required { format!("<{}>", label) } else { format!("[{}]", label) });
     }
     for f in flag_specs_of(action) {
+        // 布尔 flag 不带值占位符（`--force`），其余带 `<hint>`：
+        // hint 优先用 enum 展开（--side <ours|theirs>），其次显式 hint，最后退回 flag 名。
         let token = if f.kind == "boolean" {
             format!("--{}", f.name)
         } else {
@@ -188,14 +190,12 @@ pub fn usage_of(action: &Action) -> String {
                 None if !f.hint.is_empty() => f.hint.to_string(),
                 None => f.name.to_string(),
             };
-            let t = format!("--{} <{}>", f.name, hint);
-            if f.required {
-                t
-            } else {
-                format!("[{}]", t)
-            }
+            format!("--{} <{}>", f.name, hint)
         };
-        parts.push(token);
+        // 可选性对两种 flag 一视同仁：非必填一律加方括号。
+        // （早期只在带值的 flag 上加括号，结果 `[--force]` 被渲染成 `--force`，
+        //   看上去像必填，和 JS 版逐字比对不上。）
+        parts.push(if f.required { token } else { format!("[{}]", token) });
     }
     parts.join(" ")
 }
@@ -203,7 +203,6 @@ pub fn usage_of(action: &Action) -> String {
 // ─── HTTP 路由模式编译：'/api/repos/:id' → 段匹配器 ──────────────────
 
 pub struct CompiledRoute {
-    pub method: &'static str,
     pub segments: Vec<RouteSeg>,
 }
 
@@ -224,31 +223,29 @@ pub fn compile_route(pattern: &str) -> CompiledRoute {
             }
         })
         .collect();
-    CompiledRoute { segments, method: "" }
+    CompiledRoute { segments }
 }
 
-impl CompiledRoute {
-    /// 匹配路径并抽出参数。path 已拆成段。
-    pub fn match_path(&self, path_segs: &[&str]) -> Option<Vec<(String, String)>> {
-        if self.segments.len() != path_segs.len() {
-            return None;
-        }
-        let mut params = Vec::new();
-        for (seg, p) in self.segments.iter().zip(path_segs) {
-            match seg {
-                RouteSeg::Literal(l) => {
-                    if l != p {
-                        return None;
-                    }
-                }
-                RouteSeg::Param(name) => {
-                    let decoded = percent_decode(p);
-                    params.push((name.clone(), decoded));
+/// 匹配路径并抽出参数（路由分发的唯一实现 —— http.rs 与单测都用这一份）。
+/// path_segs 已按 `/` 拆好，参数值做 percent 解码。
+pub fn match_segments(segments: &[RouteSeg], path_segs: &[&str]) -> Option<Vec<(String, String)>> {
+    if segments.len() != path_segs.len() {
+        return None;
+    }
+    let mut params = Vec::new();
+    for (seg, p) in segments.iter().zip(path_segs) {
+        match seg {
+            RouteSeg::Literal(l) => {
+                if l != p {
+                    return None;
                 }
             }
+            RouteSeg::Param(name) => {
+                params.push((name.clone(), percent_decode(p)));
+            }
         }
-        Some(params)
     }
+    Some(params)
 }
 
 pub fn percent_decode(s: &str) -> String {

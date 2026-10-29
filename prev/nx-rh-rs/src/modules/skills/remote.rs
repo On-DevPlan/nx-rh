@@ -276,6 +276,8 @@ pub fn peek_remote(spec: &str) -> Option<Value> {
 }
 
 pub struct Materialized {
+    /// 远程源的稳定 id（用于 staging 目录名与日志）；调用方目前只取目录。
+    #[allow(dead_code)]
     pub id: String,
     pub staging: PathBuf,
     pub source_dir: PathBuf,

@@ -484,7 +484,7 @@ pub fn actions() -> &'static Vec<Action> {
         |ctx, _| service::get_context(ctx["log"].as_u64().unwrap_or(5)),
         Some(|d, _ctx| render_context(d))),
     wt_action!("wt.rebase", vec![vec!["wt", "rebase"]], Some(("POST", "/api/wt/rebase")),
-        "把工作树 rebase 到主项目当前分支；脏树给 --message 自动提交", vec![aarg("ref")], vec![sflag("base", "基础分支"), sflag("message", "自动提交信息")],
+        "把工作树 rebase 到主项目当前分支；脏树给 --message 自动提交", vec![oarg("ref")], vec![sflag("base", "基础分支"), sflag("message", "自动提交信息")],
         |ctx, _| service::rebase_worktree(ctx),
         Some(|r, _ctx| render_rebase(r))),
     wt_action!("wt.fanout", vec![vec!["wt", "fanout"]], Some(("POST", "/api/wt/fanout")),

@@ -83,7 +83,15 @@ fn run_powershell(script: &str, extra_env: &[(&str, &str)]) -> PsOut {
             stdout: String::from_utf8_lossy(&out.stdout).to_string(),
             stderr: String::from_utf8_lossy(&out.stderr).to_string(),
         },
-        Ok(Err(e)) => PsOut { code: Some(-1), stdout: String::new(), stderr: e.to_string() },
+        // 起不来的情形（powershell 不在 PATH）也要给一条**与 JS 同形**的文案：
+        // Node 的 child_process 在这里说的是 `spawn powershell ENOENT`，
+        // 而 std 的 io::Error 只会说 "program not found" —— 两版报错文案就此分叉。
+        // 错误文本是 agent 的判断依据（assets 里明确教它读这段），所以要对齐。
+        Ok(Err(e)) => PsOut {
+            code: Some(-1),
+            stdout: String::new(),
+            stderr: format!("spawn powershell {}", spawn_errno(&e)),
+        },
         Err(_) => {
             timed_out2.store(true, std::sync::atomic::Ordering::Relaxed);
             PsOut {
@@ -92,6 +100,15 @@ fn run_powershell(script: &str, extra_env: &[(&str, &str)]) -> PsOut {
                 stderr: format!("PowerShell 执行超时（>{}s），已终止", PS_TIMEOUT_MS / 1000),
             }
         }
+    }
+}
+
+/// 把 io::Error 归一到 Node 的 errno 词表，好让报错文案与 JS 版逐字相同。
+fn spawn_errno(e: &std::io::Error) -> &'static str {
+    match e.kind() {
+        std::io::ErrorKind::NotFound => "ENOENT",
+        std::io::ErrorKind::PermissionDenied => "EACCES",
+        _ => "UNKNOWN",
     }
 }
 
@@ -204,6 +221,9 @@ pub struct ProbeInfo {
     pub user: Option<String>,
     pub writable: Writable,
     #[serde(skip_serializing_if = "Option::is_none")]
+    // probe 的失败原因：JS 版同样会算出来，但 status() 不转发（见 modules/env/service.rs）。
+    // 保留这个字段是为了让「探测失败」在日志/排障里有话说，不是无用数据。
+    #[allow(dead_code)]
     pub reason: Option<String>,
 }
 

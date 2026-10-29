@@ -131,19 +131,6 @@ pub fn load_groups() -> Res<Value> {
 }
 
 /// 默认 group 名 = 包名。
-fn package_name() -> Option<String> {
-    // Cargo 包名与 npm 包名一致（nx-rh / nx-rh-rs 均可）
-    let manifest = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("package.json");
-    if let Ok(text) = std::fs::read_to_string(manifest) {
-        if let Ok(v) = serde_json::from_str::<Value>(&text) {
-            if let Some(n) = v["name"].as_str() {
-                return Some(n.to_string());
-            }
-        }
-    }
-    None
-}
-
 fn resolve_group(key: &str) -> Res<Value> {
     let k = key.trim();
     if k.is_empty() {
@@ -183,7 +170,11 @@ pub fn groups_info() -> Res<Value> {
     let loaded = load_groups()?;
     let groups = loaded["groups"].clone();
     let ids: Vec<String> = groups.as_object().map(|o| o.keys().cloned().collect()).unwrap_or_default();
-    let def = package_name();
+    // JS 版用「自己的包名」当默认组（B04 §默认 install 的约定），而它的包名正好是 nx-rh。
+    // Rust 版的包名是 nx-rh-rs —— 不是任何 group 的键，所以不能照抄这条：
+    // 这里直接用「默认 install 装的那个 skill」（DEFAULT_SKILL_NAME）当默认组，
+    // 语义相同（不加参数 install 装的就是它），且不依赖包里有没有 package.json。
+    let def = Some(DEFAULT_SKILL_NAME.to_string());
     let mut summaries = serde_json::Map::new();
     let mut group_skills = serde_json::Map::new();
     for (id, val) in groups.as_object().unwrap() {
