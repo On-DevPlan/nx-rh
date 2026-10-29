@@ -53,11 +53,21 @@ jobs:
             rm -rf "$dir"
           }
 
-          # 1. 已存在的包发新版本
-          probe "nx-rh-rs-darwin-x64" "0.18.1" "probe: existing package, new version"
+          # 清理探针污染：darwin-x64@0.18.1 是空壳（真实包上发了个假版本）
+          # 先试 unpublish（72h 内允许）；失败则 deprecate 打标
+          echo "--- cleanup: unpublish nx-rh-rs-darwin-x64@0.18.1 (probe pollution)"
+          if npm unpublish nx-rh-rs-darwin-x64@0.18.1 2>&1 | tail -3; then
+            echo "RESULT cleanup-unpublish: OK"
+          else
+            echo "unpublish 失败，退 deprecate"
+            if npm deprecate nx-rh-rs-darwin-x64@0.18.1 "probe version (empty), use 0.18.0+" 2>&1 | tail -3; then
+              echo "RESULT cleanup-deprecate: OK"
+            else
+              echo "RESULT cleanup: FAIL"
+            fi
+          fi
 
-          # 2. scoped 包
-          probe "@nx-rh-rs/probe-scoped" "0.0.1" "probe: scoped package"
+          # 确认主包新版本通道仍通（不真发，只查）
+          echo "--- check: npm view nx-rh-rs versions"
+          npm view nx-rh-rs versions --json | tail -5
 
-          # 3. 完全无关的新名字（对照组）
-          probe "zzprobe-control-$(date +%s)" "0.0.1" "probe: unrelated new name"
