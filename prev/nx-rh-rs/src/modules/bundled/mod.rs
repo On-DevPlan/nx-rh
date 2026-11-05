@@ -26,6 +26,21 @@ fn exclusive(ctx: &Value, cmd: &str) -> Res<()> {
     if !group.is_empty() && !name.is_empty() {
         return Err(bad_input(format!("{} 的 <name> 与 --group 只能给一个", cmd)));
     }
+    // --all 是「全装」：再点名某个 skill 或某个组就是自相矛盾
+    if ctx["all"].as_bool().unwrap_or(false) {
+        if !name.is_empty() {
+            return Err(bad_input(format!(
+                "{} 的 <name> 与 --all 只能给一个（--all 已装全部）",
+                cmd
+            )));
+        }
+        if !group.is_empty() {
+            return Err(bad_input(format!(
+                "{} 的 --group 与 --all 只能给一个（--all 已覆盖所有组）",
+                cmd
+            )));
+        }
+    }
     Ok(())
 }
 
@@ -193,16 +208,20 @@ pub fn actions() -> &'static Vec<Action> {
         id: "bundled.install",
         cli: vec![vec!["skill", "install"]],
         http: Some(("POST", "/api/bundled/install")),
-        summary: "安装内置 skill 到 skills 目录（默认 nx-rh → ~/.claude/skills；--group <key> 一键装一组）",
+        summary: "安装内置 skill 到 skills 目录（默认 nx-rh → ~/.claude/skills；--group <key> 一键装一组；--all 装全部并直接覆盖）",
         args: vec![oarg("name")],
         flags: vec![
             group_flag(),
             FlagSpec { name: "to", kind: "string", required: false, default: None, enum_values: None, hint: "" },
             FlagSpec { name: "force", kind: "boolean", required: false, default: None, enum_values: None, hint: "" },
+            FlagSpec { name: "all", kind: "boolean", required: false, default: None, enum_values: None, hint: "装 assets/ 下的全部内置 skill（隐式覆盖，不需要 --force）" },
         ],
         module: "bundled",
         run: |ctx, _| {
             exclusive(ctx, "skill install")?;
+            if ctx["all"].as_bool().unwrap_or(false) {
+                return service::install_all(ctx["to"].as_str().unwrap_or(""));
+            }
             service::install_bundled_skill(
                 ctx["name"].as_str().unwrap_or(""),
                 ctx["group"].as_str().unwrap_or(""),
@@ -221,6 +240,32 @@ pub fn actions() -> &'static Vec<Action> {
                     let what = if r["status"].as_str() == Some("conflict") {
                         format!("冲突（{} 个文件不同）→ 用 --force 覆盖", r["count"])
                     } else if r["skipped"].as_bool().unwrap_or(false) {
+                        "已是最新".to_string()
+                    } else {
+                        format!(
+                            "{}（{} 个文件）-> {}",
+                            if r["replaced"].as_bool().unwrap_or(false) { "已更新" } else { "已安装" },
+                            r["files"],
+                            r["path"].as_str().unwrap_or("")
+                        )
+                    };
+                    lines.push(format!("  {:<16} {}", r["name"].as_str().unwrap_or(""), what));
+                }
+                return lines.join("\n");
+            }
+            // --all：装齐全部（显式字段判别，先于单 skill 的三态分支）
+            if d["all"].as_bool().unwrap_or(false) {
+                let skills = d["skills"].as_array().cloned().unwrap_or_default();
+                let done = skills.iter().filter(|r| r["status"].as_str() == Some("ok")).count();
+                let mut lines: Vec<String> = Vec::new();
+                lines.push(format!(
+                    "--all（{} 个 skill，已覆盖）: {}/{} 已就绪",
+                    d["count"],
+                    done,
+                    skills.len()
+                ));
+                for r in &skills {
+                    let what = if r["skipped"].as_bool().unwrap_or(false) {
                         "已是最新".to_string()
                     } else {
                         format!(

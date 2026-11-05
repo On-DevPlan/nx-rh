@@ -349,6 +349,28 @@ fn join_rel(base: &str, name: &str) -> String {
 }
 
 /// 安装内置 skill 到目标 skills 目录。group 给定时装该组全部。
+/// --all：装齐 assets/ 下**所有** skill，且**直接覆盖**（force 恒开，不需要 --force）。
+///
+/// 范围取目录扫描而非 groups.json：组表只是便捷别名，`assets/<x>/SKILL.md` 才是
+/// 事实源——新加一个 skill 忘了登记组时，--all 照样装得上，--group 会漏。
+pub fn install_all(to: &str) -> Res<Value> {
+    let names = asset_skill_dirs();
+    if names.is_empty() {
+        return Err(not_found("assets/ 下没有任何内置 skill（缺 SKILL.md？）"));
+    }
+    let mut skills: Vec<Value> = Vec::new();
+    for s in &names {
+        // force 恒开：--all 的语义就是「装全 + 对齐到包内版本」
+        skills.push(install_one(s, to, true)?);
+    }
+    Ok(json!({
+        "status": "ok",
+        "all": true,
+        "count": skills.len(),
+        "skills": skills
+    }))
+}
+
 pub fn install_bundled_skill(name: &str, group: &str, to: &str, force: bool) -> Res<Value> {
     if !group.trim().is_empty() {
         let g = resolve_group(group)?;
