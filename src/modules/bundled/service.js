@@ -203,7 +203,34 @@ async function installOne(name, { to, force } = {}) {
 //
 // `group` 给定时装该组的**全部** skill，返回聚合形状 { status, group, skills:[…] }；
 // 不给则装单个，形状与历史一致。两者的判别靠显式 `group` 字段。
-export async function installBundledSkill({ name = DEFAULT_SKILL_NAME, group, to, force } = {}) {
+// `--all`：把 assets/ 下**所有**内置 skill 一次装齐，且**隐式覆盖**（不需要 --force）。
+//
+// 与 `--group` 的关键差别：范围由**目录扫描**决定，不由 groups.json 决定。组表只是
+// 便捷别名，`assets/<x>/SKILL.md` 才是事实源——新加一个 skill 忘了登记组时，
+// `--all` 照样装得上，`--group` 会漏。
+async function installAll({ to } = {}) {
+  const names = await assetSkillDirs();
+  if (!names.length) throw notFound('assets/ 下没有任何内置 skill（缺 SKILL.md？）');
+  const skills = [];
+  // force 恒为 true：--all 的语义就是「装全 + 对齐到包内版本」，
+  // 让人再补一个 --force 只是多一次来回。要保留本地改动就别用 --all。
+  for (const s of names) skills.push(await installOne(s, { to, force: true }));
+  return {
+    status: skills.every((r) => r.status === 'ok') ? 'ok' : 'conflict',
+    all: true,
+    count: skills.length,
+    skills,
+  };
+}
+
+export async function installBundledSkill({ name = DEFAULT_SKILL_NAME, group, all, to, force } = {}) {
+  if (all) {
+    // name 有默认值，分不出「用户显式给了 name」还是「默认」，故 name 与 --all 的互斥在 CLI 层
+    if (group !== undefined && group !== null && group !== '') {
+      throw badInput('--all 与 --group 只能给一个（--all 已覆盖所有组）');
+    }
+    return installAll({ to });
+  }
   if (group !== undefined && group !== null && group !== '') {
     const g = await resolveGroup(group);
     const skills = [];

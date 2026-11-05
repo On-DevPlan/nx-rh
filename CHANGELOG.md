@@ -56,6 +56,14 @@
   平台范围 / 默认平台 / 迁移形态这些界面优先读 `/api/skills` 载荷里的 settings（30ms 级），
   不再等 boot。（bootstrap 自身的 11s 是独立的后端性能问题，另案处理。）
 
+## [0.17.2] - 2026-11-05
+
+### Added
+
+- **`skill install --all`：一次装齐包内全部 skill，且直接覆盖**。范围由 `assets/`
+  目录扫描决定（`groups.json` 只是别名，漏登记的 skill 也装得上）；覆盖隐式生效，
+  不需要再补 `--force`。与 `<name>` / `--group` 互斥。
+
 ## [0.17.1] - 2026-10-25
 
 ### Changed

@@ -12,6 +12,14 @@ function exclusive(ctx, cmd) {
   if (ctx.group !== undefined && ctx.group !== null && ctx.group !== '' && ctx.name) {
     throw badInput(`${cmd} 的 <name> 与 --group 只能给一个`);
   }
+  // --all 是「全装」：再点名某个 skill 或某个组就是自相矛盾。
+  // 放在这里而不是 service 里，因为 service 侧的 name 有默认值，分不出是用户给的还是补的。
+  if (ctx.all) {
+    if (ctx.name) throw badInput(`${cmd} 的 <name> 与 --all 只能给一个（--all 已装全部）`);
+    if (ctx.group !== undefined && ctx.group !== null && ctx.group !== '') {
+      throw badInput(`${cmd} 的 --group 与 --all 只能给一个（--all 已覆盖所有组）`);
+    }
+  }
 }
 
 const GROUP_FLAG = { type: 'string', hint: 'groups.json 里的组名（与 <name> 互斥）' };
@@ -115,20 +123,26 @@ export default {
       id: 'bundled.install',
       cli: ['skill', 'install'],
       http: ['POST', '/api/bundled/install'],
-      summary: '安装内置 skill 到 skills 目录（默认 nx-rh → ~/.claude/skills；--group <key> 一键装一组）',
+      summary: '安装内置 skill 到 skills 目录（默认 nx-rh → ~/.claude/skills；--group <key> 一键装一组；--all 装全部并直接覆盖）',
       args: [{ name: 'name', required: false }],
-      flags: { group: GROUP_FLAG, to: { type: 'string' }, force: { type: 'boolean' } },
+      flags: {
+        group: GROUP_FLAG,
+        to: { type: 'string' },
+        force: { type: 'boolean' },
+        all: { type: 'boolean', hint: '装 assets/ 下的全部内置 skill（隐式覆盖，不需要 --force）' },
+      },
       run: (ctx) => {
         exclusive(ctx, 'skill install');
         return service.installBundledSkill({
           name: ctx.name || service.DEFAULT_SKILL_NAME,
           group: ctx.group,
+          all: ctx.all,
           to: ctx.to,
           force: ctx.force,
         });
       },
       render: (d) => {
-        // 聚合形状用**显式 group 字段**判别，不做形状嗅探（B04 §实现要点）
+        // 聚合形状用**显式字段**判别，不做形状嗅探（B04 §实现要点）：先 group 后 all
         if (d.group) {
           const done = d.skills.filter((r) => r.status === 'ok').length;
           const lines = [`group ${d.group}: ${done}/${d.skills.length} 已就绪`];
@@ -137,6 +151,16 @@ export default {
               ? `冲突（${r.count} 个文件不同）→ 用 --force 覆盖`
               : r.skipped ? '已是最新'
                 : `${r.replaced ? '已更新' : '已安装'}（${r.files} 个文件）-> ${r.path}`;
+            lines.push(`  ${r.name.padEnd(16)} ${what}`);
+          }
+          return lines.join('\n');
+        }
+        if (d.all) {
+          const done = d.skills.filter((r) => r.status === 'ok').length;
+          const lines = [`--all（${d.count} 个 skill，已覆盖）: ${done}/${d.skills.length} 已就绪`];
+          for (const r of d.skills) {
+            const what = r.skipped ? '已是最新'
+              : `${r.replaced ? '已更新' : '已安装'}（${r.files} 个文件）-> ${r.path}`;
             lines.push(`  ${r.name.padEnd(16)} ${what}`);
           }
           return lines.join('\n');
