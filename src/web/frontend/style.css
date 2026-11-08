@@ -522,6 +522,8 @@ input:focus, select:focus {
 }
 /* 强调 tag = 描边，不用黑色色块（审核意见） */
 .tag.strong { background: var(--paper); color: var(--ink); border: 1px solid var(--ink); font-weight: 600; }
+/* 版本徽标：待更新（描边红）/ 上游已删（描边红字）——与 tag 同一语言，只是语义不同 */
+.tag.upd { background: var(--paper); color: #b3261e; border: 1px solid #b3261e; font-weight: 600; }
 
 /* ---------- 表格 ---------- */
 table { width: 100%; border-collapse: collapse; }
@@ -568,6 +570,28 @@ dd .adapter-dir { display: inline-block; margin: 2px 16px 2px 0; }
 .stack { display: flex; flex-direction: column; gap: 0; }
 .row-inline { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
 .row-inline input { flex: 1; min-width: 120px; }
+
+/* 状态项组：卡头左侧的一排短统计（数字加粗 + 说明）——
+   与 .entry-card .ec-stats 同一套语汇，只是横向排开。 */
+.stat-group { display: flex; gap: 18px; align-items: baseline; flex-wrap: wrap; }
+.stat-group > span { font-size: 11px; color: var(--mid); white-space: nowrap; }
+.stat-group b { color: var(--ink); font-weight: 700; font-size: var(--fs-core); }
+
+/* 规格示例：可点的写法参考（点了填进输入框）。
+   不是按钮——它是「示例文本」兼「快捷入口」，
+   摆成按钮会让一屏凭空多出 6 个按钮。用虚线框表明可点。 */
+.spec-sample {
+  font-family: ui-monospace, Consolas, monospace;
+  font-size: 11px;
+  color: var(--mid);
+  border: 1px dashed var(--soft-2);
+  border-radius: var(--radius-flat);
+  padding: 1px 7px;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: border-color .12s, color .12s;
+}
+.spec-sample:hover { border-color: var(--mid); color: var(--ink); }
 
 /* ---------- CLI 等价提示（默认折叠，降噪） ---------- */
 .cli-hint {

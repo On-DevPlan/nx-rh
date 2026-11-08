@@ -255,7 +255,8 @@ nx-rh skill platform [claude-code workbuddy-ai ...]            # 启用哪些平
 | doubao | doubao | `.doubao/skills` | `~/Doubao/skills` |
 | doubao-work | doubaowork · dbw | `.doubaowork/skills` | `~/DoubaoWork/skills` |
 | qianwen | qwenwork · qwen · qw | `.qwenworkcn/skills` | `~/.qwenworkcn/skills` |
-| trae-cn | trae | `.trae/skills` | `~/.trae-cn/skills` |
+| trae | — | `.trae/skills` | `~/.trae/skills` |
+| trae-cn | traecn | `.trae-cn/skills` | `~/.trae-cn/skills` |
 | qoder | — | `.qoder/skills` | `~/.qoder/skills` |
 | qoder-cn | qodercn | `.qoder-cn/skills` | `~/.qoder-cn/skills` |
 | agents | universal | `.agents/skills` | `~/.agents/skills` |
@@ -276,8 +277,9 @@ WorkBuddy 分国内版（workbuddy.cn，`.workbuddy/skills`）与国际版（wor
 裸 `workbuddy` / `wb` 归国内版（先有产品），国际版用 `workbuddy-ai` / `workbuddyai` / `wbai`；
 显示名连写 `WorkBuddyAI`（不带空格），带空格会与国内版坍缩成同一个 `workbuddy` 勋章。
 
-Trae 国内版用户级是 `~/.trae-cn/skills`，项目级两版共用 `.trae/skills`；国际版用户级应为 `~/.trae/skills`，
-未装未实测，要聚焦国际版就在 `ADAPTERS` 里补一行 `id: 'trae'`。
+Trae 分国际版（trae，两级都 `.trae/skills`）与国内版（trae-cn，两级都 `.trae-cn/skills`）：两套根目录
+不能混用。用户级 `~/.trae-cn/skills` 本机实测；`~/.trae/skills` 本机未装（`~/.trae` 不存在），国际版按
+同族约定登记。平台范围里两者短名分别是 `trae` 与 `traecn`；裸 `trae` 归国际版，国内版用 `trae-cn` / `traecn`。
 
 Qoder 分国际版（qoder.com）与中国版（qoder.com.cn）：国际版两级目录同名 `.qoder/skills`，官方两级都写明、
 用户级本机实测。中国版整套用户配置独立在 `~/.qoder-cn/`，用户级 `~/.qoder-cn/skills` 本机实测；项目级

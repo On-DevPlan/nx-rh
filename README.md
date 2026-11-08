@@ -229,13 +229,13 @@ localStorage 持久化，刷新不丢。
 | `nx-rh skill hub merge --base F --a F --b F` | diff3 合并原语 |
 | `nx-rh skill hub sources\|subscribe\|unsubscribe\|main` | 订阅源清单 / 订阅 / 取消订阅 / 切主源 |
 | `nx-rh skill hub check` | 来源健康诊断：目录缺失 / 空源 / 嵌套订阅 / 重复根 / 跨源同名冲突 |
-| `nx-rh skill hub search <词>` | 搜 skills.sh 注册表（--owner 限定组织；结果可直接 remote import） |
+| `nx-rh skill hub search <词>` | 搜 skills.sh 注册表（--owner 限定组织；结果可直接 remote install） |
 | `nx-rh skill hub remote import <spec>` | 导入远程规格到远程订阅（--dry-run 先列清单；--name 只导一个） |
+| `nx-rh skill hub remote install <spec>` | 导入**并装到平台目录**一条龙（对标 `skills add`；默认用户级，--platform/--to 可选） |
 | `nx-rh skill hub remote list` | 远程订阅内容（来源 / 版本指纹 / 安装状态） |
+| `nx-rh skill hub remote check [name...]` | **检查上游有没有新版本**（目录级指纹比对；只读，不改磁盘） |
 | `nx-rh skill hub remote update [name...]` | 按来源重拉更新（指纹变了才换） |
 | `nx-rh skill hub remote add <name>` | 在远程订阅里手写一个定义 |
-| `nx-rh skill hub remote link <name> <dir>` | 软链：别处的 skill 链进远程订阅 |
-| `nx-rh skill hub remote link-out <name> <dir>` | 软链：远程订阅里的 skill 链到别处 |
 | `nx-rh skill hub remote remove <name...>` | 从远程订阅移除（平台侧副本另行 purge） |
 | `nx-rh skill hub project list\|add\|remove <path>` | 项目目录候选 |
 | `nx-rh skill hub project skills` | 当前项目目录里实际存在的 skill（扫全部适配器项目级目录，标注是否已在订阅源；面板 Skill 页的「当前项目」子页同源） |
@@ -424,19 +424,40 @@ nx-rh skill get nx-rh skill-hub     # 裸名 ref → references/skill-hub.md
 ### 远程订阅
 
 外部 skill 的唯一入口是**远程订阅**——固定仓库 `~/.nx-rh/远程订阅/`，与本地订阅源同级、同权
-（`list / show / cat / migrate / submit / check` 照常可用，总览页也是一张普通源卡片）：
+（`list / show / cat / migrate / submit / check` 照常可用，总览页也是一张普通源卡片）。
+远程 hub **默认就登记在订阅源清单里**（恒排末位），不需要先「订阅」：
 
+- **发现**：`skill hub search <关键词> [--owner <组织>]`（搜 skills.sh）
 - **导入**：`skill hub remote import <owner/repo | git URL | 归档 URL>`（`--dry-run` 先列清单
-  再决定；`--name` 只导一个）。发现靠 `skill hub search <关键词> [--owner <组织>]`（搜 skills.sh）
-- **版本**：每个 skill 记来源与目录指纹（hash 即版本）；`skill hub remote update [name...]`
-  按来源重拉，指纹变了才换，上游没了如实报告
-- **其它**：`remote add` 手写定义、`remote link / link-out` 软链、`remote remove` 移除
-  （平台侧副本另行 `skill purge`）
+  再决定；`--name` 只导一个）——只收进容器
+- **导入并安装**：`skill hub remote install <spec>`（`--platform` / `--to`，默认用户级）——
+  对标 vercel-labs 的 `skills add`，一条龙做完「收进容器 + 铺到平台目录」
+- **版本检测**：`skill hub remote check [name...]`——**只读，不改磁盘**
+- **更新**：`skill hub remote update [name...]` 按来源重拉，指纹变了才换，上游没了如实报告
+- **其它**：`remote add` 手写定义、`remote remove` 移除（平台侧副本另行 `skill purge`）
 
-`skill hub subscribe` 只收本地目录；远程规格一律走 `remote import`。拉取有安全边界
-（下载/解压限额、路径穿越拒绝、上游 name 安全校验）。移植自
+#### 版本判定：目录级 tree SHA
+
+「有没有更新」判定的是**每个 skill 目录的 git 树对象 SHA**（`git rev-parse HEAD:<目录>`，
+40 位十六进制），不是仓库级、不是提交级——上游改了一个 skill，只有它报「待更新」，
+同一仓库里的其它 skill 仍是「最新」。GitHub 走 Trees API 拿同一个值（两者完全可比），
+API 不可用时退回 clone 路径。
+
+台账里记两个指纹，分工不同：
+
+| 字段 | 含义 | 决定什么 |
+| --- | --- | --- |
+| `hash` | 本地安装副本的目录指纹（md5） | 本地实体要不要换盘 |
+| `folderHash` | 上游目录指纹（tree SHA） | 上游有没有变 |
+
+先 `git ls-remote` 比上游 commit：commit 没变直接判「最新」，**不克隆、不下载**；
+commit 变了才拉一份算目录级指纹。
+
+`skill hub subscribe` 只收本地目录；远程规格一律走 `remote import` / `remote install`。
+拉取有安全边界（下载/解压限额、路径穿越拒绝、上游 name 安全校验）。移植自
 [vercel-labs/skills](https://github.com/vercel-labs/skills)（MIT）：源解析、归档解包、
-终端转义清洗等纯逻辑按字节级移植，交互层为本仓库自己的 action/渲染形态。
+终端转义清洗等纯逻辑按字节级移植，版本判定对齐它的目录级 tree SHA 机制，
+交互层为本仓库自己的 action/渲染形态。
 
 ### 适配器
 
@@ -450,7 +471,8 @@ nx-rh skill get nx-rh skill-hub     # 裸名 ref → references/skill-hub.md
 | Doubao（豆包） | `.doubao/skills` | `~/Doubao/skills` | |
 | DoubaoWork（豆包办公） | `.doubaowork/skills` | `~/DoubaoWork/skills` | |
 | Qianwen（千问办公） | `.qwenworkcn/skills` | `~/.qwenworkcn/skills` | |
-| Trae CN（国内版） | `.trae/skills` | `~/.trae-cn/skills` | |
+| Trae（国际版） | `.trae/skills` | `~/.trae/skills` | |
+| TraeCN（国内版） | `.trae-cn/skills` | `~/.trae-cn/skills` | |
 | Qoder | `.qoder/skills` | `~/.qoder/skills` | |
 | QoderCN（中国版） | `.qoder-cn/skills` | `~/.qoder-cn/skills` | |
 | Universal (.agents) | `.agents/skills` | `~/.agents/skills` | 是 |
@@ -478,6 +500,11 @@ WorkBuddy 分国内版（workbuddy.cn，`~/.workbuddy/skills`）与国际版（w
 Qoder 分国际版（qoder.com）与中国版（qoder.com.cn）：国际版两级同名 `.qoder/skills`，官方两级都写明；
 中国版整套用户配置独立在 `~/.qoder-cn/`，用户级 `~/.qoder-cn/skills` 本机实测，项目级那格是占位
 （无文档无实体佐证），读不到就 `--to global`。裸 `qoder` 维持归国际版，中国版用 `qoder-cn` / `qodercn`。显示名连写 `QoderCN`（不带空格）——Web 平台勋章取显示名首词，带空格会和国际版坍缩成同一个 `qoder` 勋章。
+
+Trae 分国际版（trae，两级都 `.trae/skills`）与国内版（trae-cn，两级都 `.trae-cn/skills`）：两套
+根目录不能混用。用户级 `~/.trae-cn/skills` 本机实测（目录下就是各 skill 的 `SKILL.md` 与
+`references/`）；`~/.trae/skills` 本机未装（`~/.trae` 不存在），国际版按同族约定登记。平台范围里
+两者的短名分别是 `trae` 与 `traecn`；裸 `trae` 归国际版，国内版用 `trae-cn` / `traecn`。
 
 DoubaoWork（豆包办公，桌面端）与「豆包」是同族不同产品：用户级落点是「非隐藏 + 产品名」的
 `~/DoubaoWork/skills`（与 `~/Doubao/skills` 同款，应用启动时自动创建，本机实测存在）；内置技能在

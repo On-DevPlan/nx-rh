@@ -2,10 +2,12 @@
 // 豆包的特殊点：用户级目录是「非隐藏 + 首字母大写」的 ~/Doubao/skills，
 // 与其它平台 ~/.<id>/skills 的隐藏目录约定不同——单测把这条平台差异锁死。
 // 千问办公的特殊点：官方只有用户级 ~/.qwenworkcn/skills，项目级那格是占位（产品不读）。
-// Trae 国内版的特殊点：两级目录名不同——项目级 .trae/skills（两版共用）、用户级 ~/.trae-cn/skills。
+// Trae 的特殊点：国际版（trae）两级同名 .trae/skills；国内版（trae-cn）两级同名 .trae-cn/skills；
+//   两套根目录不能混用；两版都登记后裸 trae 归国际版（与 qoder 同口径）。CN 显示名连写 TraeCN
+//   （带空格会和国际版坍缩成同一个 "trae" 勋章）。
 // Qoder 的特殊点：两级目录同名 .qoder/skills（官方两级都写明，用户级本机实测）。
 // Qoder 中国版（qoder-cn）的特殊点：用户级 ~/.qoder-cn/skills 本机实测；项目级无佐证是占位格。
-//   裸 qoder 维持归国际版——本机两版都装，不同于 trae 只装国内版才把裸名让给 -cn。
+//   裸 qoder 维持归国际版——与 trae 同口径：两版都装，裸名归国际版。
 //   显示名连写 QoderCN（不带空格）：Web 勋章取 name 首词，带空格会和国际版坍缩成同一个 "qoder"。
 // DoubaoWork（豆包办公，doubao-work）的特殊点：与「豆包」同族不同产品，用户级是「非隐藏 + 产品名」
 //   的 ~/DoubaoWork/skills（与 ~/Doubao/skills 同款，应用启动时自动创建）；项目级无佐证是占位格。
@@ -69,18 +71,31 @@ test('千问办公别名（含产品英文名）全部归一到 qianwen', () => 
   }
 });
 
-test('Trae 国内版两级目录名不同：项目 .trae / 用户 .trae-cn', () => {
+test('Trae 国际版两级目录同名：项目与用户都是 .trae/skills', () => {
+  const a = adapterById('trae');
+  assert.ok(a, 'trae 适配器应存在');
+  assert.equal(a.dir, '.trae/skills');
+  assert.equal(a.globalDir, '.trae/skills');
+  const proj = join(tmp, 'proj-trae');
+  assert.equal(targetDirFor('trae', 'user', tmp), join(home, '.trae', 'skills'));
+  assert.equal(targetDirFor('trae', 'project', proj), join(proj, '.trae', 'skills'));
+});
+
+test('Trae 国内版两级目录同名：项目与用户都是 .trae-cn/skills', () => {
   const a = adapterById('trae-cn');
   assert.ok(a, 'trae-cn 适配器应存在');
-  assert.equal(a.dir, '.trae/skills');
+  assert.equal(a.dir, '.trae-cn/skills');
   assert.equal(a.globalDir, '.trae-cn/skills');
   const proj = join(tmp, 'proj2');
   assert.equal(targetDirFor('trae-cn', 'user', tmp), join(home, '.trae-cn', 'skills'));
-  assert.equal(targetDirFor('trae-cn', 'project', proj), join(proj, '.trae', 'skills'));
+  assert.equal(targetDirFor('trae-cn', 'project', proj), join(proj, '.trae-cn', 'skills'));
 });
 
-test('Trae 裸名 trae 归一到国内版（本机只装它）', () => {
-  for (const al of ['trae-cn', 'trae', 'TRAE', 'Trae-CN']) {
+test('Trae 别名：裸 trae 归国际版，trae-cn / traecn 归国内版', () => {
+  for (const al of ['trae', 'TRAE', 'Trae']) {
+    assert.equal(normalizePlatformId(al), 'trae', `${al} 应归一为 trae`);
+  }
+  for (const al of ['trae-cn', 'traecn', 'TRAE-CN', 'Trae-CN', 'TraeCN']) {
     assert.equal(normalizePlatformId(al), 'trae-cn', `${al} 应归一为 trae-cn`);
   }
 });
@@ -188,4 +203,7 @@ test('显示名首词（Web 勋章的取法）全表唯一，同族平台不得�
   // 同族第二个回归点：WorkBuddy 国内版 / 国际版
   assert.equal(shortLabel(adapterById('workbuddy')), 'workbuddy');
   assert.equal(shortLabel(adapterById('workbuddy-ai')), 'workbuddyai（国际版）');
+  // Trae 国际版 / 国内版：CN 名连写后不再坍缩成同一个 "trae"
+  assert.equal(shortLabel(adapterById('trae')), 'trae（国际版）');
+  assert.equal(shortLabel(adapterById('trae-cn')), 'traecn（国内版）');
 });

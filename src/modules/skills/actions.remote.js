@@ -2,7 +2,7 @@
 // 由 index.js 收集拼接——这里只放远程订阅这一组，避免 index.js 膨胀。
 import * as service from './service.js';
 import { projectRoot } from '../../core/paths.js';
-import { renderRemoteHub, renderRemoteUpdate } from './renders.js';
+import { renderRemoteHub, renderRemoteUpdate, renderRemoteCheck, renderRemoteInstall } from './renders.js';
 
 const projectOf = (ctx) => ctx.project || projectRoot();
 
@@ -40,6 +40,44 @@ export const actions = [
       },
     },
     {
+      // 导入 + 装到平台目录一条龙（对标 vercel-labs/skills 的 `skills add`）。
+      // 默认装到**用户级**——「管理导入的 skill」的本意就是让它在本机到处可用。
+      id: 'skill.hub.remote.install',
+      cli: [['skill', 'hub', 'remote', 'install'], ['skill', 'remote', 'install']],
+      http: ['POST', '/api/skills/remote/install'],
+      summary: '从远程规格导入并装到平台目录（默认用户级；--name 只导一个；--platform 指定平台；--dry-run 只列清单）',
+      args: ['spec'],
+      flags: {
+        name: { type: 'string', hint: '只安装这一个 skill' },
+        to: { type: 'string', enum: ['user', 'global', 'project', 'all'], default: 'user' },
+        platform: { type: 'string', hint: '目标平台（缺省用启用中的平台）' },
+        project: { type: 'string', hint: '项目根（--to project 时用）' },
+        'dry-run': { type: 'boolean', hint: '先看清上游有什么，不导入也不安装' },
+      },
+      run: (ctx) => service.installFromRemote(ctx.spec, {
+        name: ctx.name,
+        to: ctx.to,
+        platform: ctx.platform,
+        project: projectOf(ctx),
+        dryRun: ctx['dry-run'] === true,
+      }),
+      render: renderRemoteInstall,
+    },
+    {
+      // 版本检查：**只读不换盘**。与 update 的分工——update 边检查边换实体，
+      // check 只回答「上游有没有更新」，两者互不替代。
+      id: 'skill.hub.remote.check',
+      cli: [['skill', 'hub', 'remote', 'check'], ['skill', 'remote', 'check']],
+      http: ['GET', '/api/skills/remote/check'],
+      summary: '检查上游有没有新版本（目录级指纹比对；<name...> 只查指定；只读，不改磁盘）',
+      args: [{ name: 'name', rest: true, required: false }],
+      run: (ctx) => {
+        const names = Array.isArray(ctx.name) ? ctx.name : ctx.name ? [ctx.name] : [];
+        return service.checkRemoteUpdates({ names });
+      },
+      render: renderRemoteCheck,
+    },
+    {
       id: 'skill.hub.remote.add',
       cli: [['skill', 'hub', 'remote', 'add'], ['skill', 'remote', 'add']],
       http: ['POST', '/api/skills/remote'],
@@ -48,24 +86,6 @@ export const actions = [
       flags: { description: { type: 'string' }, content: { type: 'string' } },
       run: (ctx) => service.addRemoteDefinition(ctx.name, { description: ctx.description, content: ctx.content }),
       render: (d) => `已在远程订阅里添加定义: ${d.name}\n  落位: ${d.dir}`,
-    },
-    {
-      id: 'skill.hub.remote.link',
-      cli: [['skill', 'hub', 'remote', 'link'], ['skill', 'remote', 'link']],
-      http: ['POST', '/api/skills/remote/link'],
-      summary: '在远程订阅里放一个软链（<name> <目标目录>：链到别处已有的 skill，同一份源码多处可用）',
-      args: ['name', 'target'],
-      run: (ctx) => service.linkIntoRemote(ctx.name, ctx.target),
-      render: (d) => `已加软链: ${d.name} → ${d.target}  (${d.linkType})`,
-    },
-    {
-      id: 'skill.hub.remote.link-out',
-      cli: [['skill', 'hub', 'remote', 'link-out']],
-      http: ['POST', '/api/skills/remote/link-out'],
-      summary: '把远程订阅里的某份 skill 链到别处（<name> <目标目录>：仓库里这份不动）',
-      args: ['name', 'target'],
-      run: (ctx) => service.linkFromRemote(ctx.name, ctx.target),
-      render: (d) => `已加软链: ${d.from} → ${d.to}  (${d.linkType})`,
     },
     {
       id: 'skill.hub.remote.update',

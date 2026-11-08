@@ -154,16 +154,19 @@ nx-rh skill hub main [<路径>]                    # 查看 / 切换当前主源
 nx-rh skill hub search <关键词> [--owner <组织>]      # 搜 skills.sh 注册表（结果里的 source 可直接导入）
 nx-rh skill hub remote import <spec> --dry-run        # 先看清上游有什么（列名称/描述/版本），不拷贝
 nx-rh skill hub remote import <spec> [--name <skill>] # 导入（spec: owner/repo、git URL、归档 URL）
+nx-rh skill hub remote install <spec> [--platform P]  # 导入并装到平台目录一条龙（默认用户级）
 nx-rh skill hub remote list                           # 内容清单（来源 / 版本指纹 / 安装状态）
+nx-rh skill hub remote check [<name...>]              # 检查上游有没有新版本（只读，不改磁盘）
 nx-rh skill hub remote update [<name...>]             # 按来源重拉更新（指纹变了才换）
 nx-rh skill hub remote add <name>                     # 手写一个定义放进远程订阅
-nx-rh skill hub remote link <name> <目录>             # 软链：别处的 skill 链进来
-nx-rh skill hub remote link-out <name> <目录>         # 软链：远程订阅里的 skill 链出去
 nx-rh skill hub remote remove <name...>               # 移除（平台侧副本另行 skill purge）
 ```
 
-- `subscribe` 只收**本地目录**；远程规格一律 `remote import`（给错了会提示）
-- 每个 skill 记来源与版本指纹，`update` 只换有变化的；上游删了的如实报告
+- `subscribe` 只收**本地目录**；远程规格一律 `remote import` / `remote install`（给错了会提示）
+- 远程订阅**默认就登记在订阅源清单里**（恒排最后），不需要先 `subscribe`
+- 每个 skill 记来源与两个指纹：`hash`（本地副本，决定要不要换盘）与 `folderHash`（上游目录，
+  决定上游有没有变）；`update` 只换有变化的，上游删了的如实报告
+- `check` 与 `update` 分工不同：**check 只读**，只回答「有没有更新」；要换盘才跑 `update`
 - `migrate --all-sources` 可把**全部订阅源**（含远程订阅）铺到平台
 
 ## 批量选择（全量迁移，不手点）
@@ -255,7 +258,8 @@ nx-rh skill platform [claude-code workbuddy-ai ...]            # 启用哪些平
 | doubao | doubao | `.doubao/skills` | `~/Doubao/skills` |
 | doubao-work | doubaowork · dbw | `.doubaowork/skills` | `~/DoubaoWork/skills` |
 | qianwen | qwenwork · qwen · qw | `.qwenworkcn/skills` | `~/.qwenworkcn/skills` |
-| trae-cn | trae | `.trae/skills` | `~/.trae-cn/skills` |
+| trae | — | `.trae/skills` | `~/.trae/skills` |
+| trae-cn | traecn | `.trae-cn/skills` | `~/.trae-cn/skills` |
 | qoder | — | `.qoder/skills` | `~/.qoder/skills` |
 | qoder-cn | qodercn | `.qoder-cn/skills` | `~/.qoder-cn/skills` |
 | agents | universal | `.agents/skills` | `~/.agents/skills` |
@@ -276,8 +280,10 @@ WorkBuddy 分国内版（workbuddy.cn，`.workbuddy/skills`）与国际版（wor
 裸 `workbuddy` / `wb` 归国内版（先有产品），国际版用 `workbuddy-ai` / `workbuddyai` / `wbai`；
 显示名连写 `WorkBuddyAI`（不带空格），带空格会与国内版坍缩成同一个 `workbuddy` 勋章。
 
-Trae 国内版用户级是 `~/.trae-cn/skills`，项目级两版共用 `.trae/skills`；国际版用户级应为 `~/.trae/skills`，
-未装未实测，要聚焦国际版就在 `ADAPTERS` 里补一行 `id: 'trae'`。
+Trae 分国际版（trae，两级都 `.trae/skills`）与国内版（trae-cn，两级都 `.trae-cn/skills`）：两套根目录
+不能混用。用户级 `~/.trae-cn/skills` 本机实测（目录下就是各 skill 的 `SKILL.md` 与 `references/`）；
+`~/.trae/skills` 本机未装（`~/.trae` 不存在），国际版按同族约定登记。平台范围里两者短名分别是
+`trae` 与 `traecn`；裸 `trae` 归国际版，国内版用 `trae-cn` / `traecn`。
 
 Qoder 分国际版（qoder.com）与中国版（qoder.com.cn）：国际版两级目录同名 `.qoder/skills`，官方两级都写明、
 用户级本机实测。中国版整套用户配置独立在 `~/.qoder-cn/`，用户级 `~/.qoder-cn/skills` 本机实测；项目级

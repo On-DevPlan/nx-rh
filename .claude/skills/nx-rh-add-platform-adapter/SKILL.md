@@ -3,9 +3,9 @@
 name: nx-rh-add-platform-adapter
 name_en: nx-rh Add Platform Adapter
 name_zh: nx-rh 平台适配器新增
-description: Add or adjust an Agent platform adapter in nx-rh's Skill Hub — the full change surface (adapters.js ADAPTERS + PLATFORM_ALIASES, README adapter table, built-in manual skill-hub.md platform table, skills-adapters unit tests) plus the verification chain (eslint, build zero-diff, unit, smoke, `skill hub adapters` absolute-path check). Use when adding a platform (e.g. qianwen, trae-cn, doubao) to nx-rh, changing platform aliases or skill directories, or syncing the platform tables.
-description_en: Add or adjust an Agent platform adapter in nx-rh's Skill Hub — the full change surface (adapters.js ADAPTERS + PLATFORM_ALIASES, README adapter table, built-in manual skill-hub.md platform table, skills-adapters unit tests) plus the verification chain (eslint, build zero-diff, unit, smoke, `skill hub adapters` absolute-path check). Use when adding a platform (e.g. qianwen, trae-cn, doubao) to nx-rh, changing platform aliases or skill directories, or syncing the platform tables.
-description_zh: 给 nx-rh Skill Hub 新增或调整 Agent 平台适配器：固定 4 文件改动面（adapters.js 的 ADAPTERS + PLATFORM_ALIASES、README 适配器表、内置手册 skill-hub.md 平台表、skills-adapters 单测）与验证链（eslint / build 零 diff / unit / smoke / `skill hub adapters` 核对绝对落点）。用于给 nx-rh 加平台（qianwen、trae-cn、豆包等）、改平台别名或落点目录、同步三处平台表、补平台单测时。
+description: Add or adjust an Agent platform adapter in nx-rh's Skill Hub — the full change surface (adapters.js ADAPTERS + PLATFORM_ALIASES, README adapter table, built-in manual skill-hub.md platform table, skills-adapters unit tests) plus the verification chain (eslint, build zero-diff, unit, smoke, `skill hub adapters` absolute-path check, panel DOM check after restarting serve). Also documents the two pitfalls — display-name short-label collapse and stale serve processes not hot-reloading ADAPTERS. Use when adding a platform (e.g. qianwen, trae-cn, doubao) to nx-rh, changing platform aliases or skill directories, or syncing the platform tables.
+description_en: Add or adjust an Agent platform adapter in nx-rh's Skill Hub — the full change surface (adapters.js ADAPTERS + PLATFORM_ALIASES, README adapter table, built-in manual skill-hub.md platform table, skills-adapters unit tests) plus the verification chain (eslint, build zero-diff, unit, smoke, `skill hub adapters` absolute-path check, panel DOM check after restarting serve). Also documents the two pitfalls — display-name short-label collapse and stale serve processes not hot-reloading ADAPTERS. Use when adding a platform (e.g. qianwen, trae-cn, doubao) to nx-rh, changing platform aliases or skill directories, or syncing the platform tables.
+description_zh: 给 nx-rh Skill Hub 新增或调整 Agent 平台适配器：固定 4 文件改动面（adapters.js 的 ADAPTERS + PLATFORM_ALIASES、README 适配器表、内置手册 skill-hub.md 平台表、skills-adapters 单测）与验证链（eslint / build 零 diff / unit / smoke / `skill hub adapters` 核对绝对落点 / 重启 serve 后做面板 DOM 断言）。并记录两个易错点：显示名首词坍缩成同一个勋章、旧 serve 进程不热加载适配器表。用于给 nx-rh 加平台（qianwen、trae-cn、豆包等）、改平台别名或落点目录、同步三处平台表、补平台单测时。
 argument-hint: Describe the platform to add (name, config dir, user/project skill paths)
 argument-hint-en: Describe the platform to add (name, config dir, user/project skill paths)
 argument-hint-zh: 说明要新增的平台（名称、配置目录、用户级/项目级 skills 路径）
@@ -26,6 +26,13 @@ user-invocable: true
 
 > 三处平台表副本必须同步，漏一处 = 文档说谎。收尾用 `git status --porcelain` 核对**只**有这 4 个文件。
 
+## 易错点：代码里加了 ≠ 面板能看到
+
+1. **`serve` 不热加载 `ADAPTERS`**：适配器表在服务端进程启动时装入内存。改完表不重启进程，面板 `/api/bootstrap` 仍是旧表——平台范围里看不到新 id、落点还是旧路径。**交付前必须重启面板进程再刷新**，不能因为"代码里已经有了"就收工。
+2. **显示名带空格会坍缩勋章**：Web 短名 = `name` 去掉尾部括号后按空白/连字符取首词。`Trae CN（国内版）` 会变成 `trae`，与同族国际版撞成同一个勋章；必须连写（`TraeCN` / `QoderCN` / `WorkBuddyAI`）。单测里的「显示名首词全表唯一」就是兜这个底，新增同族平台必须让它继续绿。
+3. **默认不启用 ≠ 不显示**：`settings.platforms` 只管勾选/启用，`平台范围` 会列出全表。排查"没显示"的顺序是：先看 bootstrap 有没有该 id → 再看短名是否坍缩 → 最后才怀疑过滤。
+4. **同族两版只加一行不够**：CN 与国际版是两套根目录（`.trae-cn/skills` vs `.trae/skills`），各加一行并明确裸名归谁；别把另一版的目录借过来用。
+
 ## 工作流
 
 ### ① 定落点（先考证，不猜）
@@ -35,25 +42,27 @@ user-invocable: true
 3. **产出**：`id`、`name`（显示名，中文平台带「（中文名）」）、`dir`（项目级，相对项目根）、`globalDir`（用户级，相对 home）、别名集合（id 自身 + 产品英文名 + 缩写）。
 4. **特殊口径写进注释 + 三处文档**：
    - 无项目级约定（如 qianwen）→ `dir` 按 `.<id>/skills` 惯例给占位，写明「迁到项目级读不到，要生效用 `--to global`」。
-   - 两级目录名不一致（如 trae-cn：项目 `.trae/skills` / 用户 `~/.trae-cn/skills`）→ 写明各自来源与实测情况。
-   - 同族多版本（国内版 / 国际版）→ 只加本机实测的那个；给未实测的版本留「要聚焦就补一行 `id=xxx`」的说明。
+   - 同族多版本（国内版 / 国际版）→ 能分开就各加一行（如 trae 国际版两级 `.trae/skills`、trae-cn 国内版两级 `.trae-cn/skills`）；本机未实测的那版在注释/文档里标注「按同族约定登记」。
+   - 两版都登记后，裸产品名归国际版（与 qoder 同口径），CN 版用 `-cn` / 连写别名；显示名要连写（`TraeCN`），别留空格。
 
 ### ② 改 `src/modules/skills/adapters.js`
 
 `ADAPTERS` 在 `doubao` 之后、「其余平台保留」注释之前插入（注释把特殊点讲清）：
 
 ```js
-  // Trae 国内版：用户级 ~/.trae-cn/skills（本机实测），但项目级两版共用 .trae/skills
-  // （project-graph 仓库里就有三个带 SKILL.md 的实体）。国际版按同族约定是 ~/.trae/skills，
-  // 本机未装未实测——真要聚焦国际版再加一行 id=trae 的适配器即可。
-  { id: 'trae-cn', name: 'Trae CN（国内版）', dir: '.trae/skills', globalDir: '.trae-cn/skills' },
+  // Trae 国际版：两级都落在 .trae/skills（项目级有实体佐证；用户级本机未装，按同族约定登记）。
+  { id: 'trae', name: 'Trae（国际版）', dir: '.trae/skills', globalDir: '.trae/skills' },
+  // Trae 国内版：两级都落在 .trae-cn/skills（用户级本机实测）。与上面国际版是两套根目录，不能混用；
+  // 显示名连写 TraeCN（带空格会和国际版坍缩成同一个 trae 勋章）。
+  { id: 'trae-cn', name: 'TraeCN（国内版）', dir: '.trae-cn/skills', globalDir: '.trae-cn/skills' },
 ```
 
 `PLATFORM_ALIASES` 加别名（id 自身也要写，是仓库惯例；有歧义的别名加注释说明取舍）：
 
 ```js
+  trae: 'trae', // 裸名归国际版（与 qoder 同口径）；国内版要显式写 trae-cn
   'trae-cn': 'trae-cn',
-  trae: 'trae-cn', // 本机只装国内版，裸 trae 就落到它；若哪天加了 id=trae 需重新斟酌这条
+  traecn: 'trae-cn', // 产品名连写
 ```
 
 ### ③ 同步两处文档平台表
@@ -67,14 +76,18 @@ user-invocable: true
 - 用例锁定：适配器存在 + 字段（id / dir / globalDir）、别名归一（含大小写混合）、两级绝对落点；跨版本别名注明取舍。
 
 ```js
-test('Trae 国内版两级目录名不同：项目 .trae / 用户 .trae-cn', () => {
-  const a = adapterById('trae-cn');
-  assert.ok(a, 'trae-cn 适配器应存在');
-  assert.equal(a.dir, '.trae/skills');
-  assert.equal(a.globalDir, '.trae-cn/skills');
-  const proj = join(tmp, 'proj2');
-  assert.equal(targetDirFor('trae-cn', 'user', tmp), join(home, '.trae-cn', 'skills'));
-  assert.equal(targetDirFor('trae-cn', 'project', proj), join(proj, '.trae', 'skills'));
+test('Trae 两版各自两级同名：.trae/skills 与 .trae-cn/skills', () => {
+  for (const [id, d] of [['trae', '.trae'], ['trae-cn', '.trae-cn']]) {
+    const a = adapterById(id);
+    assert.ok(a, `${id} 适配器应存在`);
+    assert.equal(a.dir, `${d}/skills`);
+    assert.equal(a.globalDir, `${d}/skills`);
+    const proj = join(tmp, `proj-${id}`);
+    assert.equal(targetDirFor(id, 'user', tmp), join(home, d, 'skills'));
+    assert.equal(targetDirFor(id, 'project', proj), join(proj, d, 'skills'));
+  }
+  assert.equal(normalizePlatformId('trae'), 'trae');
+  assert.equal(normalizePlatformId('traecn'), 'trae-cn');
 });
 ```
 
@@ -102,6 +115,9 @@ node --test tests/unit/*.test.mjs
 
 # 6) CLI 核对新平台绝对落点 + [启用]/[默认] 标记（全局 CLI 同款：nx-rh skill hub adapters）
 node bin/cli.mjs skill hub adapters
+
+# 7) 重启面板（必须！旧进程不热加载 ADAPTERS）：停掉占用端口的旧 serve，再 node bin/cli.mjs serve --no-open
+#    浏览器打开 /#/skills → Skill 设置 → 平台范围，DOM 断言新平台短名可见且可勾选
 ```
 
 别名端到端补核：写临时 `.mjs` 脚本 import `src/modules/skills/svc/targets.js`，对每个别名（含大写混合）跑 `resolveTargets({ to: 'all', platform: '<别名>', project })`，核对归一为预期 id。**不要用多行 `node -e`**——本机 Git Bash 下会静默失败（无输出也无报错）。
@@ -125,6 +141,6 @@ node bin/cli.mjs skill hub adapters
 最近两例（同一 4 文件改动面；工作区带未提交改动时 `git --no-pager diff` 即最佳模板）：
 
 - **qianwen（千问办公）**：官方只写用户级 `~/.qwenworkcn/skills`、无项目级约定 → 占位 + 三处 caveat；别名 `qwenwork / qwen / qw`。
-- **trae-cn（Trae 国内版）**：两级目录名不同（项目 `.trae/skills`、用户 `~/.trae-cn/skills`）；裸别名 `trae` 落到国内版并注明取舍。
+- **trae（Trae 国际版）/ trae-cn（Trae 国内版）**：同族两版各一行——国际版两级 `.trae/skills`（用户级本机未装，按同族约定登记），国内版两级 `.trae-cn/skills`（用户级本机实测）；裸别名 `trae` 归国际版，国内版用 `trae-cn` / `traecn`；显示名连写 `TraeCN` 防勋章坍缩。
 
-验证基线：eslint 干净；目标单测全过；build 零 diff；smoke 全过；全量 unit 仅余 worktrees 预存在失败；CLI `skill hub adapters` 显示新平台绝对路径与启用状态。
+验证基线：eslint 干净；目标单测全过；改前端 shortLabel / 平台范围渲染时 build 与产物 diff 一并核对；smoke 全过；全量 unit 仅余 worktrees 预存在失败；CLI `skill hub adapters` 显示新平台绝对路径与启用状态；**最后必须重启面板并实际打开「Skill 设置 → 平台范围」做 DOM 断言**——两个同族平台的短名都要能看到且可勾选，CLI/代码检查不能替代这一步。

@@ -63,7 +63,9 @@ function hubProblemsFor(sources) {
   const problems = [];
   for (const src of sources) {
     if (!src.exists) problems.push({ kind: 'missing', path: src.path, reason: '目录不存在' });
-    else if (!src.count) {
+    else if (!src.count && !src.remote) {
+      // 远程 hub 是本工具托管的容器，初始为空是正常态——不是「订阅配置有问题」。
+      // （远程源默认登记进订阅源清单，所以这里必须跳过它，否则刚装上就报一片问题。）
       problems.push({
         kind: 'empty',
         path: src.path,

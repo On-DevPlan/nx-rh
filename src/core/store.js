@@ -32,7 +32,13 @@ const EMPTY = () => ({
   recents: [],
   // 远程订阅仓库元数据：{ dir, skills: { [skill名]: { spec, url, ref, hash, importedAt, updatedAt } } }。
   // hash 就是这个 skill 的「版本」，importedAt/updatedAt 是「何时导入/更新」。
-  remoteRepo: { dir: '', skills: {} },
+  //
+  // folderHash 是**上游**指纹（git 源 = 40 位目录 tree SHA），hash 是**本地副本**
+  // 指纹（md5）——两个「版本」分工不同：hash 判定本地实体要不要换，folderHash
+  // 判定上游有没有变（见 modules/skills/svc/version.js）。
+  // commits 缓存各上游最近一次已知 commit，让版本检查走 ls-remote 快路径。
+  // lastCheck 是上次检查的结论摘要，面板的「待更新」徽标读它，不必每次联网。
+  remoteRepo: { dir: '', skills: {}, commits: {}, lastCheck: null },
   // 订阅源快照（skill hub refresh 的对比基准）：sourcePath → { skills: {名: 指纹}, scannedAt }。
   // 本地源在用户 git pull 之后跑 refresh 看上游改了什么；不越「不管 git」的边界。
   sourceSnapshots: {},
@@ -146,13 +152,17 @@ function normalize(data) {
       ? {
           dir: String(data.remoteRepo.dir || ''),
           skills: data.remoteRepo.skills && typeof data.remoteRepo.skills === 'object' ? data.remoteRepo.skills : {},
+          commits: data.remoteRepo.commits && typeof data.remoteRepo.commits === 'object' ? data.remoteRepo.commits : {},
+          lastCheck: data.remoteRepo.lastCheck && typeof data.remoteRepo.lastCheck === 'object' ? data.remoteRepo.lastCheck : null,
         }
       : data.remoteHub && typeof data.remoteHub === 'object' && data.remoteHub.skills
         ? {
             dir: String(data.remoteHub.dir || ''),
             skills: typeof data.remoteHub.skills === 'object' ? data.remoteHub.skills : {},
+            commits: {},
+            lastCheck: null,
           }
-        : { dir: '', skills: {} };
+        : { dir: '', skills: {}, commits: {}, lastCheck: null };
   base.sourceSnapshots =
     data.sourceSnapshots && typeof data.sourceSnapshots === 'object' ? data.sourceSnapshots : {};
   return base;

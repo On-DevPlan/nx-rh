@@ -4,7 +4,7 @@ import { resolve, join } from 'node:path';
 import fsp from 'node:fs/promises';
 import { exists, pathExists } from '../../../core/fstree.js';
 import { badInput, notFound } from '../../../core/errors.js';
-import { loadStore } from '../../../core/store.js';
+import { remoteRepoDir } from '../../../core/paths.js';
 import {
   getSettings,
   hubPath,
@@ -13,6 +13,7 @@ import {
   removeCandidate,
 } from '../../settings/service.js';
 import { resolveSkillsRoot, scanSkillsRoot, readSkill } from './scan.js';
+import { ensureRemote } from './remote-repo.js';
 
 // 订阅源清单，附带解析后的 skills 根、是否存在、skill 数、是否当前主源。
 // remote 字段：远程 Hub 的标记（{ dir }）——它是唯一一个装着外部 skill 的容器；
@@ -20,9 +21,13 @@ import { resolveSkillsRoot, scanSkillsRoot, readSkill } from './scan.js';
 export async function listSources() {
   const s = await getSettings();
   const current = s.skillHubPath ? resolve(s.skillHubPath) : '';
-  const hubDir = (await loadStore()).remoteRepo?.dir || '';
+  // 远程 hub 默认登记进订阅源清单——它是本工具托管的容器，用户不需要先「订阅」。
+  // ensureRemote 是幂等且便宜的（已登记就直接返回），所以每次读清单都调它没问题。
+  await ensureRemote();
+  const s2 = await getSettings();
+  const hubDir = (s2.skillHubSources.find((p) => p.toLowerCase() === remoteRepoDir().toLowerCase())) || '';
   const out = [];
-  for (const p of s.skillHubSources) {
+  for (const p of s2.skillHubSources) {
     const abs = resolve(p);
     const root = await resolveSkillsRoot(abs);
     const skills = await scanSkillsRoot(root, { realOnly: true });

@@ -54,7 +54,8 @@ export default function SkillsView() {
   } else if (route.level === 'project') {
     body = <ProjectPage tick={tick} />;
   } else if (route.level === 'remote') {
-    body = <RemotePage tick={tick} />;
+    // route.arg = 区段（content / byurl / find）——深链直达某个区段
+    body = <RemotePage tick={tick} initialSeg={route.arg} />;
   } else if (route.level === 'skill') {
     body = <SkillDetail name={route.arg} tick={tick} />;
   } else {

@@ -321,14 +321,74 @@ export function renderRemoteHub(d) {
     return [
       `远程订阅还是空的: ${d.dir}`,
       '导入: nx-rh skill hub remote import <owner/repo|git URL>',
+      '导入并安装: nx-rh skill hub remote install <owner/repo|git URL>',
       '手写定义: nx-rh skill hub remote add <name>',
-      '软链: nx-rh skill hub remote link <name> <目标目录>',
     ].join('\n');
   }
   const lines = [`远程订阅: ${d.dir}  (${d.skills.length} 个 skill)`];
   for (const s of d.skills) {
     const from = s.linkType ? `软链 → ${s.dir}` : s.manual ? '（手写定义）' : `${s.spec}${s.ref ? '@' + s.ref : ''}`;
-    lines.push(`${s.name.padEnd(28)} ${String(s.hash).slice(0, 8)}  ${from}  ·  更新于 ${s.updatedAt || '—'}`);
+    const ver = s.folderHash ? `  ${String(s.folderHash).slice(0, 8)}` : '';
+    lines.push(`${s.name.padEnd(28)} ${String(s.hash).slice(0, 8)}${ver}  ${from}  ·  更新于 ${s.updatedAt || '—'}`);
+  }
+  return lines.join('\n');
+}
+
+// 远程订阅 版本检查结果：逐 skill 一行状态。
+// 状态语义（与 svc/version.js 的 VERSION_STATUS 一一对应）：
+//   up-to-date 已是最新 / outdated 上游有更新 / removed 上游已删
+//   unknown 缺少基准（需重新导入）/ skipped 没有上游 / error 上游不可访问
+const CHECK_MARK = {
+  'up-to-date': '=',
+  outdated: '~',
+  removed: '-',
+  unknown: '?',
+  skipped: '·',
+  error: '!',
+};
+
+export function renderRemoteCheck(d) {
+  if (!d.results.length) return '（远程订阅里还没有可检查的 skill）';
+  const lines = [
+    `版本检查: 共 ${d.results.length} 个 · 待更新 ${d.outdated} · 最新 ${d.upToDate} · 上游已删 ${d.removed}` +
+    (d.errored ? ` · 失败 ${d.errored}` : '') + (d.skipped ? ` · 无上游 ${d.skipped}` : ''),
+  ];
+  for (const r of d.results) {
+    const mark = CHECK_MARK[r.status] || '?';
+    const cur = r.currentHash ? String(r.currentHash).slice(0, 8) : '—';
+    const next = r.latestHash ? String(r.latestHash).slice(0, 8) : '—';
+    const detail = r.detail ? `  (${r.detail})` : '';
+    lines.push(`  ${mark} ${r.name.padEnd(28)} ${cur} → ${next}${detail}`);
+  }
+  if (d.outdated) {
+    lines.push('');
+    lines.push(`更新: nx-rh skill hub remote update ${d.results.filter((r) => r.status === 'outdated').map((r) => r.name).join(' ')}`);
+  }
+  return lines.join('\n');
+}
+
+// 远程订阅 install 结果：导入了哪些 + 装到了哪些目标
+export function renderRemoteInstall(d) {
+  if (d.dryRun) {
+    const lines = [`预演（--dry-run，未导入也未安装）: ${d.spec} 共 ${d.count} 个 skill:`];
+    for (const s of d.skills || []) lines.push(`  ${s.name.padEnd(32)} ${String(s.hash).slice(0, 8)}  ${(s.description || '').slice(0, 56)}`);
+    return lines.join('\n');
+  }
+  const lines = [`已导入 ${d.count} 个到远程订阅: ${d.imported.join(', ')}`];
+  const ins = d.install;
+  if (!ins) {
+    lines.push('（没有需要安装的 skill）');
+    return lines.join('\n');
+  }
+  if (ins.status === 'blocked') {
+    lines.push('已阻止: 同名 skill 在多个订阅源且内容不同（跨源冲突）');
+    for (const b of ins.blocked || []) lines.push(`  ${b.name}  ${b.sources.map((s) => s.source).join(' , ')}`);
+    return lines.join('\n');
+  }
+  lines.push(`已安装 ${ins.migrated} 处（跳过 ${ins.skipped}）`);
+  for (const r of ins.results || []) {
+    const where = `${SCOPE_MARK[r.scope] || r.scope}·${r.platform}`;
+    lines.push(`  ${String(r.name || '').padEnd(28)} ${where}  ${r.skipped ? '已是最新' : r.mode === 'symlink' ? '软链接' : '复制'}${r.degraded ? '（链接失败已降级复制）' : ''}`);
   }
   return lines.join('\n');
 }

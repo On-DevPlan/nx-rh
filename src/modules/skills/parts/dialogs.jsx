@@ -67,6 +67,123 @@ export function SkillEditor({ mode, skill = {}, close, reload }) {
   );
 }
 
+// 远程订阅「导入并安装」弹窗：预演清单（勾选）+ 目标平台多选 + 形态选择。
+//
+// 三步：① 看清上游有什么（预演清单，勾选要装的）② 选装到哪（平台 + 作用域）
+//        ③ 一次完成（导入 + 装到平台目录）
+//
+// 预演清单来自 import --dry-run（后端已把上游拉下来算好指纹），所以这里
+// 显示的版本指纹是**真实的**，不是占位符。
+export function RemoteInstallDialog({ source, skills = [], picked, onTogglePick, onClose, onDone }) {
+  const { boot } = useStore();
+  const toast = useToast();
+  const guard = useGuard();
+  const { afterWrite } = useStore();
+  const settings = boot?.settings || {};
+  const adapters = boot?.adapters || [];
+  const enabledIds = settings.platforms?.length ? settings.platforms : ['claude-code'];
+  const [ids, setIds] = useState(() => new Set([settings.defaultPlatform || enabledIds[0]]));
+  const [to, setTo] = useState('user');
+  const [mode, setMode] = useState('auto');
+  const [busy, setBusy] = useState(false);
+
+  const platName = (id) => (adapters.find((a) => a.id === id) || {}).name || id;
+  const toggle = (id) => setIds((s) => {
+    const next = new Set(s);
+    if (next.has(id)) next.delete(id); else next.add(id);
+    return next;
+  });
+
+  const chosen = skills.filter((s) => picked.has(s.name));
+
+  const ok = () => guard(async () => {
+    if (!chosen.length) { toast('一个都没勾选'); return; }
+    if (!ids.size) { toast('至少勾选一个平台'); return; }
+    setBusy(true);
+    try {
+      const effMode = mode === 'auto' ? undefined : mode;
+      // 一次导入整仓（后端 import 是整仓导入），再把没勾的移除——
+      // 逐个 name 导会重复克隆上游，选 3 个导 3 次 = 克隆 3 次仓库。
+      const imp = await api('/api/skills/remote/import', { method: 'POST', body: { spec: source }, timeoutMs: 300000 });
+      const imported = imp.imported || [];
+      const skipped = imported.filter((n) => !chosen.some((c) => c.name === n));
+      for (const n of skipped) {
+        await api('/api/skills/remote/remove', { method: 'POST', body: { name: [n] }, timeoutMs: 30000 });
+      }
+      const kept = imported.filter((n) => chosen.some((c) => c.name === n));
+      // 装到目标平台：逐平台调 migrate（迁移只认订阅源里的实体）
+      const done = [];
+      for (const pid of enabledIds.filter((id) => ids.has(id))) {
+        const r = await api('/api/skills/migrate', {
+          method: 'POST',
+          body: { name: kept, to, platform: pid, ...(effMode ? { mode: effMode } : {}) },
+        });
+        if (r.status === 'blocked') { toast(`${platName(pid)}：跨源冲突，先解决订阅`); continue; }
+        done.push(platName(pid));
+      }
+      await afterWrite();
+      onDone(
+        `已导入 ${kept.length} 个并装到${to === 'user' ? '用户' : '项目'}级：${done.join('、') || '（无）'}` +
+        (skipped.length ? `（未勾选的 ${skipped.length} 个已移除）` : '')
+      );
+    } finally {
+      setBusy(false);
+    }
+  });
+
+  const how = mode === 'copy' ? '实体复制' : mode === 'symlink' ? '软链接' : `跟随设置（${settings.skillSyncMode === 'copy' ? '复制' : '软链接'}）`;
+
+  return (
+    <Modal title={`导入到远程订阅 · ${source}`} onClose={onClose}>
+      <div className="vlegend" style={{ padding: '0 0 8px' }}>
+        上游共 {skills.length} 个 skill，勾选要导入的（默认全选）。没勾的不会留在容器里。
+      </div>
+      <div className="list" style={{ border: '1px solid var(--soft-2)', borderRadius: 6, maxHeight: 240, overflow: 'auto' }}>
+        {skills.map((s) => (
+          <label key={s.name} className="row src-row">
+            <input type="checkbox" checked={picked.has(s.name)} onChange={() => onTogglePick(s.name)} />
+            <span className="name" style={{ width: 190 }}>{s.name}</span>
+            <span className="desc" title={s.description || ''}>{(s.description || '').slice(0, 60) || '（无描述）'}</span>
+            <span className="tag mono" title="上游目录指纹">↑{String(s.hash || '').slice(0, 6)}</span>
+          </label>
+        ))}
+      </div>
+
+      <div className="section-label" style={{ marginTop: 12 }}>装到<span className="hint">导入后立刻铺到这些平台</span></div>
+      <div className="list" style={{ border: '1px solid var(--soft-2)', borderRadius: 6 }}>
+        {enabledIds.map((id) => (
+          <label key={id} className="row src-row">
+            <input type="checkbox" checked={ids.has(id)} onChange={() => toggle(id)} />
+            <span className="name">{platName(id)}{id === settings.defaultPlatform ? '（默认）' : ''}</span>
+            <span className="desc mono">{id}</span>
+          </label>
+        ))}
+      </div>
+      <div className="row-inline" style={{ marginTop: 10 }}>
+        <label style={{ color: 'var(--mid)' }}>作用域</label>
+        <select aria-label="安装作用域" value={to} onChange={(e) => setTo(e.target.value)}>
+          <option value="user">用户级（跨项目生效）</option>
+          <option value="project">项目级（当前项目）</option>
+        </select>
+        <label style={{ color: 'var(--mid)' }}>形态</label>
+        <select aria-label="安装形态" value={mode} onChange={(e) => setMode(e.target.value)}>
+          <option value="auto">跟随设置</option>
+          <option value="symlink">软链接</option>
+          <option value="copy">实体复制</option>
+        </select>
+        <span className="muted" style={{ fontSize: 11 }}>{how}</span>
+      </div>
+
+      <div className="dlg-acts">
+        <button className="btn ghost" onClick={onClose}>取消</button>
+        <button className="btn" disabled={busy || !picked.size} onClick={ok}>
+          {busy ? '导入中…' : `导入勾选的 ${picked.size} 个并安装`}
+        </button>
+      </div>
+    </Modal>
+  );
+}
+
 // 收进订阅源：选源弹窗（submit 的目标源可挑，缺省主源）
 export function SubmitIntoDialog({ names, onClose, onDone }) {
   const { boot, afterWrite } = useStore();

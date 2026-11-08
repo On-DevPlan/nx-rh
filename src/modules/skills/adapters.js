@@ -34,10 +34,15 @@ export const ADAPTERS = [
   // SKILL.md 的子目录），**没有项目级约定**——这里的 dir 是按 .<id>/skills 惯例给的占位，
   // 迁到项目级千问读不到，要真正生效请走用户级（--to global）。
   { id: 'qianwen', name: 'Qianwen（千问办公）', dir: '.qwenworkcn/skills', globalDir: '.qwenworkcn/skills' },
-  // Trae 国内版：用户级 ~/.trae-cn/skills（本机实测），但项目级两版共用 .trae/skills
-  // （project-graph 仓库里就有三个带 SKILL.md 的实体）。国际版按同族约定是 ~/.trae/skills，
-  // 本机未装未实测——真要聚焦国际版再加一行 id=trae 的适配器即可。
-  { id: 'trae-cn', name: 'Trae CN（国内版）', dir: '.trae/skills', globalDir: '.trae-cn/skills' },
+  // Trae 国际版：两级目录同名 .trae/skills。项目级 .trae/skills 在 project-graph 仓库里有
+  // 三份带 SKILL.md 的实体（非 CN 版 Trae 的落点）；用户级 ~/.trae/skills 本机未装（~/.trae 不存在），
+  // 按同族约定登记，真机出现即生效。显示名 Trae（国际版）。
+  { id: 'trae', name: 'Trae（国际版）', dir: '.trae/skills', globalDir: '.trae/skills' },
+  // Trae 国内版：两级都落在 .trae-cn/ —— 项目级 .trae-cn/skills、用户级 ~/.trae-cn/skills
+  // （用户级本机实测，目录下就是各 skill 的 SKILL.md / references 实体）。与上面的国际版是
+  // 两套根目录，不能混用。显示名必须连写 TraeCN（不带空格）：Web 勋章取 name 首词（按空格/连字符切），
+  // 带空格的 "Trae CN（国内版）" 会和国际版一起坍缩成同一个 "trae" 勋章。
+  { id: 'trae-cn', name: 'TraeCN（国内版）', dir: '.trae-cn/skills', globalDir: '.trae-cn/skills' },
   // Qoder 国际版（qoder.com）：两级目录同名 .qoder/skills，官方文档两级都写明（项目级优先级
   // 最高）；用户级本机实测（~/.qoder/skills，24 个带 SKILL.md 的实体）。中国版独立适配器见下一行。
   { id: 'qoder', name: 'Qoder', dir: '.qoder/skills', globalDir: '.qoder/skills' },
@@ -85,9 +90,10 @@ const PLATFORM_ALIASES = {
   qwenwork: 'qianwen', // 产品英文名 QwenWork
   qwen: 'qianwen',
   qw: 'qianwen',
+  trae: 'trae', // 裸名归国际版（与 qoder 同口径）；国内版要显式写 trae-cn
   'trae-cn': 'trae-cn',
-  trae: 'trae-cn', // 本机只装国内版，裸 trae 就落到它；若哪天加了 id=trae 需重新斟酌这条
-  qoder: 'qoder', // 本机两版都装，裸 qoder 维持归国际版（不同于 trae：只装国内版才把裸名让给 -cn）
+  traecn: 'trae-cn', // 产品名连写
+  qoder: 'qoder', // 本机两版都装，裸 qoder 维持归国际版（与 trae 同口径）
   'qoder-cn': 'qoder-cn',
   qodercn: 'qoder-cn', // 无连字符变体
   codebuddy: 'codebuddy',

@@ -121,7 +121,7 @@ try {
     return i >= 0 && kinds.slice(i).every((k) => k === 'remote');
   })(), JSON.stringify(hubSources.map((s) => [s.path, !!s.remote])));
 
-  // ---- 2c. 远程 Hub 更新（上游改内容 → 指纹变 → 换新） ----
+  // ---- 2c. 远程 Hub 版本检测（只读）+ 更新（上游改内容 → 指纹变 → 换新） ----
   writeFileSync(
     join(remoteFixture, 'skills', 'remote-demo', 'SKILL.md'),
     '---\nname: remote-demo\ndescription: v2 updated\n---\n\n# Remote v2\n'
@@ -130,6 +130,18 @@ try {
     const g = spawnSync('git', ['-c', 'user.email=t@t', '-c', 'user.name=t', ...args], { cwd: remoteFixture, encoding: 'utf8' });
     if (g.status !== 0) throw new Error('git fixture v2 失败: ' + g.stderr);
   }
+  // 版本检查：只读，报「待更新」——不换盘
+  const chk = cliJson(['skill', 'hub', 'remote', 'check']);
+  check(
+    '版本检查报出待更新',
+    chk.status === 'ok' && (chk.results || []).some((r) => r.name === 'remote-demo' && r.status === 'outdated'),
+    JSON.stringify(chk.results)
+  );
+  check(
+    '检查是只读的（内容未换）',
+    (cliJson(['skill', 'hub', 'remote', 'list']).skills || []).some((s) => s.name === 'remote-demo' && s.description === 'from remote fixture'),
+    'check 不该改磁盘'
+  );
   const upd = cliJson(['skill', 'hub', 'remote', 'update']);
   check(
     'Hub 更新报告变更',
@@ -137,8 +149,28 @@ try {
     JSON.stringify(upd.results)
   );
   check('更新后内容换新', (cliJson(['skill', 'hub', 'remote', 'list']).skills || []).some((s) => s.name === 'remote-demo' && s.description === 'v2 updated'));
+  const chk2 = cliJson(['skill', 'hub', 'remote', 'check']);
+  check(
+    '更新后再检查 = 最新',
+    (chk2.results || []).some((r) => r.name === 'remote-demo' && r.status === 'up-to-date'),
+    JSON.stringify(chk2.results)
+  );
   // 清掉 Hub 里的这份，别影响后面依赖「只有一个 skill」的断言
   check('Hub 内移除该 skill', cli(['skill', 'hub', 'remote', 'remove', 'remote-demo']).status === 0);
+
+  // ---- 2d. remote install：导入 + 装到用户目录一条龙 ----
+  const rinst = cliJson(['skill', 'hub', 'remote', 'install', remoteUrl, '--platform', 'claude-code', '--to', 'user']);
+  check(
+    'remote install 导入并安装',
+    rinst.status === 'ok' && (rinst.imported || []).includes('remote-demo') && (rinst.install?.migrated || 0) >= 1,
+    JSON.stringify({ imported: rinst.imported, install: rinst.install?.migrated })
+  );
+  check(
+    'install 后用户目录里有这份 skill',
+    existsSync(join(home, '.claude', 'skills', 'remote-demo', 'SKILL.md')),
+    join(home, '.claude', 'skills', 'remote-demo')
+  );
+  check('清掉 install 的产物', cli(['skill', 'hub', 'remote', 'remove', 'remote-demo']).status === 0);
 
   // ⚠️ 仓库登记 CRUD 的用例**整段移除**：仓库模块已于 2026-10-23 迁到 nx-kv
   // （`nx-kv repo ...` / `nx-kv board ...`），nx-rh 侧不再有 repo/board 命令。

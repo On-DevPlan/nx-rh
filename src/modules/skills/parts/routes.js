@@ -12,4 +12,6 @@ export const goPlatform = (id) => { location.hash = `#/skills/platform/${id}`; }
 export const goHub = (path) => { location.hash = `#/skills/hub/${encodeURIComponent(path)}`; };
 export const goProject = () => { location.hash = '#/skills/project'; };
 export const goRemote = () => { location.hash = '#/skills/remote'; };
+// 深链到远程页的某个区段：'byurl'（按地址安装）/ 'find'（搜索发现）/ 'content'（内容）
+export const goRemoteSeg = (seg) => { location.hash = `#/skills/remote/${seg || 'content'}`; };
 export const goSkill = (name) => { location.hash = `#/skills/skill/${encodeURIComponent(name)}`; };

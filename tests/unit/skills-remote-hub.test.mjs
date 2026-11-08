@@ -49,10 +49,16 @@ test('导入：进唯一远程订阅，逐 skill 记来源与版本', async () =
   assert.equal(skills.length, 2);
   const alpha = skills.find((s) => s.name === 'alpha');
   assert.equal(alpha.spec, spec, '来源记下来了');
-  assert.ok(alpha.hash, '版本指纹在');
+  assert.ok(alpha.hash, '本地副本指纹在');
   assert.ok(alpha.importedAt && alpha.updatedAt, '导入与更新时间在');
   assert.equal(alpha.manual, false);
   assert.equal(dir, process.env.NX_RH_REMOTE_REPO_DIR);
+
+  // 上游指纹（版本比对的基准）：git 源 = 目录 tree SHA（40 位十六进制）
+  assert.match(alpha.folderHash, /^[0-9a-f]{40}$/, '上游目录指纹是 tree SHA');
+  // 上游路径：仓库内相对 SKILL.md 的路径 —— 版本检查靠它定位
+  assert.equal(alpha.repoPath, 'skills/alpha/SKILL.md');
+  assert.ok(alpha.commit, '上游 commit 记下来了');
 });
 
 test('Hub 作为一个订阅源登记（可 migrate 到平台）', async () => {
@@ -101,18 +107,6 @@ test('更新：上游变了 → 换实体 + 指纹更新', async () => {
   assert.equal(a2.hash, alpha.hash, '元数据指纹同步');
 });
 
-test('软链：Hub 里可放软链到别处的 skill', async () => {
-  const elsewhere = join(tmp, 'elsewhere');
-  mkdirSync(join(elsewhere, 'linked-skill'), { recursive: true });
-  writeFileSync(join(elsewhere, 'linked-skill', 'SKILL.md'), '---\nname: linked-skill\ndescription: 别处的一份\n---\n\n# L\n');
-  const r = await svc.linkIntoRemote('linked-skill', join(elsewhere, 'linked-skill'));
-  assert.ok(r.linkType);
-  const { skills } = await svc.remoteContents();
-  const linked = skills.find((s) => s.name === 'linked-skill');
-  assert.ok(linked.linkType, '清单里标出是软链');
-  assert.equal(linked.manual, true, '软链没有上游，不参与版本更新');
-});
-
 test('更新不会引入上游新增的 skill（新增要显式导入）', async () => {
   const { skills } = await svc.remoteContents();
   assert.ok(!skills.some((s) => s.name === 'gamma'), '上游新增的 gamma 不在 Hub（更新不擅自引入）');
@@ -146,16 +140,6 @@ test('上游 name 不可信：../evil 被拒（不写到仓库外）', async () 
   );
   // 仓库外不得出现任何文件
   assert.ok(!existsSync(join(tmp, 'evil')), '没有写到仓库目录之外');
-});
-
-test('链出：仓库里这份不动，别处建一个指向它的链接', async () => {
-  const elsewhere = join(tmp, 'linked-out');
-  const r = await svc.linkFromRemote('alpha', elsewhere);
-  assert.equal(r.from, join(process.env.NX_RH_REMOTE_REPO_DIR, 'alpha'));
-  assert.ok(existsSync(join(elsewhere, 'SKILL.md')), '别处能读到内容');
-  const { skills } = await svc.remoteContents();
-  const alpha = skills.find((s) => s.name === 'alpha');
-  assert.ok(alpha && !alpha.linkType, '仓库里那份仍是实体');
 });
 
 test('purge 远程仓库里的 skill 后，update 不会把它复活', async () => {

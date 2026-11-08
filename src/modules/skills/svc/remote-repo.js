@@ -3,17 +3,20 @@
 // 模型（与「多个远程订阅源」是两回事）：
 //   - 「远程订阅」是**一个**独立仓库（与本地 skill hub 同级、各自一个源），
 //     目录布局 <repo>/<name>/SKILL.md
-//   - 仓库里既有**实体**（从网上导入或手写定义），也可以有**软链**（链到别处，
-//     便于同一份源码多处使用）——链接不参与版本管理，但能像实体一样被迁移/引用
-//   - 每个实体带自己的来源与版本元数据：{ spec, url, ref, hash, importedAt, updatedAt }
-//     hash 就是它的「版本」，updatedAt 就是「何时更新的」
-//   - 支持的操作：搜索（skills.sh）→ 确认导入；添加定义；按版本更新；移除；加软链
+//   - 仓库里装的是**实体**（从网上导入或手写定义）——它就是个普通的本地
+//     skill hub，「导入 + 装到平台目录」是它的全部职责，不另立软链概念
+//     （软链在本地 hub 侧已有 submit / dedupe --as link 一套）
+//   - 每个实体带自己的来源与版本元数据：
+//     { spec, url, ref, hash, folderHash, repoPath, importedAt, updatedAt }
+//     hash = 本地副本指纹（md5，决定要不要换盘）
+//     folderHash = 上游指纹（git 源 = 目录 tree SHA，决定上游有没有变）
+//   - 支持的操作：搜索（skills.sh）→ 确认导入；按版本检查/更新；增删改查
 //   - 它参与本地流程：里面的 skill 可以照常 migrate 到各平台目录
 //
 // 导入与更新的共同骨架是 remote.js 的 materializeRemote（拉取到 staging）——
 // 与普通订阅同一条落地路径，只是落地终点从「源目录」变成「远程订阅仓库里的某个 skill」。
 import fsp from 'node:fs/promises';
-import { basename, join, dirname } from 'node:path';
+import { basename, join } from 'node:path';
 import { remoteRepoDir, assertSafeName } from '../../../core/paths.js';
 import { badInput, conflict, notFound } from '../../../core/errors.js';
 import { loadStore, mutateStore } from '../../../core/store.js';
@@ -23,12 +26,24 @@ import { materializeRemote } from './remote.js';
 import { resolveSkillsRoot, scanSkillsRoot, skillDirHash, readSkill } from './scan.js';
 import { resolveTargets } from './targets.js';
 import { pathExists } from '../../../core/fstree.js';
-
+import { fingerprintsFromStaging, relDirFor, headCommit, upstreamFingerprintOf } from './version.js';
 const now = () => new Date().toISOString();
 
 // 远程订阅仓库目录 + 登记为订阅源（幂等）：它的 skill 之后能像普通源一样被 migrate
+//
+// **默认登记**：远程 hub 是本工具托管的容器，不需要用户先「订阅」它——
+// 一开始就把它列进订阅源清单（恒排末位，见 svc/sources.js 的排序），
+// 这样总览的订阅源列表里天然有它，导入的 skill 立刻可迁移。
+//
+// 幂等且便宜：已登记过就直接返回，不做 mkdir、不写 store——
+// listSources 每次读订阅源清单都会调它，不能每次都落盘。
 export async function ensureRemote() {
+  const st = await loadStore();
   const dir = remoteRepoDir();
+  const registered = (st.settings?.skillHubSources || [])
+    .some((p) => String(p).toLowerCase() === dir.toLowerCase());
+  if (st.remoteRepo?.dir === dir && registered) return dir;
+
   await fsp.mkdir(dir, { recursive: true });
   await mutateStore((s) => {
     s.remoteRepo.dir = dir;
@@ -40,10 +55,10 @@ export async function ensureRemote() {
 
 export async function remoteRepoState() {
   const s = await loadStore();
-  return s.remoteRepo || { dir: remoteRepoDir(), skills: {} };
+  return s.remoteRepo || { dir: remoteRepoDir(), skills: {}, commits: {}, lastCheck: null };
 }
 
-// 远程订阅仓库里的 skill 清单：实体 + 软链，各带版本元数据（remoteContents —— 不叫 listHubSkills，
+// 远程订阅仓库里的 skill 清单：实体，各带版本元数据（remoteContents —— 不叫 listHubSkills，
 // 那个名字已被 sources.js 的「订阅源 skill 列表」占用，barrel 的 export * 会静默丢弃重名）
 export async function remoteContents() {
   const st = await remoteRepoState();
@@ -58,15 +73,20 @@ export async function remoteContents() {
     if (!info) continue;
     const meta = st.skills[e.name] || {};
     const linkType = await detectLinkType(path);
+    const commit = meta.spec ? st.commits?.[meta.spec]?.commit || '' : '';
     out.push({
       name: e.name,
       description: info.description,
       dir: path,
       linkType: linkType || '',
+      // hash = 本地副本指纹；folderHash = 上游指纹（版本比对的基准）
       hash: meta.hash || (await skillDirHash(path)),
+      folderHash: meta.folderHash || '',
+      repoPath: meta.repoPath || '',
       spec: meta.spec || '',
       url: meta.url || '',
       ref: meta.ref || '',
+      commit,
       importedAt: meta.importedAt || '',
       updatedAt: meta.updatedAt || meta.importedAt || '',
       // 软链没有上游（不参与版本更新）；手工定义同理
@@ -74,12 +94,19 @@ export async function remoteContents() {
     });
   }
   out.sort((a, b) => a.name.localeCompare(b.name));
-  return { dir, skills: out };
+  return {
+    dir,
+    skills: out,
+    // 上次检查的结论摘要：面板的「待更新」徽标读它，不必每次点开都联网
+    lastCheck: st.lastCheck || null,
+    commits: st.commits || {},
+  };
 }
 
 // 远程订阅内容 + 安装状态（cells）：与本地源的 skill 行同投影，Web 卡片直接用。
+// lastCheck / commits 一并带出——面板的「待更新」徽标读 lastCheck，不必联网。
 export async function remoteContentsWithCells({ project } = {}) {
-  const { skills, dir } = await remoteContents();
+  const { skills, dir, lastCheck, commits } = await remoteContents();
   const targets = await resolveTargets({ to: 'all', project });
   const out = [];
   for (const s of skills) {
@@ -94,7 +121,7 @@ export async function remoteContentsWithCells({ project } = {}) {
     }
     out.push({ ...s, cells });
   }
-  return { dir, skills: out };
+  return { dir, skills: out, lastCheck, commits };
 }
 
 // 导入：把远程规格里的 skill 拉进远程订阅仓库（默认整仓导入，name 只导一个）
@@ -127,6 +154,21 @@ export async function importToRemote(spec, { name, dryRun } = {}) {
       return { status: 'ok', dryRun: true, spec, dir: '', url: parsed.url, ref: parsed.ref || '', skills: preview, count: preview.length };
     }
 
+    // 上游指纹：导入时就把「上游目录指纹」记进台账，版本检查才有基准。
+    // 仓库已经克隆到 staging 了，直接从它算——不再克隆第二份。
+    // 采集失败不阻断导入：拿不到基准只是首次检查报 unknown，导入本身是成功的。
+    let upstream = { fingerprints: new Map(), commit: '' };
+    try {
+      upstream = await fingerprintsFromStaging(
+        staging,
+        sourceDir,
+        wanted.map((s) => [s.name, { absDir: s.dir, skillPath: basename(s.dir) }]),
+        parsed
+      );
+    } catch {
+      upstream = { fingerprints: new Map(), commit: '' };
+    }
+
     const dir = await ensureRemote();
     const stamp = now();
     const imported = [];
@@ -141,10 +183,14 @@ export async function importToRemote(spec, { name, dryRun } = {}) {
       const target = join(dir, safeName);
       await fsp.rm(target, { recursive: true, force: true });
       await fsp.cp(sk.dir, target, { recursive: true });
+      const fp = upstream.fingerprints.get(sk.name);
       imported.push({
         name: safeName,
         description: sk.description,
         hash,
+        // 上游指纹（版本比对的基准）与它在仓库里的相对路径
+        folderHash: fp?.sha || '',
+        repoPath: fp?.relDir ? fp.relDir + '/SKILL.md' : relDirFor(sk.dir, staging) + '/SKILL.md',
         spec,
         url: parsed.url,
         ref: parsed.ref || '',
@@ -158,6 +204,9 @@ export async function importToRemote(spec, { name, dryRun } = {}) {
       for (const it of imported) {
         const prev = s.remoteRepo.skills[it.name] || {};
         s.remoteRepo.skills[it.name] = { ...it, importedAt: prev.importedAt || stamp, updatedAt: stamp };
+      }
+      if (upstream.commit) {
+        s.remoteRepo.commits[spec] = { commit: upstream.commit, checkedAt: stamp };
       }
     });
     return { dir, spec, imported: imported.map((i) => i.name), count: imported.length };
@@ -192,50 +241,47 @@ export async function addRemoteDefinition(name, { description, content } = {}) {
   return { dir, name: safeName, hash, imported: [safeName] };
 }
 
-// 链入：把别处已有的 skill 软链**进**远程订阅仓库（<name> <目标目录>）
-export async function linkIntoRemote(name, target) {
-  if (!name || !target) throw badInput('用法: nx-rh skill hub remote link <name> <目标目录>');
-  const safeName = assertSafeName(name, '软链名');
-  const dir = await ensureRemote();
-  const link = join(dir, safeName);
-  if (await fsp.lstat(link).catch(() => null)) {
-    throw conflict('远程订阅仓库里已经有这个名字: ' + safeName);
-  }
-  const abs = target;
-  const info = await readSkill(abs);
-  if (!info) throw notFound('目标目录里没有 SKILL.md: ' + abs);
-  await fsp.symlink(abs, link, 'junction');
-  // 链接没有上游：登记为「无上游」条目（spec 空），更新时自动跳过
-  const hash = await skillDirHash(abs);
-  const stamp = now();
-  await mutateStore((s) => {
-    s.remoteRepo.dir = dir;
-    s.remoteRepo.skills[safeName] = {
-      name: safeName, description: info.description, hash,
-      spec: '', url: '', ref: '', skillPath: safeName,
-      importedAt: stamp, updatedAt: stamp, link: abs,
+// 导入 + 安装一条龙：把远程规格拉进远程订阅，并装到目标平台目录。
+//
+// 这是 vercel-labs/skills 的 `skills add` 的对标物（那边是「clone + 装到 agent 目录」，
+// 这边是「clone + 装到平台目录」——平台适配器沿用本仓库自己的 ADAPTERS 表）。
+//
+// 为什么不把 install 做成 import 的副作用：import 的语义是「收进容器」，
+// install 的语义是「落到平台目录」——两件事的失败后果不同（前者只是台账/实体，
+// 后者会在用户目录留下文件）。分开之后，import 仍可单独用于「先收着，之后再铺」。
+export async function installFromRemote(spec, { name, to, platform, project, dryRun } = {}) {
+  // --dry-run：只列上游有什么，不导入也不安装（与 import --dry-run 同一形态）
+  if (dryRun) {
+    const preview = await importToRemote(spec, { name, dryRun: true });
+    return {
+      status: 'ok', dryRun: true, spec,
+      skills: preview.skills, count: preview.count,
+      imported: [], install: null,
     };
-  });
-  return { dir, name: safeName, target: abs, linkType: (await detectLinkType(link)) || 'symlink' };
-}
+  }
 
-// 链出：把远程订阅仓库里的某份 skill 链到别处（<name> <目标目录>）
-// 与「链入」相反：容器里这份**不动**，在目标位置建一个指向它的链接。
-export async function linkFromRemote(name, target) {
-  const safeName = assertSafeName(name, 'skill 名称');
-  const st = await remoteRepoState();
-  const dir = st.dir || remoteRepoDir();
-  const src = join(dir, safeName);
-  if (!(await fsp.lstat(src).catch(() => null))) {
-    throw notFound('远程订阅仓库里没有这个 skill: ' + safeName);
+  const imported = await importToRemote(spec, { name });
+  const names = imported.imported;
+  if (!names.length) {
+    return { status: 'ok', spec, imported: [], count: 0, install: null };
   }
-  const abs = target;
-  if (await fsp.lstat(abs).catch(() => null)) {
-    throw conflict('目标位置已存在: ' + abs);
-  }
-  await fsp.mkdir(dirname(abs), { recursive: true });
-  await fsp.symlink(src, abs, 'junction');
-  return { name: safeName, from: src, to: abs, linkType: (await detectLinkType(abs)) || 'symlink' };
+
+  // 迁移到目标：走现成的 transfer 层（订阅源 → 平台目录）
+  const { migrateSkill } = await import('./transfer.js');
+  const install = await migrateSkill({
+    name: names,
+    to: to || 'user',
+    platform: platform || undefined,
+    project,
+  });
+
+  return {
+    status: install.status === 'blocked' ? 'blocked' : 'ok',
+    spec,
+    imported: names,
+    count: names.length,
+    install,
+  };
 }
 
 // 更新：按来源重拉，逐 skill 比对指纹——变了才换（未变不动），上游没了报「已移除」
@@ -270,6 +316,13 @@ export async function updateRemote(names, { prune } = {}) {
       const upstreamByPath = new Map(
         (await scanSkillsRoot(root, { realOnly: true })).map((s) => [basename(s.dir), s])
       );
+      // 上游 commit（记进台账，下次检查走 ls-remote 快路径）
+      let commit = '';
+      try {
+        commit = await headCommit(m.staging);
+      } catch {
+        commit = '';
+      }
       for (const [name, meta] of items) {
         // 重定位（对齐 vercel-labs/skills src/skill-relocation.ts 的思路）：
         // 上游按 frontmatter name 找不到时，先按**原目录名**（台账 skillPath）
@@ -287,8 +340,19 @@ export async function updateRemote(names, { prune } = {}) {
           }
           continue;
         }
+        // 上游指纹（版本基准）：仓库已经拉好了，直接从 staging 算树对象 SHA
+        const fp = await upstreamFingerprintOf(m.staging, up.dir, parsed);
         const hash = await skillDirHash(up.dir);
         if (hash === meta.hash) {
+          // 内容没变，但上游路径可能挪了——台账的 repoPath 要跟上，
+          // 否则下次版本检查定位不到（会误报 removed）。
+          if (fp.relDir !== null && (meta.repoPath || '') !== (fp.relDir ? fp.relDir + '/SKILL.md' : 'SKILL.md')) {
+            await mutateStore((s) => {
+              if (!s.remoteRepo.skills[name]) return;
+              s.remoteRepo.skills[name].repoPath = fp.relDir ? fp.relDir + '/SKILL.md' : 'SKILL.md';
+              if (fp.sha) s.remoteRepo.skills[name].folderHash = fp.sha;
+            });
+          }
           results.push({ name, status: 'unchanged', hash });
           continue;
         }
@@ -298,9 +362,24 @@ export async function updateRemote(names, { prune } = {}) {
         await fsp.rm(target, { recursive: true, force: true });
         await fsp.cp(up.dir, target, { recursive: true });
         await mutateStore((s) => {
-          s.remoteRepo.skills[name] = { ...meta, hash, updatedAt: now(), skillPath: basename(up.dir) };
+          if (!s.remoteRepo.skills[name]) return;
+          s.remoteRepo.skills[name] = {
+            ...s.remoteRepo.skills[name],
+            hash,
+            folderHash: fp.sha || s.remoteRepo.skills[name].folderHash || '',
+            repoPath: fp.relDir !== null
+              ? (fp.relDir ? fp.relDir + '/SKILL.md' : 'SKILL.md')
+              : s.remoteRepo.skills[name].repoPath || '',
+            updatedAt: now(),
+            skillPath: basename(up.dir),
+          };
         });
         results.push({ name, status: 'updated', hash, from: meta.hash, ...(relocated ? { relocated: true } : {}) });
+      }
+      if (commit) {
+        await mutateStore((s) => {
+          s.remoteRepo.commits[spec] = { commit, checkedAt: now() };
+        });
       }
     } catch (err) {
       results.push({ name: spec, status: 'error', error: String((err && err.message) || err) });
